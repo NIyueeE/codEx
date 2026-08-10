@@ -1,4 +1,4 @@
-From 4047ac4f0746cd2836b3f47505f2f3ade52d23b7 Mon Sep 17 00:00:00 2001
+From 16f2756e9cf6a677a5cfed6071bb70425a9ebf0d Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -125,7 +125,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  codex-rs/tui/src/lib.rs                       |    5 +-
  codex-rs/tui/src/npm_registry.rs              |  130 --
  codex-rs/tui/src/rewind/actions.rs            |  237 +++
- codex-rs/tui/src/rewind/mod.rs                |  373 ++++
+ codex-rs/tui/src/rewind/mod.rs                |  374 ++++
  codex-rs/tui/src/rewind/rewind_tests.rs       |  202 ++
  codex-rs/tui/src/slash_command.rs             |    3 +
  ...rejection_reports_unavailable_message.snap |    5 -
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2484 insertions(+), 9564 deletions(-)
+ 175 files changed, 2485 insertions(+), 9564 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -12166,10 +12166,10 @@ index 0000000000..6d5f3634f5
 +}
 diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
 new file mode 100644
-index 0000000000..ce2e98b1d1
+index 0000000000..04321cedaa
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/mod.rs
-@@ -0,0 +1,373 @@
+@@ -0,0 +1,374 @@
 +//! File snapshots for `/rewind`.
 +//!
 +//! Before each user turn the TUI snapshots the workspace so the user can roll
@@ -12542,6 +12542,7 @@ index 0000000000..ce2e98b1d1
 +mod tests;
 +
 +mod actions;
++#[cfg(test)]
 +pub(crate) use actions::rewind_scope_selection_params;
 diff --git a/codex-rs/tui/src/rewind/rewind_tests.rs b/codex-rs/tui/src/rewind/rewind_tests.rs
 new file mode 100644
@@ -13839,23 +13840,16 @@ index 0fe4408444..0ba771af46 100644
      }
  }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index de8bfb0dca..ef9e48fd6b 100644
+index de8bfb0dca..0b55e7ceeb 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
-@@ -12,6 +12,7 @@ use crate::tui::Tui;
- use crate::tui::TuiEvent;
- use crate::update_action::UpdateAction;
- use crate::updates;
-+use codex_utils_cli::FORK_REPO;
- use color_eyre::Result;
- use crossterm::event::KeyCode;
- use crossterm::event::KeyEvent;
-@@ -26,7 +27,7 @@ use ratatui::widgets::Clear;
+@@ -26,7 +26,8 @@ use ratatui::widgets::Clear;
  use ratatui::widgets::WidgetRef;
  use tokio_stream::StreamExt;
  
 -const RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
-+const RELEASE_NOTES_URL: &str = concat!("https://github.com/", FORK_REPO, "/releases/latest");
++// Keep in sync with `codex_utils_cli::FORK_REPO`.
++const RELEASE_NOTES_URL: &str = "https://github.com/NIyueeE/codEx/releases/latest";
  
  pub(crate) enum UpdatePromptOutcome {
      Continue,
