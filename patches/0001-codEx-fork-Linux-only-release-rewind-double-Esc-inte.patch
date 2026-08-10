@@ -1,4 +1,4 @@
-From 6e9c6f42bc0be07a9138079f467268db8ffadc8b Mon Sep 17 00:00:00 2001
+From bc453285f3d9df0bc81b96b1b6a87bf7fd35a0f9 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -31,7 +31,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1671 ++---------------
+ .github/workflows/rust-release.yml            | 1675 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2530 insertions(+), 9563 deletions(-)
+ 175 files changed, 2534 insertions(+), 9563 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -3905,7 +3905,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..0f17e485cc 100644
+index 72b6e23895..c4c395616c 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,151 @@
@@ -4216,7 +4216,7 @@ index 72b6e23895..0f17e485cc 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +161,74 @@ jobs:
+@@ -237,1429 +161,78 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5681,11 +5681,15 @@ index 72b6e23895..0f17e485cc 100644
 -            -X PATCH \
 -            -f sha="${GITHUB_SHA}" \
 -            -F force=true
-+          if ! gh release create "${tag}" "${assets[@]}" \
-+              --title "codEx ${tag}" \
-+              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"; then
-+            gh release upload "${tag}" "${assets[@]}"
++          # Tag re-pushes supersede earlier builds; replace the previous
++          # release for this tag instead of failing on duplicate assets.
++          if gh release view "${tag}" >/dev/null 2>&1; then
++            echo "Release ${tag} already exists; replacing it with the new build."
++            gh release delete "${tag}" --yes
 +          fi
++          gh release create "${tag}" "${assets[@]}" \
++              --title "codEx ${tag}" \
++              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
 index a2f620aa8f..0000000000
