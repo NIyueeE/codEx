@@ -13,20 +13,20 @@ pins the upstream tag the current patch queue applies to (currently
 
 ## What changes versus upstream
 
-### `/rewind` — roll back conversation and workspace files
+### `/rewind` - roll back conversation and workspace files
 
 The headline feature. `/rewind` lets you undo a conversation turn and/or the
 file changes a turn made, without needing git.
 
 **Usage**: type `/rewind`, then choose a scope:
 
-1. **Files and conversation** — pick a past message; the chat forks before that
+1. **Files and conversation** - pick a past message; the chat forks before that
    message (a new thread with the conversation truncated there, prompt
    restored into the composer) and the workspace files are restored to the
    snapshot taken right before that message.
-2. **Conversation only** — pick a past message from a searchable picker and
+2. **Conversation only** - pick a past message from a searchable picker and
    fork the chat before it; files are left untouched.
-3. **Files only** — pick a numbered snapshot and restore the workspace to it.
+3. **Files only** - pick a numbered snapshot and restore the workspace to it.
 
 **How snapshots work** (pure files, no git involved):
 
@@ -50,7 +50,7 @@ rewind_respect_gitignore = true  # default true; false snapshots every file
 
 ### Esc: single press does nothing, double press stops the reply
 
-- A single **Esc** in the main UI/composer is a **no-op** — it no longer
+- A single **Esc** in the main UI/composer is a **no-op** - it no longer
   interrupts a turn or arms any backtrack mode.
 - While a reply is running, the **first Esc** shows a footer hint
   ("esc again to stop reply") and arms a **400 ms** window; a **second Esc**
@@ -116,11 +116,11 @@ rewind_respect_gitignore = true  # default true; false snapshots every file
 
 This repo deliberately does **not** vendor upstream code. It stores:
 
-- `BASE_TAG` — the upstream tag the current patch queue applies to
-- `patches/` — `git format-patch` series with every fork change
-- `scripts/bootstrap.sh` — shallow-clone `openai/codex@BASE_TAG`, apply patches
-- `scripts/update.sh` — upgrade to a new upstream tag (apply, resolve, regen)
-- `scripts/gen-patches.sh` — regenerate the patch series from git history
+- `BASE_TAG` - the upstream tag the current patch queue applies to
+- `patches/` - `git format-patch` series with every fork change
+- `scripts/bootstrap.sh` - shallow-clone `openai/codex@BASE_TAG`, apply patches
+- `scripts/update.sh` - upgrade to a new upstream tag (apply, resolve, regen)
+- `scripts/gen-patches.sh` - regenerate the patch series from git history
 
 `bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 and release workflows do exactly that before building. See
