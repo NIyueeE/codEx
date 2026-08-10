@@ -221,7 +221,12 @@ jobs:
         run: |
           set -euo pipefail
           tag="${GITHUB_REF_NAME}"
-          assets=(dist/*/*.tar.gz dist/*/*.sha256)
+          shopt -s nullglob
+          assets=(dist/*.tar.gz dist/*.sha256)
+          if [[ ${#assets[@]} -eq 0 ]]; then
+            echo "no release assets found under dist/" >&2
+            exit 1
+          fi
           if ! gh release create "${tag}" "${assets[@]}" \
               --title "codEx ${tag}" \
               --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"; then

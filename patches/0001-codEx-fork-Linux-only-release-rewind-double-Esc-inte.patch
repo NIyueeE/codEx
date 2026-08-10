@@ -1,4 +1,4 @@
-From 737ac525ec3f93b8fe8117a6708fba04ab45e98d Mon Sep 17 00:00:00 2001
+From fb983ea509bb6fd50cc1001f9ac332a5ac1df723 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -16,7 +16,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/scripts/install-musl-build-tools.sh   |   12 +-
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
- .github/workflows/blocking-ci.yml             |  134 +-
+ .github/workflows/blocking-ci.yml             |  139 +-
  .github/workflows/cargo-deny.yml              |   32 -
  .github/workflows/postmerge-ci.yml            |   40 -
  .github/workflows/python-runtime-build.yml    |  104 -
@@ -31,13 +31,13 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1670 ++---------------
+ .github/workflows/rust-release.yml            | 1671 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
  .gitignore                                    |    4 +
  BASE_TAG                                      |    1 +
- README.md                                     |  135 +-
+ README.md                                     |  137 +-
  announcement_tip.toml                         |   17 -
  codex-rs/Cargo.lock                           |  274 +--
  codex-rs/cli/Cargo.toml                       |    3 +
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2506 insertions(+), 9565 deletions(-)
+ 175 files changed, 2516 insertions(+), 9563 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -923,10 +923,10 @@ index 176f368938..0000000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index fe66fdd509..d4908177e8 100644
+index fe66fdd509..67382a58bb 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,103 @@
+@@ -1,29 +1,108 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
@@ -1042,11 +1042,16 @@ index fe66fdd509..d4908177e8 100644
 +        run: |
 +          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
-+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-core
++          # The full core integration suite (sandbox/approvals scenarios) needs
++          # sandbox-capable runners, exactly like upstream, which runs it on
++          # self-hosted runners only. Hosted CI covers core unit tests; the
++          # sandbox-dependent `suite::*` tests are excluded here.
++          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
++            -p codex-core -E 'not test(suite)'
  
    codespell:
      name: Codespell
-@@ -35,39 +109,17 @@ jobs:
+@@ -35,39 +114,17 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  
@@ -3900,7 +3905,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..287168e4a1 100644
+index 72b6e23895..0f17e485cc 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,151 @@
@@ -4211,7 +4216,7 @@ index 72b6e23895..287168e4a1 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +161,69 @@ jobs:
+@@ -237,1429 +161,74 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5479,13 +5484,7 @@ index 72b6e23895..287168e4a1 100644
 -          prefix=""
 -          if [[ -n "${NPM_TAG}" ]]; then
 -            prefix="${NPM_TAG}-"
-+          tag="${GITHUB_REF_NAME}"
-+          assets=(dist/*/*.tar.gz dist/*/*.sha256)
-+          if ! gh release create "${tag}" "${assets[@]}" \
-+              --title "codEx ${tag}" \
-+              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"; then
-+            gh release upload "${tag}" "${assets[@]}"
-           fi
+-          fi
 -
 -          root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
 -          sdk_tarball="dist/npm/codex-sdk-npm-${VERSION}.tgz"
@@ -5509,7 +5508,8 @@ index 72b6e23895..287168e4a1 100644
 -            fi
 -          done
 -
--          shopt -s nullglob
++          tag="${GITHUB_REF_NAME}"
+           shopt -s nullglob
 -          other_tarballs=()
 -          for tarball in dist/npm/*-"${VERSION}".tgz; do
 -            if [[ "${tarball}" == "${root_tarball}" || "${tarball}" == "${sdk_tarball}" ]]; then
@@ -5612,8 +5612,11 @@ index 72b6e23895..287168e4a1 100644
 -        run: |
 -          if ! curl -sS -f -o /dev/null -X POST "$DEV_WEBSITE_VERCEL_DEPLOY_HOOK_URL"; then
 -            echo "::warning title=developers.openai.com deploy hook failed::Vercel deploy hook POST failed for ${GITHUB_REF_NAME}"
--            exit 1
--          fi
++          assets=(dist/*.tar.gz dist/*.sha256)
++          if [[ ${#assets[@]} -eq 0 ]]; then
++            echo "no release assets found under dist/" >&2
+             exit 1
+           fi
 -
 -  winget:
 -    name: winget
@@ -5678,6 +5681,11 @@ index 72b6e23895..287168e4a1 100644
 -            -X PATCH \
 -            -f sha="${GITHUB_SHA}" \
 -            -F force=true
++          if ! gh release create "${tag}" "${assets[@]}" \
++              --title "codEx ${tag}" \
++              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"; then
++            gh release upload "${tag}" "${assets[@]}"
++          fi
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
 index a2f620aa8f..0000000000
@@ -6807,10 +6815,10 @@ index 0000000000..21475d8c33
 @@ -0,0 +1 @@
 +rust-v0.147.0
 diff --git a/README.md b/README.md
-index 06b02fced7..81abccc92a 100644
+index 06b02fced7..6526f1052f 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,74 @@
+@@ -1,81 +1,76 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -6848,7 +6856,9 @@ index 06b02fced7..81abccc92a 100644
 +- **Release & CI**: Linux-only (`x86_64` MUSL), CLI-only. No macOS/Windows or
 +  ARM64 builds, no DMG, no app-server bundles, no R2/npm/winget.
 +  CI is plain Cargo: `cargo build --release --bin codex`, `cargo fmt --check`,
-+  `just test -p codex-tui`, `just test -p codex-core`.
++  `just test -p codex-tui`, plus `codex-core` unit tests. The sandbox-dependent
++  core integration suite (`suite::*`) needs sandbox-capable runners and is
++  excluded from hosted CI, mirroring upstream's self-hosted-runner setup.
 +- **`/rewind`**: roll back conversation and/or workspace files. The TUI
 +  snapshots the workspace (plain files, no git) before each turn under
 +  `~/.codex/snapshots/<workspace-hash>/<turn>/`, respecting `.gitignore` by

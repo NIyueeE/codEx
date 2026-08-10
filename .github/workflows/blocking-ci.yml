@@ -97,7 +97,12 @@ jobs:
         run: |
           cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
-          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-core
+          # The full core integration suite (sandbox/approvals scenarios) needs
+          # sandbox-capable runners, exactly like upstream, which runs it on
+          # self-hosted runners only. Hosted CI covers core unit tests; the
+          # sandbox-dependent `suite::*` tests are excluded here.
+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
+            -p codex-core -E 'not test(suite)'
 
   codespell:
     name: Codespell

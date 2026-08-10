@@ -16,7 +16,9 @@ pins the upstream tag the current patch queue applies to (currently
 - **Release & CI**: Linux-only (`x86_64` MUSL), CLI-only. No macOS/Windows or
   ARM64 builds, no DMG, no app-server bundles, no R2/npm/winget.
   CI is plain Cargo: `cargo build --release --bin codex`, `cargo fmt --check`,
-  `just test -p codex-tui`, `just test -p codex-core`.
+  `just test -p codex-tui`, plus `codex-core` unit tests. The sandbox-dependent
+  core integration suite (`suite::*`) needs sandbox-capable runners and is
+  excluded from hosted CI, mirroring upstream's self-hosted-runner setup.
 - **`/rewind`**: roll back conversation and/or workspace files. The TUI
   snapshots the workspace (plain files, no git) before each turn under
   `~/.codex/snapshots/<workspace-hash>/<turn>/`, respecting `.gitignore` by
