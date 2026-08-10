@@ -7,7 +7,10 @@
 set -euo pipefail
 
 repo="${FORK_UPSTREAM_REPO:-openai/codex}"
-base_tag="$(cat "$(dirname "$0")/../BASE_TAG")"
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+repo_root="$(cd "${script_dir}/.." && pwd)"
+patches_dir="${repo_root}/patches"
+base_tag="$(cat "${repo_root}/BASE_TAG")"
 output_dir="${1:-tree}"
 
 if [[ -d "${output_dir}/codex-rs" ]]; then
@@ -22,6 +25,6 @@ echo "Applying fork patches ..."
 cd "${output_dir}"
 git config user.name "codEx Fork Bot"
 git config user.email "codex-fork-bot@localhost"
-git am --3way "$(realpath "$(dirname "$0")/../patches")"/*.patch
+git am --3way "${patches_dir}"/*.patch
 
 echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"
