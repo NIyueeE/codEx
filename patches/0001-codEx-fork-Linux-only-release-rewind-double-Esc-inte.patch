@@ -1,4 +1,4 @@
-From 191afafff4f7a768159f9e0481d3328a5c38a27c Mon Sep 17 00:00:00 2001
+From 4047ac4f0746cd2836b3f47505f2f3ade52d23b7 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -63,13 +63,13 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  codex-rs/tui/src/bottom_pane/mod.rs           |   76 +-
  .../src/bottom_pane/pending_input_preview.rs  |   20 +-
  .../src/bottom_pane/request_user_input/mod.rs |   18 +-
- ...ts__footer_mode_configured_key_chords.snap |    9 +-
+ ...ts__footer_mode_configured_key_chords.snap |    7 +-
  ...footer_mode_ctrl_c_hint_survives_esc.snap} |    2 +-
  ...ter_mode_esc_closes_shortcut_overlay.snap} |    2 +-
  ...ts__footer_mode_esc_hint_from_overlay.snap |   13 -
  ...r_mode_overlay_then_external_esc_hint.snap |   13 -
- ...__tests__footer_mode_shortcut_overlay.snap |    9 +-
- ...de_shortcut_overlay_queue_submissions.snap |    9 +-
+ ...__tests__footer_mode_shortcut_overlay.snap |    7 +-
+ ...de_shortcut_overlay_queue_submissions.snap |    7 +-
  ...__footer__tests__footer_esc_hint_idle.snap |    5 -
  ...footer__tests__footer_esc_hint_primed.snap |    5 -
  ...shortcuts_collaboration_modes_enabled.snap |    8 +-
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2487 insertions(+), 9567 deletions(-)
+ 175 files changed, 2484 insertions(+), 9564 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -10555,19 +10555,17 @@ index 494c7cbb03..901bb02995 100644
              // once core supports persisting them reliably without follow-up turn issues.
              self.app_event_tx.interrupt();
 diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_configured_key_chords.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_configured_key_chords.snap
-index efad837915..514320b5b0 100644
+index efad837915..9dd63c8ff0 100644
 --- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_configured_key_chords.snap
 +++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_configured_key_chords.snap
-@@ -12,10 +12,9 @@ expression: terminal.backend()
- "                                                                                                    "
+@@ -13,9 +13,8 @@ expression: terminal.backend()
  "  / for commands                                      ! for shell commands                          "
  "  ctrl + x enter for newline                          tab to submit message                         "
--"  @ for file paths                                    ctrl + v to paste images                      "
+ "  @ for file paths                                    ctrl + v to paste images                      "
 -"  ctrl + g ctrl + g to edit in external editor        esc esc to edit previous message              "
 -"  ctrl + r search history                             ctrl + c to exit                              "
 -"  ⌥ + , reasoning down                                ⌥ + . reasoning up                            "
 -"  ctrl + t to view transcript                                                                       "
-+"  @ for file paths                                    ctrl + ⌥ + v to paste images                  "
 +"  ctrl + g ctrl + g to edit in external editor        ctrl + r search history                       "
 +"  ctrl + c to exit                                    ⌥ + , reasoning down                          "
 +"  ⌥ + . reasoning up                                  ctrl + t to view transcript                   "
@@ -10638,38 +10636,34 @@ index 2fce42cc26..0000000000
 -"                                                                                                    "
 -"  esc again to edit previous message                                                                "
 diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay.snap
-index 5239a34bd2..1fc0360f67 100644
+index 5239a34bd2..76b5500987 100644
 --- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay.snap
 +++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay.snap
-@@ -12,10 +12,9 @@ expression: terminal.backend()
- "                                                                                                    "
+@@ -13,9 +13,8 @@ expression: terminal.backend()
  "  / for commands                             ! for shell commands                                   "
  "  shift + enter for newline                  tab to submit message                                  "
--"  @ for file paths                           ctrl + v to paste images                               "
+ "  @ for file paths                           ctrl + v to paste images                               "
 -"  ctrl + g to edit in external editor        esc again to edit previous message                     "
 -"  ctrl + r search history                    ctrl + c to exit                                       "
 -"  ⌥ + , reasoning down                       ⌥ + . reasoning up                                     "
 -"  ctrl + t to view transcript                                                                       "
-+"  @ for file paths                           ctrl + ⌥ + v to paste images                           "
 +"  ctrl + g to edit in external editor        ctrl + r search history                                "
 +"  ctrl + c to exit                           ⌥ + , reasoning down                                   "
 +"  ⌥ + . reasoning up                         ctrl + t to view transcript                            "
  "                                                                                                    "
  "  customize shortcuts with /keymap                                                                  "
 diff --git a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay_queue_submissions.snap b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay_queue_submissions.snap
-index 582724eea7..17eedcf363 100644
+index 582724eea7..308163cc0f 100644
 --- a/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay_queue_submissions.snap
 +++ b/codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_shortcut_overlay_queue_submissions.snap
-@@ -12,10 +12,9 @@ expression: terminal.backend()
- "                                                                                                    "
+@@ -13,9 +13,8 @@ expression: terminal.backend()
  "  / for commands                             ! for shell commands                                   "
  "  shift + enter for newline                  tab to queue message                                   "
--"  @ for file paths                           ctrl + v to paste images                               "
+ "  @ for file paths                           ctrl + v to paste images                               "
 -"  ctrl + g to edit in external editor        esc esc to edit previous message                       "
 -"  ctrl + r search history                    ctrl + c to exit                                       "
 -"  ⌥ + , reasoning down                       ⌥ + . reasoning up                                     "
 -"  ctrl + t to view transcript                                                                       "
-+"  @ for file paths                           ctrl + ⌥ + v to paste images                           "
 +"  ctrl + g to edit in external editor        ctrl + r search history                                "
 +"  ctrl + c to exit                           ⌥ + , reasoning down                                   "
 +"  ⌥ + . reasoning up                         ctrl + t to view transcript                            "
