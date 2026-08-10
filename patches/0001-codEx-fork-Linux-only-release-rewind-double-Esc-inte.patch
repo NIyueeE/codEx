@@ -1,4 +1,4 @@
-From fb983ea509bb6fd50cc1001f9ac332a5ac1df723 Mon Sep 17 00:00:00 2001
+From 6e9c6f42bc0be07a9138079f467268db8ffadc8b Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -43,7 +43,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  codex-rs/cli/Cargo.toml                       |    3 +
  codex-rs/cli/src/doctor/updates.rs            |   53 +-
  codex-rs/cli/src/main.rs                      |   81 +-
- codex-rs/cli/src/self_update.rs               |  331 ++++
+ codex-rs/cli/src/self_update.rs               |  345 ++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/sandbox_cloud_config.rs    |    4 +-
  codex-rs/config/src/config_toml.rs            |   14 +-
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2516 insertions(+), 9563 deletions(-)
+ 175 files changed, 2530 insertions(+), 9563 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -8541,10 +8541,10 @@ index 4c88718a20..a227eab128 100644
          let (target, interactive, remote) = finalize_archive_from_args(
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000000..5d59836afd
+index 0000000000..721f8a17f0
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,331 @@
+@@ -0,0 +1,345 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -8568,6 +8568,8 @@ index 0000000000..5d59836afd
 +use codex_utils_cli::FORK_REPO;
 +use codex_utils_cli::latest_release_url;
 +use flate2::read::GzDecoder;
++use http::HeaderValue;
++use http::header::USER_AGENT;
 +use sha2::Digest;
 +use sha2::Sha256;
 +use tar::Archive;
@@ -8578,6 +8580,16 @@ index 0000000000..5d59836afd
 +const BWRAP_BINARY_NAME: &str = "bwrap";
 +/// HTTP timeout for a single release asset download.
 +const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
++
++/// User-Agent sent with GitHub API/asset requests. GitHub's REST API rejects
++/// requests without a User-Agent header with HTTP 403.
++fn user_agent() -> HeaderValue {
++    HeaderValue::from_static(concat!(
++        "codex-cli/",
++        env!("CARGO_PKG_VERSION"),
++        " (codEx fork updater)"
++    ))
++}
 +
 +/// The platform triple codEx publishes binaries for this architecture.
 +///
@@ -8703,6 +8715,7 @@ index 0000000000..5d59836afd
 +    );
 +    let response = client
 +        .get(latest_release_url())
++        .header(USER_AGENT, user_agent())
 +        .timeout(Duration::from_secs(30))
 +        .send()
 +        .await
@@ -8722,6 +8735,7 @@ index 0000000000..5d59836afd
 +async fn download_bytes(client: &RouteAwareClientPool, url: &str) -> anyhow::Result<Vec<u8>> {
 +    let response = client
 +        .get(url)
++        .header(USER_AGENT, user_agent())
 +        .timeout(DOWNLOAD_TIMEOUT)
 +        .send()
 +        .await
