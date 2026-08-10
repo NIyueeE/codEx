@@ -1,4 +1,4 @@
-From a7dac876565f887d45b2398bc7364ba1860ad276 Mon Sep 17 00:00:00 2001
+From e0a88d37e51299b88aeefbbe105a2cf3c9ae626c Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -13,7 +13,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
 - Add patch-queue tooling (BASE_TAG, bootstrap/update/gen-patches) and fork README
 ---
  .codespellignore                              |    1 +
- .github/scripts/install-musl-build-tools.sh   |   30 +-
+ .github/scripts/install-musl-build-tools.sh   |   12 +-
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
  .github/workflows/blocking-ci.yml             |  116 +-
@@ -31,7 +31,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1667 ++---------------
+ .github/workflows/rust-release.yml            | 1666 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2502 insertions(+), 9568 deletions(-)
+ 175 files changed, 2486 insertions(+), 9565 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -261,7 +261,7 @@ index 4f3c8c3513..73e21a5532 100644
  psuedo
  SOM
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index 49035f5391..8c9fd2ab63 100644
+index 49035f5391..9382592b40 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -273,37 +273,19 @@ index 49035f5391..8c9fd2ab63 100644
  
  case "${TARGET}" in
    x86_64-unknown-linux-musl)
-@@ -37,21 +37,33 @@ libcap_sha256="de4e7e064c9ba451d5234dd46e897d7c71c96a9ebf9a0c445bc04f4742d83632"
+@@ -37,6 +37,11 @@ libcap_sha256="de4e7e064c9ba451d5234dd46e897d7c71c96a9ebf9a0c445bc04f4742d83632"
  libcap_tarball_name="libcap-${libcap_version}.tar.xz"
  libcap_download_url="https://mirrors.edge.kernel.org/pub/linux/libs/security/linux-privs/libcap2/${libcap_tarball_name}"
  
--# Use the musl toolchain as the Rust linker to avoid Zig injecting its own CRT.
 +zig_target="${TARGET/-unknown-linux-musl/-linux-musl}"
 +runner_temp="${RUNNER_TEMP:-/tmp}"
 +tool_root="${runner_temp}/codex-musl-tools-${TARGET}"
 +mkdir -p "${tool_root}"
 +
-+# Prefer an arch-specific musl toolchain; fall back to host musl-gcc for native
-+# builds; otherwise (cross builds) link and compile through Zig so the target
-+# arch is correct.
-+host_arch="$(uname -m)"
+ # Use the musl toolchain as the Rust linker to avoid Zig injecting its own CRT.
  if command -v "${arch}-linux-musl-gcc" >/dev/null; then
    musl_linker="$(command -v "${arch}-linux-musl-gcc")"
--elif command -v musl-gcc >/dev/null; then
-+elif [[ "${host_arch}" == "${arch}" ]] && command -v musl-gcc >/dev/null; then
-   musl_linker="$(command -v musl-gcc)"
-+elif command -v zig >/dev/null; then
-+  zig_bin="$(command -v zig)"
-+  cat > "${tool_root}/zig-linker" <<EOF
-+#!/usr/bin/env bash
-+set -euo pipefail
-+exec "${zig_bin}" cc -target "${zig_target}" "\$@"
-+EOF
-+  chmod +x "${tool_root}/zig-linker"
-+  musl_linker="${tool_root}/zig-linker"
- else
--  echo "musl gcc not found after install; arch=${arch}" >&2
-+  echo "no usable musl toolchain found for arch=${arch} on host ${host_arch}; install musl-gcc or zig" >&2
+@@ -47,11 +52,6 @@ else
    exit 1
  fi
  
@@ -3897,7 +3879,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..84021b32e4 100644
+index 72b6e23895..cd3b8d204a 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,21 +1,22 @@
@@ -3915,8 +3897,8 @@ index 72b6e23895..84021b32e4 100644
 +# patch-queue repo (patches/ + scripts/ only): when codex-rs/ is missing the
 +# tree is bootstrapped from upstream via scripts/bootstrap.sh.
 +#
-+# Publishes standalone Linux binaries for x86_64 and aarch64 (MUSL) from a
-+# `rust-v<semver>` or `v<semver>` tag. Each release ships:
++# Publishes standalone Linux x86_64 (MUSL) binaries from a `rust-v<semver>` or
++# `v<semver>` tag. Each release ships:
 +#   codex-<target>.tar.gz        (contains `codex` and `bwrap`)
 +#   codex-<target>.tar.gz.sha256 (sha256 of the archive)
 +# which `codex update` downloads and verifies.
@@ -3935,7 +3917,7 @@ index 72b6e23895..84021b32e4 100644
  
  concurrency:
    group: ${{ github.workflow }}
-@@ -23,205 +24,127 @@ concurrency:
+@@ -23,205 +24,126 @@ concurrency:
  
  jobs:
    tag-check:
@@ -4070,7 +4052,6 @@ index 72b6e23895..84021b32e4 100644
 -            build_dmg: "false"
 +        target:
 +          - x86_64-unknown-linux-musl
-+          - aarch64-unknown-linux-musl
  
      steps:
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -4206,7 +4187,7 @@ index 72b6e23895..84021b32e4 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +160,69 @@ jobs:
+@@ -237,1429 +159,69 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -6802,7 +6783,7 @@ index 0000000000..21475d8c33
 @@ -0,0 +1 @@
 +rust-v0.147.0
 diff --git a/README.md b/README.md
-index 06b02fced7..e42408d3da 100644
+index 06b02fced7..81abccc92a 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,81 +1,74 @@
@@ -6840,8 +6821,8 @@ index 06b02fced7..e42408d3da 100644
 +
 +## What changes versus upstream
 +
-+- **Release & CI**: Linux-only (`x86_64` + `aarch64`, MUSL), CLI-only. No
-+  macOS/Windows builds, no DMG, no app-server bundles, no R2/npm/winget.
++- **Release & CI**: Linux-only (`x86_64` MUSL), CLI-only. No macOS/Windows or
++  ARM64 builds, no DMG, no app-server bundles, no R2/npm/winget.
 +  CI is plain Cargo: `cargo build --release --bin codex`, `cargo fmt --check`,
 +  `just test -p codex-tui`, `just test -p codex-core`.
 +- **`/rewind`**: roll back conversation and/or workspace files. The TUI

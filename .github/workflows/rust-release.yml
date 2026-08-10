@@ -4,8 +4,8 @@
 # patch-queue repo (patches/ + scripts/ only): when codex-rs/ is missing the
 # tree is bootstrapped from upstream via scripts/bootstrap.sh.
 #
-# Publishes standalone Linux binaries for x86_64 and aarch64 (MUSL) from a
-# `rust-v<semver>` or `v<semver>` tag. Each release ships:
+# Publishes standalone Linux x86_64 (MUSL) binaries from a `rust-v<semver>` or
+# `v<semver>` tag. Each release ships:
 #   codex-<target>.tar.gz        (contains `codex` and `bwrap`)
 #   codex-<target>.tar.gz.sha256 (sha256 of the archive)
 # which `codex update` downloads and verifies.
@@ -79,7 +79,6 @@ jobs:
       matrix:
         target:
           - x86_64-unknown-linux-musl
-          - aarch64-unknown-linux-musl
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
