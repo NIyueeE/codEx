@@ -1,0 +1,226 @@
+# Release workflow for the codEx fork (Linux only, CLI only).
+#
+# Works both in the full fork checkout (codex-rs/ present) and in the slim
+# patch-queue repo (patches/ + scripts/ only): when codex-rs/ is missing the
+# tree is bootstrapped from upstream via scripts/bootstrap.sh.
+#
+# Publishes standalone Linux binaries for x86_64 and aarch64 (MUSL) from a
+# `rust-v<semver>` or `v<semver>` tag. Each release ships:
+#   codex-<target>.tar.gz        (contains `codex` and `bwrap`)
+#   codex-<target>.tar.gz.sha256 (sha256 of the archive)
+# which `codex update` downloads and verifies.
+
+name: rust-release
+
+on:
+  push:
+    tags:
+      - "rust-v*"
+      - "v*"
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  tag-check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+      - name: Validate tag matches Cargo.toml version
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          echo "::group::Tag validation"
+
+          [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
+            || { echo "❌  Not a tag ref"; exit 1; }
+
+          version="${GITHUB_REF_NAME#rust-v}"
+          version="${version#v}"
+          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
+            || { echo "❌  Tag '${GITHUB_REF_NAME}' doesn't match expected format"; exit 1; }
+
+          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml \
+                        | sed -E 's/version *= *"([^"]+)".*/\1/')"
+
+          [[ "${version}" == "${cargo_ver}" ]] \
+            || { echo "❌  Tag ${version} ≠ Cargo.toml ${cargo_ver}"; exit 1; }
+
+          echo "✅  Tag and Cargo.toml agree (${version})"
+          echo "::endgroup::"
+
+  build:
+    needs: tag-check
+    name: Build - ${{ matrix.target }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      # Use the git CLI instead of Cargo's libgit2 path for git dependencies.
+      CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+      # Avoid problematic aws-lc jitter entropy code path on musl builders.
+      AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
+      AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+
+      - name: Install musl build tools
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
+
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install Zig
+        uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
+        with:
+          version: 0.14.0
+          use-cache: false
+
+      - name: Configure rusty_v8 artifact overrides and verify checksums
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          release_tag="rusty-v8-v${version}"
+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
+          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          profile="ptrcomp_sandbox_release"
+          archive_name="librusty_v8_${profile}_${TARGET}.a.gz"
+          binding_name="src_binding_${profile}_${TARGET}.rs"
+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
+          archive_path="${binding_dir}/${archive_name}"
+          binding_path="${binding_dir}/${binding_name}"
+          checksums_path="${binding_dir}/${checksums_name}"
+          mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
+            echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
+            exit 1
+          fi
+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
+
+      - name: Build bwrap and export digest
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          target="${{ matrix.target }}"
+          cargo build --target "$target" --release --bin bwrap
+
+          bwrap_path="target/${target}/release/bwrap"
+          if [[ ! -f "$bwrap_path" ]]; then
+            echo "bwrap binary ${bwrap_path} not found"
+            exit 1
+          fi
+
+          # Codex embeds this digest at build time and verifies the bundled
+          # bwrap resource before use. Strip bwrap before hashing so the digest
+          # covers the exact bytes that the release packages.
+          strip --strip-debug --strip-unneeded "$bwrap_path"
+          digest="$(sha256sum "$bwrap_path" | awk '{print $1}')"
+          echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
+          echo "Built bwrap ${bwrap_path} with sha256:${digest}"
+
+      - name: Build codex
+        shell: bash
+        run: |
+          cd "${TREE_DIR}"
+          cargo build --target "${{ matrix.target }}" --release --bin codex
+
+      - name: Stage archive
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          target="${{ matrix.target }}"
+          release_dir="target/${target}/release"
+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+
+          dest="dist/${target}"
+          mkdir -p "$dest"
+          cp "${release_dir}/codex" "$dest/codex"
+          cp "${release_dir}/bwrap" "$dest/bwrap"
+          chmod +x "$dest/codex" "$dest/bwrap"
+
+          # The archive layout is consumed by `codex update`: `codex` and
+          # `bwrap` at the archive root.
+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
+          sha256sum "codex-${target}.tar.gz" | \
+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
+            > "$dest/codex-${target}.tar.gz.sha256"
+
+      - name: Upload archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: dist-${{ matrix.target }}
+          path: ${{ env.TREE_DIR }}/dist/${{ matrix.target }}/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+
+      - name: Download archives
+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
+        with:
+          pattern: dist-*
+          merge-multiple: true
+          path: dist
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          assets=(dist/*/*.tar.gz dist/*/*.sha256)
+          if ! gh release create "${tag}" "${assets[@]}" \
+              --title "codEx ${tag}" \
+              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"; then
+            gh release upload "${tag}" "${assets[@]}"
+          fi

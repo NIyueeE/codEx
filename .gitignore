@@ -1,0 +1,6 @@
+# Bootstrapped codex tree (scripts/bootstrap.sh) and update scratch space.
+tree/
+update-work/
+
+# Insta pending snapshots from CI test runs.
+*.snap.new

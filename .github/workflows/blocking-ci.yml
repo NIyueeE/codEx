@@ -1,0 +1,110 @@
+name: blocking-ci
+
+# Single entrypoint for checks that block a PR merge. The codEx fork uses a
+# Cargo-only CI: build the CLI, check formatting, and run the TUI/core tests.
+# Works both in the full fork checkout and in the slim patch-queue repo (the
+# tree is bootstrapped from upstream when codex-rs/ is absent).
+on:
+  pull_request: {}
+  push:
+    branches: [main]
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+      - name: Build release CLI
+        run: |
+          cd "${TREE_DIR}"
+          cargo build --release --bin codex
+      - name: Check formatting
+        run: |
+          cd "${TREE_DIR}"
+          cargo fmt --check
+
+  test-tui:
+    name: TUI tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - name: Run codex-tui tests
+        run: |
+          cd "${TREE_DIR}"
+          cargo install --locked cargo-nextest
+          just test -p codex-tui
+
+  test-core:
+    name: Core tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - name: Run codex-core tests
+        run: |
+          cd "${TREE_DIR}"
+          cargo install --locked cargo-nextest
+          just test -p codex-core
+
+  codespell:
+    name: Codespell
+    uses: ./.github/workflows/codespell.yml
+    secrets: inherit
+
+  repo-checks:
+    name: repo-checks
+    uses: ./.github/workflows/repo-checks.yml
+    secrets: inherit
+
+  required:
+    name: CI required
+    if: ${{ always() }}
+    needs:
+      - build
+      - test-tui
+      - test-core
+      - codespell
+      - repo-checks
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+
+      - name: Require successful dependencies
+        env:
+          NEEDS: ${{ toJSON(needs) }}
+        run: python3 .github/scripts/check_ci_results.py
