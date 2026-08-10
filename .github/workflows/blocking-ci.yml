@@ -57,7 +57,7 @@ jobs:
         run: |
           cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
-          just test -p codex-tui
+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
 
   test-core:
     name: Core tests
@@ -79,7 +79,7 @@ jobs:
         run: |
           cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
-          just test -p codex-core
+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-core
 
   codespell:
     name: Codespell

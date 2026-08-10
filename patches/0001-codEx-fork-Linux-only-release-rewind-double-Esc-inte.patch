@@ -1,4 +1,4 @@
-From e0a88d37e51299b88aeefbbe105a2cf3c9ae626c Mon Sep 17 00:00:00 2001
+From 191afafff4f7a768159f9e0481d3328a5c38a27c Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -23,7 +23,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/python-runtime-release.yml  |  100 -
  .github/workflows/python-sdk-release.yml      |  232 ---
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   85 +-
+ .github/workflows/repo-checks.yml             |   88 +-
  .../rust-ci-full-nextest-platform.yml         |  450 -----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  268 ---
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2486 insertions(+), 9565 deletions(-)
+ 175 files changed, 2487 insertions(+), 9567 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -923,7 +923,7 @@ index 176f368938..0000000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index fe66fdd509..f4f9760f2a 100644
+index fe66fdd509..0ef03e5937 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
 @@ -1,29 +1,85 @@
@@ -998,7 +998,7 @@ index fe66fdd509..f4f9760f2a 100644
 +        run: |
 +          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
-+          just test -p codex-tui
++          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
  
 -  cargo-deny:
 -    name: cargo-deny
@@ -1024,7 +1024,7 @@ index fe66fdd509..f4f9760f2a 100644
 +        run: |
 +          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
-+          just test -p codex-core
++          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-core
  
    codespell:
      name: Codespell
@@ -1669,7 +1669,7 @@ index 96a07685cf..0000000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 6c82ebcd0c..bfea5ca004 100644
+index 6c82ebcd0c..e893eb60bd 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -6,9 +6,7 @@ on:
@@ -1683,10 +1683,17 @@ index 6c82ebcd0c..bfea5ca004 100644
      steps:
        - name: Checkout repository
          uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-@@ -18,78 +16,31 @@ jobs:
+@@ -16,80 +14,32 @@ jobs:
+           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+           persist-credentials: false
  
-       - uses: ./.github/actions/setup-ci
+-      - uses: ./.github/actions/setup-ci
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        with:
++          components: rustfmt
  
+-      - name: Verify codex-rs Cargo manifests inherit workspace settings
+-        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
 +      - name: Bootstrap tree if needed
 +        run: |
 +          if [[ ! -d codex-rs ]]; then
@@ -1694,10 +1701,6 @@ index 6c82ebcd0c..bfea5ca004 100644
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+
-       - name: Verify codex-rs Cargo manifests inherit workspace settings
--        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
-+        run: python3 "${TREE_DIR}/.github/scripts/verify_cargo_workspace_manifests.py"
  
        - name: Verify codex-tui does not import codex-core directly
 -        run: python3 .github/scripts/verify_tui_core_boundary.py

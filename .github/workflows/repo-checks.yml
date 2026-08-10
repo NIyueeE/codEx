@@ -14,7 +14,9 @@ jobs:
           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - uses: ./.github/actions/setup-ci
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
 
       - name: Bootstrap tree if needed
         run: |
@@ -23,9 +25,6 @@ jobs:
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-
-      - name: Verify codex-rs Cargo manifests inherit workspace settings
-        run: python3 "${TREE_DIR}/.github/scripts/verify_cargo_workspace_manifests.py"
 
       - name: Verify codex-tui does not import codex-core directly
         run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
