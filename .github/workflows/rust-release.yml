@@ -94,11 +94,6 @@ jobs:
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
-      - name: Install musl build tools
-        env:
-          TARGET: ${{ matrix.target }}
-        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
-
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           targets: ${{ matrix.target }}
@@ -108,6 +103,11 @@ jobs:
         with:
           version: 0.14.0
           use-cache: false
+
+      - name: Install musl build tools
+        env:
+          TARGET: ${{ matrix.target }}
+        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
 
       - name: Configure rusty_v8 artifact overrides and verify checksums
         env:

@@ -1,4 +1,4 @@
-From 33b928bf4daeae74ce2c169a9b470a8d4b9b09a8 Mon Sep 17 00:00:00 2001
+From 2d259628f3d982ca9a5777c0e2b25b4fc191bf02 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -13,6 +13,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
 - Add patch-queue tooling (BASE_TAG, bootstrap/update/gen-patches) and fork README
 ---
  .codespellignore                              |    1 +
+ .github/scripts/install-musl-build-tools.sh   |    2 +-
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
  .github/workflows/blocking-ci.yml             |  116 +-
@@ -30,7 +31,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1669 ++---------------
+ .github/workflows/rust-release.yml            | 1667 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
@@ -186,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 174 files changed, 2482 insertions(+), 9560 deletions(-)
+ 175 files changed, 2482 insertions(+), 9560 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -259,6 +260,19 @@ index 4f3c8c3513..73e21a5532 100644
  numer
  psuedo
  SOM
+diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
+index 49035f5391..d54684facd 100644
+--- a/.github/scripts/install-musl-build-tools.sh
++++ b/.github/scripts/install-musl-build-tools.sh
+@@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
+ fi
+ 
+ sudo apt-get update "${apt_update_args[@]}"
+-sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils
++sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl linux-libc-dev musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils
+ 
+ case "${TARGET}" in
+   x86_64-unknown-linux-musl)
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
 index 4197da9cb0..0000000000
@@ -3841,7 +3855,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..7d17274ea3 100644
+index 72b6e23895..84021b32e4 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,21 +1,22 @@
@@ -4064,11 +4078,6 @@ index 72b6e23895..7d17274ea3 100644
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +
-+      - name: Install musl build tools
-+        env:
-+          TARGET: ${{ matrix.target }}
-+        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
-+
        - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
          with:
            targets: ${{ matrix.target }}
@@ -4094,14 +4103,18 @@ index 72b6e23895..7d17274ea3 100644
  
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Install musl build tools
-+      - name: Configure rusty_v8 artifact overrides and verify checksums
++      - name: Install musl build tools
          env:
            TARGET: ${{ matrix.target }}
 -        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
--
++        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
+ 
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Disable aws-lc jitter entropy (musl)
 -        shell: bash
++      - name: Configure rusty_v8 artifact overrides and verify checksums
++        env:
++          TARGET: ${{ matrix.target }}
          run: |
            set -euo pipefail
 -          # Avoid problematic aws-lc jitter entropy code path on musl builders.
@@ -4181,8 +4194,9 @@ index 72b6e23895..7d17274ea3 100644
 -          if-no-files-found: warn
 -
 -      - name: Build symbols archive and strip binaries
--        shell: bash
--        run: |
++      - name: Build codex
+         shell: bash
+         run: |
 -          binaries=()
 -          for binary in ${{ matrix.binaries }}; do
 -            # bwrap is already stripped before hashing. Its symbols are not
@@ -4198,7 +4212,9 @@ index 72b6e23895..7d17274ea3 100644
 -            --release-dir "target/${{ matrix.target }}/release" \
 -            --archive-dir "symbols-dist/${{ matrix.artifact_name }}" \
 -            --binaries "${binaries[*]}"
--
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release --bin codex
+ 
 -      - name: Upload symbols archive
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
@@ -4208,12 +4224,14 @@ index 72b6e23895..7d17274ea3 100644
 -
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
--        shell: bash
--        run: |
--          set -euo pipefail
++      - name: Stage archive
+         shell: bash
+         run: |
+           set -euo pipefail
 -
--          target="${{ matrix.target }}"
--          release_dir="target/${target}/release"
++          cd "${CODE_DIR}"
+           target="${{ matrix.target }}"
+           release_dir="target/${target}/release"
 -          dest="unsigned-dist/${target}"
 -          mkdir -p "$dest"
 -
@@ -4225,7 +4243,9 @@ index 72b6e23895..7d17274ea3 100644
 -              echo "Binary ${binary_path} not found"
 -              exit 1
 -            fi
--
++          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
++          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+ 
 -            cp "${binary_path}" "${unsigned_path}"
 -            tar -C "$dest" -czf "${unsigned_path}.tar.gz" "${unsigned_name}"
 -            zstd -T0 -19 --rm "${unsigned_path}"
@@ -4252,7 +4272,8 @@ index 72b6e23895..7d17274ea3 100644
 -        shell: bash
 -        run: |
 -          dest="dist/${{ matrix.target }}"
--          mkdir -p "$dest"
++          dest="dist/${target}"
+           mkdir -p "$dest"
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
@@ -4340,12 +4361,26 @@ index 72b6e23895..7d17274ea3 100644
 -
 -      - name: Upload Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
++          cp "${release_dir}/codex" "$dest/codex"
++          cp "${release_dir}/bwrap" "$dest/bwrap"
++          chmod +x "$dest/codex" "$dest/bwrap"
++
++          # The archive layout is consumed by `codex update`: `codex` and
++          # `bwrap` at the archive root.
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
++          sha256sum "codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
++
++      - name: Upload archive
+         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+         with:
 -          name: python-runtime-wheel-${{ matrix.target }}
 -          path: python-runtime-dist/${{ matrix.target }}/*.whl
--          if-no-files-found: error
--
++          name: dist-${{ matrix.target }}
++          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
+           if-no-files-found: error
+ 
 -      - name: Compress artifacts
 -        if: ${{ runner.os != 'macOS' }}
 -        shell: bash
@@ -4452,15 +4487,14 @@ index 72b6e23895..7d17274ea3 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign and notarize macOS binaries
-+      - name: Build codex
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          BINARIES: ${{ matrix.binaries }}
 -          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -
 -          input_dir="${RUNNER_TEMP}/unsigned-macos"
@@ -4502,20 +4536,17 @@ index 72b6e23895..7d17274ea3 100644
 -              --binary "$signed_path" \
 -              --report-dir "${report_dir}/${binary}"
 -          done
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-
 -      - name: Fetch, sign, and notarize pinned macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
-+      - name: Stage archive
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -
 -          signed_root="${GITHUB_WORKSPACE}/signed-resources/${TARGET}"
 -          zsh_manifest="${RUNNER_TEMP}/codex-zsh-${TARGET}"
@@ -4661,9 +4692,8 @@ index 72b6e23895..7d17274ea3 100644
 -        run: |
 -          set -euo pipefail
 -
-+          cd "${CODE_DIR}"
-           target="${{ matrix.target }}"
-           release_dir="target/${target}/release"
+-          target="${{ matrix.target }}"
+-          release_dir="target/${target}/release"
 -          dmg_root="${RUNNER_TEMP}/codex-dmg-root-${target}"
 -          volname="Codex (${target})"
 -          dmg_path="${release_dir}/codex-${target}.dmg"
@@ -4692,9 +4722,7 @@ index 72b6e23895..7d17274ea3 100644
 -            echo "DMG $dmg_path not found after build"
 -            exit 1
 -          fi
-+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
- 
+-
 -      - name: Upload unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4708,8 +4736,7 @@ index 72b6e23895..7d17274ea3 100644
 -        run: |
 -          set -euo pipefail
 -          dest="dist/${{ matrix.target }}"
-+          dest="dist/${target}"
-           mkdir -p "$dest"
+-          mkdir -p "$dest"
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
@@ -4770,26 +4797,12 @@ index 72b6e23895..7d17274ea3 100644
 -
 -      - name: Upload Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' }}
-+          cp "${release_dir}/codex" "$dest/codex"
-+          cp "${release_dir}/bwrap" "$dest/bwrap"
-+          chmod +x "$dest/codex" "$dest/bwrap"
-+
-+          # The archive layout is consumed by `codex update`: `codex` and
-+          # `bwrap` at the archive root.
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
-+
-+      - name: Upload archive
-         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-         with:
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
 -          name: python-runtime-wheel-${{ matrix.target }}
 -          path: python-runtime-dist/${{ matrix.target }}/*.whl
-+          name: dist-${{ matrix.target }}
-+          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
-           if-no-files-found: error
- 
+-          if-no-files-found: error
+-
 -      - name: Compress artifacts
 -        shell: bash
 -        run: |
