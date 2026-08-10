@@ -24,16 +24,17 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           components: rustfmt
       - name: Build release CLI
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo build --release --bin codex
       - name: Check formatting
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo fmt --check
 
   test-tui:
@@ -50,10 +51,11 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
       - name: Run codex-tui tests
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
           just test -p codex-tui
 
@@ -71,10 +73,11 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
       - name: Run codex-core tests
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
           just test -p codex-core
 

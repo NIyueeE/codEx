@@ -35,11 +35,12 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Validate tag matches Cargo.toml version
         shell: bash
         run: |
           set -euo pipefail
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           echo "::group::Tag validation"
 
           [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
@@ -50,7 +51,7 @@ jobs:
           [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
             || { echo "❌  Tag '${GITHUB_REF_NAME}' doesn't match expected format"; exit 1; }
 
-          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml \
+          cargo_ver="$(grep -m1 '^version' Cargo.toml \
                         | sed -E 's/version *= *"([^"]+)".*/\1/')"
 
           [[ "${version}" == "${cargo_ver}" ]] \
@@ -91,6 +92,7 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
       - name: Install musl build tools
         env:
@@ -140,7 +142,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           target="${{ matrix.target }}"
           cargo build --target "$target" --release --bin bwrap
 
@@ -161,14 +163,14 @@ jobs:
       - name: Build codex
         shell: bash
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo build --target "${{ matrix.target }}" --release --bin codex
 
       - name: Stage archive
         shell: bash
         run: |
           set -euo pipefail
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           target="${{ matrix.target }}"
           release_dir="target/${target}/release"
           [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
@@ -191,7 +193,7 @@ jobs:
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: dist-${{ matrix.target }}
-          path: ${{ env.TREE_DIR }}/dist/${{ matrix.target }}/*
+          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
           if-no-files-found: error
 
   release:

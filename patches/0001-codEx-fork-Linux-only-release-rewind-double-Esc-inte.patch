@@ -1,4 +1,4 @@
-From a7e08a49c45b1ea8276b911ef9ba7365cd51dfe0 Mon Sep 17 00:00:00 2001
+From 33b928bf4daeae74ce2c169a9b470a8d4b9b09a8 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -15,14 +15,14 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .codespellignore                              |    1 +
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
- .github/workflows/blocking-ci.yml             |  113 +-
+ .github/workflows/blocking-ci.yml             |  116 +-
  .github/workflows/cargo-deny.yml              |   32 -
  .github/workflows/postmerge-ci.yml            |   40 -
  .github/workflows/python-runtime-build.yml    |  104 -
  .github/workflows/python-runtime-release.yml  |  100 -
  .github/workflows/python-sdk-release.yml      |  232 ---
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   84 +-
+ .github/workflows/repo-checks.yml             |   85 +-
  .../rust-ci-full-nextest-platform.yml         |  450 -----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  268 ---
@@ -30,7 +30,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1665 ++---------------
+ .github/workflows/rust-release.yml            | 1669 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
@@ -186,7 +186,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 174 files changed, 2475 insertions(+), 9559 deletions(-)
+ 174 files changed, 2482 insertions(+), 9560 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -885,10 +885,10 @@ index 176f368938..0000000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index fe66fdd509..e62b933cae 100644
+index fe66fdd509..f4f9760f2a 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,82 @@
+@@ -1,29 +1,85 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
@@ -923,16 +923,17 @@ index fe66fdd509..e62b933cae 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +        with:
 +          components: rustfmt
 +      - name: Build release CLI
 +        run: |
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo build --release --bin codex
 +      - name: Check formatting
 +        run: |
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo fmt --check
  
 -  blob-size-policy:
@@ -953,10 +954,11 @@ index fe66fdd509..e62b933cae 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +      - name: Run codex-tui tests
 +        run: |
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
 +          just test -p codex-tui
  
@@ -978,16 +980,17 @@ index fe66fdd509..e62b933cae 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +      - name: Run codex-core tests
 +        run: |
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
 +          just test -p codex-core
  
    codespell:
      name: Codespell
-@@ -35,39 +88,17 @@ jobs:
+@@ -35,39 +91,17 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  
@@ -1628,7 +1631,7 @@ index 96a07685cf..0000000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 6c82ebcd0c..196ef122f6 100644
+index 6c82ebcd0c..bfea5ca004 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -6,9 +6,7 @@ on:
@@ -1642,7 +1645,7 @@ index 6c82ebcd0c..196ef122f6 100644
      steps:
        - name: Checkout repository
          uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-@@ -18,78 +16,30 @@ jobs:
+@@ -18,78 +16,31 @@ jobs:
  
        - uses: ./.github/actions/setup-ci
  
@@ -1652,6 +1655,7 @@ index 6c82ebcd0c..196ef122f6 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +
        - name: Verify codex-rs Cargo manifests inherit workspace settings
 -        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
@@ -1732,7 +1736,7 @@ index 6c82ebcd0c..196ef122f6 100644
 -        run: pnpm run format
 +      - name: Check formatting (run `cargo fmt` to fix)
 +        run: |
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo fmt --check
  
        - name: Check for a clean worktree
@@ -3837,7 +3841,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..3dd7292c09 100644
+index 72b6e23895..7d17274ea3 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,21 +1,22 @@
@@ -3875,7 +3879,7 @@ index 72b6e23895..3dd7292c09 100644
  
  concurrency:
    group: ${{ github.workflow }}
-@@ -23,205 +24,125 @@ concurrency:
+@@ -23,205 +24,127 @@ concurrency:
  
  jobs:
    tag-check:
@@ -3892,11 +3896,12 @@ index 72b6e23895..3dd7292c09 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
        - name: Validate tag matches Cargo.toml version
          shell: bash
          run: |
            set -euo pipefail
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
            echo "::group::Tag validation"
  
 -          # Release runs must come from a tag.
@@ -3913,7 +3918,8 @@ index 72b6e23895..3dd7292c09 100644
              || { echo "❌  Tag '${GITHUB_REF_NAME}' doesn't match expected format"; exit 1; }
  
 -          tag_ver="${GITHUB_REF_NAME#rust-v}"
-           cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml \
+-          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml \
++          cargo_ver="$(grep -m1 '^version' Cargo.toml \
                          | sed -E 's/version *= *"([^"]+)".*/\1/')"
  
 -          [[ "${tag_ver}" == "${cargo_ver}" ]] \
@@ -4056,6 +4062,7 @@ index 72b6e23895..3dd7292c09 100644
 +            bash scripts/bootstrap.sh
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +
 +      - name: Install musl build tools
 +        env:
@@ -4137,14 +4144,14 @@ index 72b6e23895..3dd7292c09 100644
          shell: bash
          run: |
            set -euo pipefail
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
            target="${{ matrix.target }}"
 -          cargo build --target "$target" --release --timings --bin bwrap
 +          cargo build --target "$target" --release --bin bwrap
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +158,69 @@ jobs:
+@@ -237,1429 +160,69 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4495,7 +4502,7 @@ index 72b6e23895..3dd7292c09 100644
 -              --binary "$signed_path" \
 -              --report-dir "${report_dir}/${binary}"
 -          done
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
 +          cargo build --target "${{ matrix.target }}" --release --bin codex
  
 -      - name: Fetch, sign, and notarize pinned macOS helpers
@@ -4654,7 +4661,7 @@ index 72b6e23895..3dd7292c09 100644
 -        run: |
 -          set -euo pipefail
 -
-+          cd "${TREE_DIR}"
++          cd "${CODE_DIR}"
            target="${{ matrix.target }}"
            release_dir="target/${target}/release"
 -          dmg_root="${RUNNER_TEMP}/codex-dmg-root-${target}"
@@ -4780,7 +4787,7 @@ index 72b6e23895..3dd7292c09 100644
 -          name: python-runtime-wheel-${{ matrix.target }}
 -          path: python-runtime-dist/${{ matrix.target }}/*.whl
 +          name: dist-${{ matrix.target }}
-+          path: ${{ env.TREE_DIR }}/dist/${{ matrix.target }}/*
++          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
            if-no-files-found: error
  
 -      - name: Compress artifacts

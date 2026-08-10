@@ -22,6 +22,7 @@ jobs:
             bash scripts/bootstrap.sh
           fi
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
       - name: Verify codex-rs Cargo manifests inherit workspace settings
         run: python3 "${TREE_DIR}/.github/scripts/verify_cargo_workspace_manifests.py"
@@ -38,7 +39,7 @@ jobs:
 
       - name: Check formatting (run `cargo fmt` to fix)
         run: |
-          cd "${TREE_DIR}"
+          cd "${CODE_DIR}"
           cargo fmt --check
 
       - name: Check for a clean worktree
