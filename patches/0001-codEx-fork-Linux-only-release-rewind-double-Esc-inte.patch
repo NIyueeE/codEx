@@ -1,4 +1,4 @@
-From 82d29b2572324b4cc7b573bcd2059547f4f3c823 Mon Sep 17 00:00:00 2001
+From 737ac525ec3f93b8fe8117a6708fba04ab45e98d Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -16,7 +16,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/scripts/install-musl-build-tools.sh   |   12 +-
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
- .github/workflows/blocking-ci.yml             |  116 +-
+ .github/workflows/blocking-ci.yml             |  134 +-
  .github/workflows/cargo-deny.yml              |   32 -
  .github/workflows/postmerge-ci.yml            |   40 -
  .github/workflows/python-runtime-build.yml    |  104 -
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2488 insertions(+), 9565 deletions(-)
+ 175 files changed, 2506 insertions(+), 9565 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -923,10 +923,10 @@ index 176f368938..0000000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index fe66fdd509..0ef03e5937 100644
+index fe66fdd509..d4908177e8 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,85 @@
+@@ -1,29 +1,103 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
@@ -962,6 +962,12 @@ index fe66fdd509..0ef03e5937 100644
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
++      - name: Enable unprivileged user namespaces (Linux)
++        run: |
++          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
++            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
++          fi
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +        with:
 +          components: rustfmt
@@ -993,6 +999,12 @@ index fe66fdd509..0ef03e5937 100644
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
++      - name: Enable unprivileged user namespaces (Linux)
++        run: |
++          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
++            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
++          fi
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +      - name: Run codex-tui tests
 +        run: |
@@ -1019,6 +1031,12 @@ index fe66fdd509..0ef03e5937 100644
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
++      - name: Enable unprivileged user namespaces (Linux)
++        run: |
++          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
++            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
++          fi
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +      - name: Run codex-core tests
 +        run: |
@@ -1028,7 +1046,7 @@ index fe66fdd509..0ef03e5937 100644
  
    codespell:
      name: Codespell
-@@ -35,39 +91,17 @@ jobs:
+@@ -35,39 +109,17 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  
