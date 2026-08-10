@@ -1,4 +1,4 @@
-From 4f3182ddab5bf0f99acb8f4468fa231b1b7eb4ff Mon Sep 17 00:00:00 2001
+From a7dac876565f887d45b2398bc7364ba1860ad276 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -13,7 +13,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
 - Add patch-queue tooling (BASE_TAG, bootstrap/update/gen-patches) and fork README
 ---
  .codespellignore                              |    1 +
- .github/scripts/install-musl-build-tools.sh   |    2 +-
+ .github/scripts/install-musl-build-tools.sh   |   30 +-
  .github/workflows/bazel.yml                   |  559 ------
  .github/workflows/blob-size-policy.yml        |   54 -
  .github/workflows/blocking-ci.yml             |  116 +-
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2483 insertions(+), 9559 deletions(-)
+ 175 files changed, 2502 insertions(+), 9568 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -261,7 +261,7 @@ index 4f3c8c3513..73e21a5532 100644
  psuedo
  SOM
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index 49035f5391..d54684facd 100644
+index 49035f5391..8c9fd2ab63 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -273,6 +273,48 @@ index 49035f5391..d54684facd 100644
  
  case "${TARGET}" in
    x86_64-unknown-linux-musl)
+@@ -37,21 +37,33 @@ libcap_sha256="de4e7e064c9ba451d5234dd46e897d7c71c96a9ebf9a0c445bc04f4742d83632"
+ libcap_tarball_name="libcap-${libcap_version}.tar.xz"
+ libcap_download_url="https://mirrors.edge.kernel.org/pub/linux/libs/security/linux-privs/libcap2/${libcap_tarball_name}"
+ 
+-# Use the musl toolchain as the Rust linker to avoid Zig injecting its own CRT.
++zig_target="${TARGET/-unknown-linux-musl/-linux-musl}"
++runner_temp="${RUNNER_TEMP:-/tmp}"
++tool_root="${runner_temp}/codex-musl-tools-${TARGET}"
++mkdir -p "${tool_root}"
++
++# Prefer an arch-specific musl toolchain; fall back to host musl-gcc for native
++# builds; otherwise (cross builds) link and compile through Zig so the target
++# arch is correct.
++host_arch="$(uname -m)"
+ if command -v "${arch}-linux-musl-gcc" >/dev/null; then
+   musl_linker="$(command -v "${arch}-linux-musl-gcc")"
+-elif command -v musl-gcc >/dev/null; then
++elif [[ "${host_arch}" == "${arch}" ]] && command -v musl-gcc >/dev/null; then
+   musl_linker="$(command -v musl-gcc)"
++elif command -v zig >/dev/null; then
++  zig_bin="$(command -v zig)"
++  cat > "${tool_root}/zig-linker" <<EOF
++#!/usr/bin/env bash
++set -euo pipefail
++exec "${zig_bin}" cc -target "${zig_target}" "\$@"
++EOF
++  chmod +x "${tool_root}/zig-linker"
++  musl_linker="${tool_root}/zig-linker"
+ else
+-  echo "musl gcc not found after install; arch=${arch}" >&2
++  echo "no usable musl toolchain found for arch=${arch} on host ${host_arch}; install musl-gcc or zig" >&2
+   exit 1
+ fi
+ 
+-zig_target="${TARGET/-unknown-linux-musl/-linux-musl}"
+-runner_temp="${RUNNER_TEMP:-/tmp}"
+-tool_root="${runner_temp}/codex-musl-tools-${TARGET}"
+-mkdir -p "${tool_root}"
+-
+ libcap_root="${tool_root}/libcap-${libcap_version}"
+ libcap_src_root="${libcap_root}/src"
+ libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
 index 4197da9cb0..0000000000
@@ -3855,7 +3897,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..17109ca044 100644
+index 72b6e23895..84021b32e4 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,21 +1,22 @@
@@ -3893,7 +3935,7 @@ index 72b6e23895..17109ca044 100644
  
  concurrency:
    group: ${{ github.workflow }}
-@@ -23,205 +24,129 @@ concurrency:
+@@ -23,205 +24,127 @@ concurrency:
  
  jobs:
    tag-check:
@@ -3953,7 +3995,7 @@ index 72b6e23895..17109ca044 100644
 -    # having to restart the full workflow due to a timeout.
 -    timeout-minutes: 90
 +    name: Build - ${{ matrix.target }}
-+    runs-on: ${{ matrix.runs_on }}
++    runs-on: ubuntu-24.04
 +    timeout-minutes: 120
      permissions:
        contents: read
@@ -3976,7 +4018,7 @@ index 72b6e23895..17109ca044 100644
      strategy:
        fail-fast: false
        matrix:
-         include:
+-        include:
 -          - runner: macos-15-xlarge
 -            target: aarch64-apple-darwin
 -            bundle: primary
@@ -4026,10 +4068,9 @@ index 72b6e23895..17109ca044 100644
 -            artifact_name: aarch64-unknown-linux-musl-app-server
 -            binaries: "codex-app-server codex-code-mode-host"
 -            build_dmg: "false"
-+          - target: x86_64-unknown-linux-musl
-+            runs_on: ubuntu-24.04
-+          - target: aarch64-unknown-linux-musl
-+            runs_on: ubuntu-24.04-arm
++        target:
++          - x86_64-unknown-linux-musl
++          - aarch64-unknown-linux-musl
  
      steps:
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -4165,7 +4206,7 @@ index 72b6e23895..17109ca044 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +162,69 @@ jobs:
+@@ -237,1429 +160,69 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4244,7 +4285,9 @@ index 72b6e23895..17109ca044 100644
 -              echo "Binary ${binary_path} not found"
 -              exit 1
 -            fi
--
++          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
++          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+ 
 -            cp "${binary_path}" "${unsigned_path}"
 -            tar -C "$dest" -czf "${unsigned_path}.tar.gz" "${unsigned_name}"
 -            zstd -T0 -19 --rm "${unsigned_path}"
@@ -4265,9 +4308,7 @@ index 72b6e23895..17109ca044 100644
 -          target: ${{ matrix.target }}
 -          artifacts-dir: ${{ github.workspace }}/codex-rs/target/${{ matrix.target }}/release
 -          binaries: ${{ matrix.binaries }}
-+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
- 
+-
 -      - name: Stage artifacts
 -        if: ${{ runner.os != 'macOS' }}
 -        shell: bash
@@ -5194,18 +5235,18 @@ index 72b6e23895..17109ca044 100644
 -
 -      - name: Download target artifacts
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
--          path: dist
--          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
--
--      - name: Download supplemental release artifacts
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 +      - name: Download archives
 +        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
          with:
 +          pattern: dist-*
 +          merge-multiple: true
            path: dist
+-          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
+ 
+-      - name: Download supplemental release artifacts
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          path: dist
 -          pattern: "{*-symbols,argument-comment-lint-*,python-runtime-wheel-*}"
 -
 -      - name: List
@@ -5284,7 +5325,7 @@ index 72b6e23895..17109ca044 100644
 -
 -      - name: Install dependencies
 -        run: pnpm install --frozen-lockfile
- 
+-
 -      - name: Stage npm packages
 +      - name: Create or update GitHub release
          env:

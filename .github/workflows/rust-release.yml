@@ -63,7 +63,7 @@ jobs:
   build:
     needs: tag-check
     name: Build - ${{ matrix.target }}
-    runs-on: ${{ matrix.runs_on }}
+    runs-on: ubuntu-24.04
     timeout-minutes: 120
     permissions:
       contents: read
@@ -77,11 +77,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - target: x86_64-unknown-linux-musl
-            runs_on: ubuntu-24.04
-          - target: aarch64-unknown-linux-musl
-            runs_on: ubuntu-24.04-arm
+        target:
+          - x86_64-unknown-linux-musl
+          - aarch64-unknown-linux-musl
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
