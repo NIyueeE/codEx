@@ -20,7 +20,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}
-  cancel-in-progress: false
+  # Tag re-pushes supersede stale release runs (e.g. after force-updating the
+  # release tag during an iteration), so never queue behind an old run.
+  cancel-in-progress: true
 
 jobs:
   tag-check:

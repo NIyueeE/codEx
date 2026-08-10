@@ -1,4 +1,4 @@
-From 16f2756e9cf6a677a5cfed6071bb70425a9ebf0d Mon Sep 17 00:00:00 2001
+From 55aa11b7ad9b3670bb8fc99dd4da5b62f1998ddf Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -31,7 +31,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1666 ++---------------
+ .github/workflows/rust-release.yml            | 1670 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
@@ -187,7 +187,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 175 files changed, 2485 insertions(+), 9564 deletions(-)
+ 175 files changed, 2488 insertions(+), 9565 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -3882,10 +3882,10 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..cd3b8d204a 100644
+index 72b6e23895..bb8186254e 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,21 +1,22 @@
+@@ -1,227 +1,151 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -3920,7 +3920,10 @@ index 72b6e23895..cd3b8d204a 100644
  
  concurrency:
    group: ${{ github.workflow }}
-@@ -23,205 +24,126 @@ concurrency:
+-  cancel-in-progress: false
++  # Tag re-pushes supersede stale release runs (e.g. after force-updating the
++  # release tag during an iteration), so never queue behind an old run.
++  cancel-in-progress: true
  
  jobs:
    tag-check:
@@ -4190,7 +4193,7 @@ index 72b6e23895..cd3b8d204a 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +159,69 @@ jobs:
+@@ -237,1429 +161,69 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
