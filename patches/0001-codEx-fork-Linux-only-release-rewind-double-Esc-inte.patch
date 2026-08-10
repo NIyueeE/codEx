@@ -1,4 +1,4 @@
-From 5f182a1009535f9c1be2531b53cdfdeae9ccd79f Mon Sep 17 00:00:00 2001
+From b8606e0e1ad5ee4eb8197a62cb50c6564b2d63b9 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -183,10 +183,10 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- scripts/bootstrap.sh                          |   25 +
+ scripts/bootstrap.sh                          |   27 +
  scripts/gen-patches.sh                        |   33 +
- scripts/update.sh                             |   60 +
- 174 files changed, 2468 insertions(+), 9559 deletions(-)
+ scripts/update.sh                             |   62 +
+ 174 files changed, 2472 insertions(+), 9559 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -16046,10 +16046,10 @@ index c45a360a46..0000000000
 -     config.define("ZSTDLIB_VISIBILITY", Some(""));
 diff --git a/scripts/bootstrap.sh b/scripts/bootstrap.sh
 new file mode 100644
-index 0000000000..a14d126f58
+index 0000000000..ac8f55192a
 --- /dev/null
 +++ b/scripts/bootstrap.sh
-@@ -0,0 +1,25 @@
+@@ -0,0 +1,27 @@
 +#!/usr/bin/env bash
 +# Bootstraps a buildable codex tree from the upstream `openai/codex` tag
 +# pinned in BASE_TAG, then applies the fork patch queue with `git am --3way`.
@@ -16072,6 +16072,8 @@ index 0000000000..a14d126f58
 +
 +echo "Applying fork patches ..."
 +cd "${output_dir}"
++git config user.name "codEx Fork Bot"
++git config user.email "codex-fork-bot@localhost"
 +git am --3way "$(realpath "$(dirname "$0")/../patches")"/*.patch
 +
 +echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"
@@ -16116,10 +16118,10 @@ index 0000000000..1cbfb46fab
 +echo "✅ Wrote $(find "${output_dir}" -name '*.patch' | wc -l) patch(es) to ${output_dir} (base ${base_tag})"
 diff --git a/scripts/update.sh b/scripts/update.sh
 new file mode 100644
-index 0000000000..c63b60bb32
+index 0000000000..a4b86ec76b
 --- /dev/null
 +++ b/scripts/update.sh
-@@ -0,0 +1,60 @@
+@@ -0,0 +1,62 @@
 +#!/usr/bin/env bash
 +# Upgrades the fork to a new upstream tag.
 +#
@@ -16151,6 +16153,8 @@ index 0000000000..c63b60bb32
 +echo "Cloning https://github.com/${repo}.git at ${new_tag} ..."
 +git clone --depth 1 --branch "${new_tag}" "https://github.com/${repo}.git" "${work_dir}"
 +cd "${work_dir}"
++git config user.name "codEx Fork Bot"
++git config user.email "codex-fork-bot@localhost"
 +
 +echo "Applying fork patches ..."
 +if ! git am --3way "${repo_root}"/patches/*.patch; then

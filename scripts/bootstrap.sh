@@ -20,6 +20,8 @@ git clone --depth 1 --branch "${base_tag}" "https://github.com/${repo}.git" "${o
 
 echo "Applying fork patches ..."
 cd "${output_dir}"
+git config user.name "codEx Fork Bot"
+git config user.email "codex-fork-bot@localhost"
 git am --3way "$(realpath "$(dirname "$0")/../patches")"/*.patch
 
 echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"

@@ -29,6 +29,8 @@ rm -rf "${work_dir}"
 echo "Cloning https://github.com/${repo}.git at ${new_tag} ..."
 git clone --depth 1 --branch "${new_tag}" "https://github.com/${repo}.git" "${work_dir}"
 cd "${work_dir}"
+git config user.name "codEx Fork Bot"
+git config user.email "codex-fork-bot@localhost"
 
 echo "Applying fork patches ..."
 if ! git am --3way "${repo_root}"/patches/*.patch; then
