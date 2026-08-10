@@ -1,4 +1,4 @@
-From 55aa11b7ad9b3670bb8fc99dd4da5b62f1998ddf Mon Sep 17 00:00:00 2001
+From 82d29b2572324b4cc7b573bcd2059547f4f3c823 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Mon, 10 Aug 2026 13:20:20 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -3882,7 +3882,7 @@ index e814ec32e1..0000000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23895..bb8186254e 100644
+index 72b6e23895..287168e4a1 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,151 @@
@@ -4397,7 +4397,7 @@ index 72b6e23895..bb8186254e 100644
 +          # The archive layout is consumed by `codex update`: `codex` and
 +          # `bwrap` at the archive root.
 +          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "codex-${target}.tar.gz" | \
++          sha256sum "$dest/codex-${target}.tar.gz" | \
 +            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
 +            > "$dest/codex-${target}.tar.gz.sha256"
 +

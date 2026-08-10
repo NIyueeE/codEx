@@ -186,7 +186,7 @@ jobs:
           # The archive layout is consumed by `codex update`: `codex` and
           # `bwrap` at the archive root.
           tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-          sha256sum "codex-${target}.tar.gz" | \
+          sha256sum "$dest/codex-${target}.tar.gz" | \
             awk '{print $1 "  codex-'${target}'.tar.gz"}' \
             > "$dest/codex-${target}.tar.gz.sha256"
 
