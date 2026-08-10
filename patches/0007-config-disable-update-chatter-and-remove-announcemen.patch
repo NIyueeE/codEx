@@ -1,0 +1,710 @@
+From 25816bc98989fa84463d479edeee671e8bc90a22 Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Tue, 11 Aug 2026 01:19:52 +0800
+Subject: config: disable update chatter and remove announcement fetch
+
+check_for_update_on_startup now defaults to false so the TUI does not
+phone home on startup; the startup announcement fetch
+(announcement_tip.toml) and its prewarm are removed entirely, and the
+npm-based update detection module is dropped. Update prompts, when
+enabled, point at the fork releases instead of openai/codex.
+---
+ announcement_tip.toml                    |  17 -
+ codex-rs/config/src/config_toml.rs       |   4 +-
+ codex-rs/core/config.schema.json         |   2 +-
+ codex-rs/core/src/config/config_tests.rs |   1 +
+ codex-rs/core/src/config/mod.rs          |   6 +-
+ codex-rs/tui/src/lib.rs                  |   4 -
+ codex-rs/tui/src/npm_registry.rs         | 130 --------
+ codex-rs/tui/src/tooltips.rs             | 406 -----------------------
+ 8 files changed, 7 insertions(+), 563 deletions(-)
+ delete mode 100644 announcement_tip.toml
+ delete mode 100644 codex-rs/tui/src/npm_registry.rs
+
+diff --git a/announcement_tip.toml b/announcement_tip.toml
+deleted file mode 100644
+index 79c0dae..0000000
+--- a/announcement_tip.toml
++++ /dev/null
+@@ -1,17 +0,0 @@
+-# Example announcement tips for Codex TUI.
+-# Each [[announcements]] entry is evaluated in order; the last matching one is shown.
+-# Dates are UTC, formatted as YYYY-MM-DD. The from_date is inclusive and the to_date is exclusive.
+-# version_regex matches against the CLI version (env!("CARGO_PKG_VERSION")); omit to apply to all versions.
+-# target_app specify which app should display the announcement (cli, vsce, ...).
+-
+-# Test announcement only for local build version until 2027-05-10 excluded
+-[[announcements]]
+-content = "This is a test announcement"
+-version_regex = "^0\\.0\\.0$"
+-to_date = "2027-05-10"
+-
+-[[announcements]]
+-content = "Update Required - This version will no longer be supported starting May 8th. Please upgrade to the latest version (https://github.com/openai/codex/releases/latest) using your preferred package manager."
+-# Matches 0.x.y versions from 0.0.y through 0.119.y; excludes 0.120.0 and newer.
+-version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
+-to_date = "2026-05-08"
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 580c1dd..6fce616 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -468,8 +468,8 @@ pub struct ConfigToml {
+     pub project_root_markers: Option<Vec<String>>,
+ 
+     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
+-    /// Set to `false` only if your Codex updates are centrally managed.
+-    /// Defaults to `true`.
++    /// The codEx fork disables the network check by default; set to `true` to opt in.
++    /// Defaults to `false`.
+     pub check_for_update_on_startup: Option<bool>,
+ 
+     /// When `true`, enables the `/rewind` command and takes a file snapshot of
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 9b0336e..7bd126f 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -4966,7 +4966,7 @@
+       "type": "string"
+     },
+     "check_for_update_on_startup": {
+-      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. Set to `false` only if your Codex updates are centrally managed. Defaults to `true`.",
++      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. The codEx fork disables the network check by default; set to `true` to opt in. Defaults to `false`.",
+       "type": "boolean"
+     },
+     "cli_auth_credentials_store": {
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index ecbb182..64625c7 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -540,6 +540,7 @@ async fn rewind_defaults_on_and_respects_gitignore() -> std::io::Result<()> {
+         .await?;
+     assert!(config.rewind_enabled);
+     assert!(config.rewind_respect_gitignore);
++    assert!(!config.check_for_update_on_startup);
+     Ok(())
+ }
+ 
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index bea7ed9..ccaa3ad 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -1088,8 +1088,8 @@ pub struct Config {
+     pub notices: Notice,
+ 
+     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
+-    /// Set to `false` only if your Codex updates are centrally managed.
+-    /// Defaults to `true`.
++    /// The codEx fork disables the network check by default; set to `true` to opt in.
++    /// Defaults to `false`.
+     pub check_for_update_on_startup: bool,
+ 
+     /// When `true`, enables the `/rewind` command and takes a file snapshot of
+@@ -3956,7 +3956,7 @@ impl Config {
+ 
+         let review_model = override_review_model.or(cfg.review_model);
+ 
+-        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
++        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(false);
+         let rewind_enabled = cfg.rewind_enabled.unwrap_or(true);
+         let rewind_respect_gitignore = cfg.rewind_respect_gitignore.unwrap_or(true);
+         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
+diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
+index 1908777..ee32498 100644
+--- a/codex-rs/tui/src/lib.rs
++++ b/codex-rs/tui/src/lib.rs
+@@ -151,8 +151,6 @@ mod motion;
+ mod multi_agents;
+ mod named_session_lookup;
+ mod notifications;
+-#[cfg(any(not(debug_assertions), test))]
+-mod npm_registry;
+ pub(crate) mod onboarding;
+ mod oss_selection;
+ mod pager_overlay;
+@@ -1293,8 +1291,6 @@ async fn run_ratatui_app(
+     let uses_remote_workspace = app_server_target.uses_remote_workspace();
+     color_eyre::install()?;
+ 
+-    tooltips::announcement::prewarm(initial_config.http_client_factory());
+-
+     // Forward panic reports through tracing so they appear in the UI status
+     // line, but do not swallow the default/color-eyre panic handler.
+     // Chain to the previous hook so users still get a rich panic report
+diff --git a/codex-rs/tui/src/npm_registry.rs b/codex-rs/tui/src/npm_registry.rs
+deleted file mode 100644
+index 61ff242..0000000
+--- a/codex-rs/tui/src/npm_registry.rs
++++ /dev/null
+@@ -1,130 +0,0 @@
+-use serde::Deserialize;
+-use std::collections::HashMap;
+-
+-#[cfg(not(debug_assertions))]
+-pub(crate) const PACKAGE_URL: &str = "https://registry.npmjs.org/@openai%2fcodex";
+-
+-#[derive(Deserialize, Debug, Clone)]
+-pub(crate) struct NpmPackageInfo {
+-    #[serde(rename = "dist-tags")]
+-    dist_tags: HashMap<String, String>,
+-    versions: HashMap<String, NpmPackageVersionInfo>,
+-}
+-
+-#[derive(Deserialize, Debug, Clone)]
+-struct NpmPackageVersionInfo {
+-    dist: Option<NpmPackageDist>,
+-}
+-
+-#[derive(Deserialize, Debug, Clone)]
+-struct NpmPackageDist {
+-    tarball: Option<String>,
+-    integrity: Option<String>,
+-}
+-
+-pub(crate) fn ensure_version_ready(
+-    package_info: &NpmPackageInfo,
+-    version: &str,
+-) -> anyhow::Result<()> {
+-    let version = version.trim();
+-
+-    match package_info.dist_tags.get("latest").map(String::as_str) {
+-        Some(latest) if latest == version => {}
+-        Some(latest) => anyhow::bail!(
+-            "npm latest dist-tag points to {latest}, expected GitHub release {version}"
+-        ),
+-        None => anyhow::bail!("npm package is missing latest dist-tag"),
+-    }
+-
+-    version_info_with_dist(package_info, version)?;
+-    Ok(())
+-}
+-
+-fn version_info_with_dist<'a>(
+-    package_info: &'a NpmPackageInfo,
+-    version: &str,
+-) -> anyhow::Result<&'a NpmPackageVersionInfo> {
+-    let info = package_info
+-        .versions
+-        .get(version)
+-        .ok_or_else(|| anyhow::anyhow!("npm package version {version} is missing"))?;
+-    let Some(dist) = info.dist.as_ref() else {
+-        anyhow::bail!("npm package version {version} is missing dist metadata");
+-    };
+-    let has_tarball = dist
+-        .tarball
+-        .as_deref()
+-        .is_some_and(|tarball| !tarball.is_empty());
+-    if !has_tarball {
+-        anyhow::bail!("npm package version {version} is missing dist.tarball");
+-    }
+-    let has_integrity = dist
+-        .integrity
+-        .as_ref()
+-        .is_some_and(|integrity| !integrity.is_empty());
+-    if !has_integrity {
+-        anyhow::bail!("npm package version {version} is missing dist.integrity");
+-    }
+-    Ok(info)
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::*;
+-
+-    fn version_json(version: &str) -> serde_json::Value {
+-        serde_json::json!({
+-            "dist": {
+-                "integrity": format!("sha512-{version}"),
+-                "tarball": format!("https://registry.npmjs.org/@openai/codex/-/codex-{version}.tgz"),
+-            }
+-        })
+-    }
+-
+-    fn package_info(github_latest: &str, npm_latest: &str) -> NpmPackageInfo {
+-        let mut versions = serde_json::Map::new();
+-        versions.insert(github_latest.to_string(), version_json(github_latest));
+-
+-        serde_json::from_value(serde_json::json!({
+-            "dist-tags": { "latest": npm_latest },
+-            "versions": serde_json::Value::Object(versions),
+-        }))
+-        .expect("valid npm package metadata")
+-    }
+-
+-    #[test]
+-    fn ready_version_requires_latest_dist_tag_and_root_dist() {
+-        let latest = "1.2.3";
+-        let package_info = package_info(latest, latest);
+-
+-        ensure_version_ready(&package_info, latest).expect("npm package is ready");
+-    }
+-
+-    #[test]
+-    fn ready_version_rejects_stale_latest_dist_tag() {
+-        let package_info = package_info("1.2.3", "1.2.2");
+-
+-        let err = ensure_version_ready(&package_info, "1.2.3")
+-            .expect_err("npm latest dist-tag must match GitHub latest");
+-        assert!(
+-            err.to_string().contains("latest dist-tag"),
+-            "error should name stale latest dist-tag: {err}"
+-        );
+-    }
+-
+-    #[test]
+-    fn ready_version_rejects_missing_root_dist() {
+-        let package_info: NpmPackageInfo = serde_json::from_value(serde_json::json!({
+-            "dist-tags": { "latest": "1.2.3" },
+-            "versions": { "1.2.3": {} },
+-        }))
+-        .expect("valid npm package metadata");
+-
+-        let err = ensure_version_ready(&package_info, "1.2.3")
+-            .expect_err("root package must have dist metadata");
+-        assert!(
+-            err.to_string().contains("missing dist metadata"),
+-            "error should name missing dist metadata: {err}"
+-        );
+-    }
+-}
+diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
+index 79e74f5..26e090d 100644
+--- a/codex-rs/tui/src/tooltips.rs
++++ b/codex-rs/tui/src/tooltips.rs
+@@ -3,9 +3,6 @@ use codex_protocol::account::PlanType;
+ use lazy_static::lazy_static;
+ use rand::Rng;
+ 
+-const ANNOUNCEMENT_TIP_URL: &str =
+-    "https://raw.githubusercontent.com/openai/codex/main/announcement_tip.toml";
+-
+ const IS_MACOS: bool = cfg!(target_os = "macos");
+ const IS_WINDOWS: bool = cfg!(target_os = "windows");
+ 
+@@ -52,10 +49,6 @@ fn experimental_tooltips() -> Vec<&'static str> {
+ pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<String> {
+     let mut rng = rand::rng();
+ 
+-    if let Some(announcement) = announcement::fetch_announcement_tip(plan) {
+-        return Some(announcement);
+-    }
+-
+     // Leave small chance for a random tooltip to be shown.
+     if rng.random_ratio(8, 10) {
+         match plan {
+@@ -120,210 +113,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
+     }
+ }
+ 
+-pub(crate) mod announcement {
+-    use crate::tooltips::ANNOUNCEMENT_TIP_URL;
+-    use crate::version::CODEX_CLI_VERSION;
+-    use chrono::NaiveDate;
+-    use chrono::Utc;
+-    use codex_http_client::ClientRouteClass;
+-    use codex_http_client::HttpClientFactory;
+-    use codex_http_client::RouteAwareClientPool;
+-    use codex_protocol::account::PlanType;
+-    use regex_lite::Regex;
+-    use serde::Deserialize;
+-    use std::sync::OnceLock;
+-    use std::time::Duration;
+-
+-    static ANNOUNCEMENT_TIP: OnceLock<Option<String>> = OnceLock::new();
+-    const CURRENT_OS: TargetOs = TargetOs::current();
+-
+-    /// Prewarm the cache of the announcement tip.
+-    pub(crate) fn prewarm(http_client_factory: HttpClientFactory) {
+-        if ANNOUNCEMENT_TIP.get().is_some() {
+-            return;
+-        }
+-        tokio::spawn(async move {
+-            let announcement_tip = fetch_announcement_tip_text(http_client_factory).await;
+-            let _ = ANNOUNCEMENT_TIP.set(announcement_tip);
+-        });
+-    }
+-
+-    /// Fetch the announcement tip, return None if the prewarm is not done yet.
+-    pub(crate) fn fetch_announcement_tip(plan: Option<PlanType>) -> Option<String> {
+-        ANNOUNCEMENT_TIP
+-            .get()
+-            .cloned()
+-            .flatten()
+-            .and_then(|raw| parse_announcement_tip_toml(&raw, plan))
+-    }
+-
+-    #[derive(Debug, Deserialize)]
+-    struct AnnouncementTipRaw {
+-        content: String,
+-        from_date: Option<String>,
+-        to_date: Option<String>,
+-        version_regex: Option<String>,
+-        target_app: Option<String>,
+-        target_plan_types: Option<Vec<PlanType>>,
+-        target_oses: Option<Vec<TargetOs>>,
+-    }
+-
+-    #[derive(Debug, Deserialize)]
+-    struct AnnouncementTipDocument {
+-        announcements: Vec<AnnouncementTipRaw>,
+-    }
+-
+-    #[derive(Debug)]
+-    struct AnnouncementTip {
+-        content: String,
+-        from_date: Option<NaiveDate>,
+-        to_date: Option<NaiveDate>,
+-        version_regex: Option<Regex>,
+-        target_app: String,
+-        target_plan_types: Option<Vec<PlanType>>,
+-        target_oses: Option<Vec<TargetOs>>,
+-    }
+-
+-    #[derive(Debug, Deserialize, Copy, Clone, PartialEq, Eq)]
+-    #[serde(rename_all = "lowercase")]
+-    enum TargetOs {
+-        Linux,
+-        Macos,
+-        Windows,
+-        #[serde(other)]
+-        Unknown,
+-    }
+-
+-    impl TargetOs {
+-        const fn current() -> Self {
+-            if cfg!(target_os = "macos") {
+-                Self::Macos
+-            } else if cfg!(target_os = "windows") {
+-                Self::Windows
+-            } else {
+-                // Codex currently publishes CLI builds for macOS, Windows, and Linux.
+-                Self::Linux
+-            }
+-        }
+-    }
+-
+-    async fn fetch_announcement_tip_text(http_client_factory: HttpClientFactory) -> Option<String> {
+-        let client = RouteAwareClientPool::new(http_client_factory, ClientRouteClass::Other);
+-        let response = client
+-            .get(ANNOUNCEMENT_TIP_URL)
+-            .timeout(Duration::from_millis(2000))
+-            .send()
+-            .await
+-            .ok()?;
+-        response.error_for_status().ok()?.text().await.ok()
+-    }
+-
+-    pub(crate) fn parse_announcement_tip_toml(
+-        text: &str,
+-        plan: Option<PlanType>,
+-    ) -> Option<String> {
+-        let announcements = toml::from_str::<AnnouncementTipDocument>(text)
+-            .map(|doc| doc.announcements)
+-            .or_else(|_| toml::from_str::<Vec<AnnouncementTipRaw>>(text))
+-            .ok()?;
+-
+-        let mut latest_match = None;
+-        let today = Utc::now().date_naive();
+-        for raw in announcements {
+-            let Some(tip) = AnnouncementTip::from_raw(raw) else {
+-                continue;
+-            };
+-            let plan_matches = tip
+-                .target_plan_types
+-                .as_ref()
+-                .is_none_or(|target_plans| plan.is_some_and(|plan| target_plans.contains(&plan)));
+-            let os_matches = tip
+-                .target_oses
+-                .as_ref()
+-                .is_none_or(|target_oses| target_oses.contains(&CURRENT_OS));
+-            if tip.version_matches(CODEX_CLI_VERSION)
+-                && tip.date_matches(today)
+-                && tip.target_app == "cli"
+-                && plan_matches
+-                && os_matches
+-            {
+-                latest_match = Some(tip.content);
+-            }
+-        }
+-        latest_match
+-    }
+-
+-    impl AnnouncementTip {
+-        fn from_raw(raw: AnnouncementTipRaw) -> Option<Self> {
+-            let content = raw.content.trim();
+-            if content.is_empty() {
+-                return None;
+-            }
+-
+-            let from_date = match raw.from_date {
+-                Some(date) => Some(NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?),
+-                None => None,
+-            };
+-            let to_date = match raw.to_date {
+-                Some(date) => Some(NaiveDate::parse_from_str(&date, "%Y-%m-%d").ok()?),
+-                None => None,
+-            };
+-            let version_regex = match raw.version_regex {
+-                Some(pattern) => Some(Regex::new(&pattern).ok()?),
+-                None => None,
+-            };
+-            let target_plan_types = raw.target_plan_types;
+-            if target_plan_types
+-                .as_ref()
+-                .is_some_and(|plans| plans.contains(&PlanType::Unknown))
+-            {
+-                return None;
+-            }
+-            let target_oses = raw.target_oses;
+-            if target_oses
+-                .as_ref()
+-                .is_some_and(|oses| oses.contains(&TargetOs::Unknown))
+-            {
+-                return None;
+-            }
+-
+-            Some(Self {
+-                content: content.to_string(),
+-                from_date,
+-                to_date,
+-                version_regex,
+-                target_app: raw.target_app.unwrap_or("cli".to_string()).to_lowercase(),
+-                target_plan_types,
+-                target_oses,
+-            })
+-        }
+-
+-        fn version_matches(&self, version: &str) -> bool {
+-            self.version_regex
+-                .as_ref()
+-                .is_none_or(|regex| regex.is_match(version))
+-        }
+-
+-        fn date_matches(&self, today: NaiveDate) -> bool {
+-            if let Some(from) = self.from_date
+-                && today < from
+-            {
+-                return false;
+-            }
+-            if let Some(to) = self.to_date
+-                && today >= to
+-            {
+-                return false;
+-            }
+-            true
+-        }
+-    }
+-}
+-
+ #[cfg(test)]
+ mod tests {
+     use super::*;
+-    use crate::tooltips::announcement::parse_announcement_tip_toml;
+     use rand::SeedableRng;
+     use rand::rngs::StdRng;
+ 
+@@ -370,202 +162,4 @@ mod tests {
+         assert_eq!(seen, expected);
+         assert!(!seen.contains(&Some(FAST_TOOLTIP)));
+     }
+-
+-    #[test]
+-    fn announcement_tip_toml_picks_last_matching() {
+-        let toml = r#"
+-[[announcements]]
+-content = "first"
+-from_date = "2000-01-01"
+-
+-[[announcements]]
+-content = "latest match"
+-version_regex = ".*"
+-target_app = "cli"
+-
+-[[announcements]]
+-content = "should not match"
+-to_date = "2000-01-01"
+-        "#;
+-
+-        assert_eq!(
+-            Some("latest match".to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-
+-        let toml = r#"
+-[[announcements]]
+-content = "first"
+-from_date = "2000-01-01"
+-target_app = "cli"
+-
+-[[announcements]]
+-content = "latest match"
+-version_regex = ".*"
+-
+-[[announcements]]
+-content = "should not match"
+-to_date = "2000-01-01"
+-        "#;
+-
+-        assert_eq!(
+-            Some("latest match".to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_picks_no_match() {
+-        let toml = r#"
+-[[announcements]]
+-content = "first"
+-from_date = "2000-01-01"
+-to_date = "2000-01-05"
+-
+-[[announcements]]
+-content = "latest match"
+-version_regex = "invalid_version_name"
+-
+-[[announcements]]
+-content = "should not match either "
+-target_app = "vsce"
+-        "#;
+-
+-        assert_eq!(None, parse_announcement_tip_toml(toml, /*plan*/ None));
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_bad_deserialization() {
+-        let toml = r#"
+-[[announcements]]
+-content = 123
+-from_date = "2000-01-01"
+-        "#;
+-
+-        assert_eq!(None, parse_announcement_tip_toml(toml, /*plan*/ None));
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_parse_comments() {
+-        let toml = r#"
+-# Example announcement tips for Codex TUI.
+-# Each [[announcements]] entry is evaluated in order; the last matching one is shown.
+-# Dates are UTC, formatted as YYYY-MM-DD. The from_date is inclusive and the to_date is exclusive.
+-# version_regex matches against the CLI version (env!("CARGO_PKG_VERSION")); omit to apply to all versions.
+-# target_app specify which app should display the announcement (cli, vsce, ...).
+-# target_plan_types optionally restricts the announcement to plan types like ["plus", "pro"].
+-# target_oses optionally restricts the announcement to operating systems like ["macos", "windows"].
+-
+-[[announcements]]
+-content = "Welcome to Codex! Check out the new onboarding flow."
+-from_date = "2024-10-01"
+-to_date = "2024-10-15"
+-target_app = "cli"
+-version_regex = "^0\\.0\\.0$"
+-
+-[[announcements]]
+-content = "This is a test announcement"
+-        "#;
+-
+-        assert_eq!(
+-            Some("This is a test announcement".to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_matches_target_plan_type() {
+-        let toml = r#"
+-[[announcements]]
+-content = "all plans"
+-
+-[[announcements]]
+-content = "pro announcement"
+-target_plan_types = ["pro", "enterprise"]
+-
+-[[announcements]]
+-content = "free announcement"
+-target_plan_types = ["free"]
+-        "#;
+-
+-        assert_eq!(
+-            Some("pro announcement".to_string()),
+-            parse_announcement_tip_toml(toml, Some(PlanType::Pro))
+-        );
+-        assert_eq!(
+-            Some("free announcement".to_string()),
+-            parse_announcement_tip_toml(toml, Some(PlanType::Free))
+-        );
+-        assert_eq!(
+-            Some("all plans".to_string()),
+-            parse_announcement_tip_toml(toml, Some(PlanType::Plus))
+-        );
+-        assert_eq!(
+-            Some("all plans".to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_rejects_unknown_target_plan_type() {
+-        let toml = r#"
+-[[announcements]]
+-content = "all plans"
+-
+-[[announcements]]
+-content = "typo announcement"
+-target_plan_types = ["prp"]
+-        "#;
+-
+-        assert_eq!(
+-            Some("all plans".to_string()),
+-            parse_announcement_tip_toml(toml, Some(PlanType::Unknown))
+-        );
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_matches_target_os() {
+-        let toml = r#"
+-[[announcements]]
+-content = "linux announcement"
+-target_oses = ["linux"]
+-
+-[[announcements]]
+-content = "macos announcement"
+-target_oses = ["macos"]
+-
+-[[announcements]]
+-content = "windows announcement"
+-target_oses = ["windows"]
+-        "#;
+-
+-        let expected = if cfg!(target_os = "macos") {
+-            "macos announcement"
+-        } else if cfg!(target_os = "windows") {
+-            "windows announcement"
+-        } else {
+-            "linux announcement"
+-        };
+-        assert_eq!(
+-            Some(expected.to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-    }
+-
+-    #[test]
+-    fn announcement_tip_toml_rejects_unknown_target_os() {
+-        let toml = r#"
+-[[announcements]]
+-content = "all operating systems"
+-
+-[[announcements]]
+-content = "typo announcement"
+-target_oses = ["amiga"]
+-        "#;
+-
+-        assert_eq!(
+-            Some("all operating systems".to_string()),
+-            parse_announcement_tip_toml(toml, /*plan*/ None)
+-        );
+-    }
+ }
+-- 
+2.55.0
+
