@@ -1,4 +1,4 @@
-From 531df74471b3d148cd6d6bf46e65c399733c4d31 Mon Sep 17 00:00:00 2001
+From feca7870965832a27b861910641ccd49b22396a3 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Tue, 11 Aug 2026 11:18:05 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -37,7 +37,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  .github/workflows/v8-canary.yml               |  447 -----
  .gitignore                                    |    4 +
  BASE_TAG                                      |    1 +
- README.md                                     |  223 ++-
+ README.md                                     |  261 ++-
  announcement_tip.toml                         |   17 -
  codex-rs/Cargo.lock                           |  274 +--
  codex-rs/cli/Cargo.toml                       |    3 +
@@ -203,7 +203,7 @@ Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 191 files changed, 3420 insertions(+), 9579 deletions(-)
+ 191 files changed, 3450 insertions(+), 9587 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -6836,10 +6836,10 @@ index 0000000..21475d8
 @@ -0,0 +1 @@
 +rust-v0.147.0
 diff --git a/README.md b/README.md
-index 06b02fc..c0feede 100644
+index 06b02fc..c6870b5 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,194 @@
+@@ -1,81 +1,216 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -6857,11 +6857,11 @@ index 06b02fc..c0feede 100644
 +verified binaries from this fork's releases.
  
 -## Quickstart
-+This repository follows a **patch-queue model**: it stores only the fork's
-+changes (as `git format-patch` series) plus the scripts that rebuild a full
-+codex tree from an upstream tag. The actual code lives upstream; `BASE_TAG`
-+pins the upstream tag the current patch queue applies to (currently
-+`rust-v0.147.0`).
++This repository follows a **patch-queue model**: instead of vendoring the
++upstream tree, it stores only the fork's changes as a `git format-patch`
++series plus the scripts that rebuild a full codex tree from an upstream tag.
++The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
++patch queue applies to (currently `rust-v0.147.0`).
  
 -### Installing and running Codex CLI
 +## Installing from a release
@@ -6876,47 +6876,54 @@ index 06b02fc..c0feede 100644
  ```
  
 -Run the following on Windows to install Codex CLI:
+-
+-```shell
+-powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
+-```
+-
+-The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
+-
+-```shell
+-curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false sh
 +The installer resolves the latest fork release, downloads
 +`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
 +checksum before touching anything, and installs into the standalone layout
 +under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
 +bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
 +afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
- 
--```shell
--powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
--```
++
 +Environment overrides:
- 
--The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
++
 +- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
 +- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 +- `CODEX_HOME` - codex home (default: `~/.codex`)
- 
--```shell
--curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false sh
--```
++
 +## What changes versus upstream
- 
--```powershell
--$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
--```
++
++codEx keeps the upstream `codex` binary name and configuration format, so it
++drops into existing workflows, but changes the surrounding experience:
++
++- **Rollback**: `/rewind` undoes conversation turns and/or workspace file
++  changes without git.
++- **Input**: Esc no longer interrupts by accident; a double press stops a
++  running reply.
++- **Updates**: `codex update` is a pure-Rust downloader with checksum
++  verification; no `curl | sh`, npm, or brew.
++- **Privacy**: no update checks or announcement fetches on startup by default.
++- **Distribution**: Linux-only standalone archives (`codex` + `bwrap`), no
++  macOS/Windows/app-server bundles.
++- **Identity**: the CLI and TUI brand themselves as codEx, and
++  `codex --version` points at this fork's repository.
++
++Details below.
++
 +### `/rewind` - roll back conversation and workspace files
- 
--Codex CLI can also be installed via the following package managers:
++
 +The headline feature. `/rewind` lets you undo a conversation turn and/or the
 +file changes a turn made, without needing git.
- 
--```shell
--# Install using npm
--npm install -g @openai/codex
--```
++
 +**Usage**: type `/rewind`, then choose a scope:
- 
--```shell
--# Install using Homebrew
--brew install --cask codex
--```
++
 +1. **Files and conversation** - pick a past message in the transcript; the chat
 +   forks before that message (a new thread with the conversation truncated
 +   there, prompt restored into the composer) and the workspace files are
@@ -6924,18 +6931,14 @@ index 06b02fc..c0feede 100644
 +2. **Conversation only** - pick a past message in the transcript and fork the
 +   chat before it; files are left untouched.
 +3. **Files only** - pick a numbered snapshot and restore the workspace to it.
- 
--Then simply run `codex` to get started.
++
 +Both conversation scopes reuse the transcript picker (the same full-history
 +view the old double-Esc backtrack used): the newest user message starts
 +highlighted, **Esc** or **Left** steps to older messages, **Right** steps
 +newer, and **Enter** confirms the rewind.
- 
--<details>
--<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
++
 +**How snapshots work** (pure files, no git involved):
- 
--Each GitHub Release contains many executables, but in practice, you likely want one of these:
++
 +- Before each user turn is submitted, the TUI snapshots the workspace into
 +  `~/.codex/snapshots/<workspace-hash>/<turn>/` (or `$CODEX_HOME/snapshots/...`).
 +  Each snapshot contains a `manifest.json` (relative path, size, mtime for every
@@ -6946,22 +6949,16 @@ index 06b02fc..c0feede 100644
 +- The most recent **20 snapshots** are kept per workspace; older ones are pruned.
 +- Restore copies snapshot files back over the workspace and deletes files that
 +  were created after the snapshot (gitignored paths are left alone).
- 
--- macOS
--  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
--  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
--- Linux
--  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
--  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
++
 +**Configuration** (`config.toml`):
- 
--Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
++
 +```toml
 +rewind_enabled = true            # master switch, default true
 +rewind_respect_gitignore = true  # default true; false snapshots every file
-+```
+ ```
  
--</details>
+-```powershell
+-$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
 +### Esc: single press does nothing, double press stops the reply
 +
 +- A single **Esc** in the main UI/composer is a **no-op** - it no longer
@@ -7032,13 +7029,17 @@ index 06b02fc..c0feede 100644
 +
 +### Patch-queue model
 +
-+This repo deliberately does **not** vendor upstream code. It stores:
++This repo deliberately does **not** vendor upstream code, unlike a classic
++fork that carries the full tree and periodically merges upstream. Instead it
++stores only the delta:
 +
-+- `BASE_TAG` - the upstream tag the current patch queue applies to
-+- `patches/` - `git format-patch` series with every fork change
-+- `scripts/bootstrap.sh` - shallow-clone `openai/codex@BASE_TAG`, apply patches
-+- `scripts/update.sh` - upgrade to a new upstream tag (apply, resolve, regen)
-+- `scripts/gen-patches.sh` - regenerate the patch series from git history
++| Piece | Purpose |
++| --- | --- |
++| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
++| `patches/` | `git format-patch` series with every fork change |
++| `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
++| `scripts/update.sh` | upgrade to a new upstream tag (apply, resolve conflicts, regen) |
++| `scripts/gen-patches.sh` | regenerate `patches/` from the bootstrapped tree's git history |
 +
 +`bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 +and release workflows do exactly that before building. See
@@ -7047,27 +7048,56 @@ index 06b02fc..c0feede 100644
 +
 +## Building from this repository
 +
-+If `codex-rs/` is present (full-tree checkout, e.g. the `feat/fork-cleanup`
-+branch), build directly:
++The slim repository has no `codex-rs/` checked in, so build from a
++bootstrapped tree:
 +
-+```sh
-+cd codex-rs
-+cargo build --release --bin codex
-+```
- 
--### Using Codex with your ChatGPT plan
-+To rebuild the tree from scratch from the upstream tag:
- 
--Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
 +```sh
 +bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
 +cd tree
 +cargo build --release --bin codex
-+```
+ ```
  
--You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
+-Codex CLI can also be installed via the following package managers:
++If you happen to have a full-tree checkout (with `codex-rs/` present), build
++directly:
+ 
+-```shell
+-# Install using npm
+-npm install -g @openai/codex
++```sh
++cd codex-rs
++cargo build --release --bin codex
+ ```
+ 
+-```shell
+-# Install using Homebrew
+-brew install --cask codex
+-```
+-
+-Then simply run `codex` to get started.
+-
+-<details>
+-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 +## Upgrading to a new upstream tag
-+
+ 
+-Each GitHub Release contains many executables, but in practice, you likely want one of these:
+-
+-- macOS
+-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
+-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
+-- Linux
+-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
+-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+-
+-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+-
+-</details>
+-
+-### Using Codex with your ChatGPT plan
+-
+-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
+-
+-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 +```sh
 +bash scripts/update.sh rust-v0.148.0
 +```
@@ -7077,9 +7107,9 @@ index 06b02fc..c0feede 100644
 +builds and tests, then regenerates `patches/` and updates `BASE_TAG`. If a
 +patch conflicts, resolve it in `update-work/` (`git am --continue`), then
 +regenerate with `bash scripts/gen-patches.sh rust-v0.148.0`. The patch queue
-+never changes version numbers; fork releases are tagged with the plain semver
-+(for example `0.148.0`) and the release workflow publishes
-+`codex-<target>.tar.gz` + sha256 checksums.
++never changes version numbers; fork releases keep the upstream semver and are
++tagged `rust-v<version>` (for example `rust-v0.148.0`), and the release
++workflow publishes `codex-<target>.tar.gz` + sha256 checksums.
  
 -- [**Codex Documentation**](https://developers.openai.com/codex)
 -- [**Contributing**](./docs/contributing.md)

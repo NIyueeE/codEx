@@ -5,11 +5,11 @@ that keeps the CLI happy-path for standalone Linux users: fewer moving parts,
 no phone-home update checks, and a built-in `codex update` that downloads
 verified binaries from this fork's releases.
 
-This repository follows a **patch-queue model**: it stores only the fork's
-changes (as `git format-patch` series) plus the scripts that rebuild a full
-codex tree from an upstream tag. The actual code lives upstream; `BASE_TAG`
-pins the upstream tag the current patch queue applies to (currently
-`rust-v0.147.0`).
+This repository follows a **patch-queue model**: instead of vendoring the
+upstream tree, it stores only the fork's changes as a `git format-patch`
+series plus the scripts that rebuild a full codex tree from an upstream tag.
+The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
+patch queue applies to (currently `rust-v0.147.0`).
 
 ## Installing from a release
 
@@ -33,6 +33,23 @@ Environment overrides:
 - `CODEX_HOME` - codex home (default: `~/.codex`)
 
 ## What changes versus upstream
+
+codEx keeps the upstream `codex` binary name and configuration format, so it
+drops into existing workflows, but changes the surrounding experience:
+
+- **Rollback**: `/rewind` undoes conversation turns and/or workspace file
+  changes without git.
+- **Input**: Esc no longer interrupts by accident; a double press stops a
+  running reply.
+- **Updates**: `codex update` is a pure-Rust downloader with checksum
+  verification; no `curl | sh`, npm, or brew.
+- **Privacy**: no update checks or announcement fetches on startup by default.
+- **Distribution**: Linux-only standalone archives (`codex` + `bwrap`), no
+  macOS/Windows/app-server bundles.
+- **Identity**: the CLI and TUI brand themselves as codEx, and
+  `codex --version` points at this fork's repository.
+
+Details below.
 
 ### `/rewind` - roll back conversation and workspace files
 
@@ -144,13 +161,17 @@ rewind_respect_gitignore = true  # default true; false snapshots every file
 
 ### Patch-queue model
 
-This repo deliberately does **not** vendor upstream code. It stores:
+This repo deliberately does **not** vendor upstream code, unlike a classic
+fork that carries the full tree and periodically merges upstream. Instead it
+stores only the delta:
 
-- `BASE_TAG` - the upstream tag the current patch queue applies to
-- `patches/` - `git format-patch` series with every fork change
-- `scripts/bootstrap.sh` - shallow-clone `openai/codex@BASE_TAG`, apply patches
-- `scripts/update.sh` - upgrade to a new upstream tag (apply, resolve, regen)
-- `scripts/gen-patches.sh` - regenerate the patch series from git history
+| Piece | Purpose |
+| --- | --- |
+| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
+| `patches/` | `git format-patch` series with every fork change |
+| `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
+| `scripts/update.sh` | upgrade to a new upstream tag (apply, resolve conflicts, regen) |
+| `scripts/gen-patches.sh` | regenerate `patches/` from the bootstrapped tree's git history |
 
 `bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 and release workflows do exactly that before building. See
@@ -159,19 +180,20 @@ and release workflows do exactly that before building. See
 
 ## Building from this repository
 
-If `codex-rs/` is present (full-tree checkout, e.g. the `feat/fork-cleanup`
-branch), build directly:
-
-```sh
-cd codex-rs
-cargo build --release --bin codex
-```
-
-To rebuild the tree from scratch from the upstream tag:
+The slim repository has no `codex-rs/` checked in, so build from a
+bootstrapped tree:
 
 ```sh
 bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
 cd tree
+cargo build --release --bin codex
+```
+
+If you happen to have a full-tree checkout (with `codex-rs/` present), build
+directly:
+
+```sh
+cd codex-rs
 cargo build --release --bin codex
 ```
 
@@ -185,9 +207,9 @@ bash scripts/update.sh rust-v0.148.0
 builds and tests, then regenerates `patches/` and updates `BASE_TAG`. If a
 patch conflicts, resolve it in `update-work/` (`git am --continue`), then
 regenerate with `bash scripts/gen-patches.sh rust-v0.148.0`. The patch queue
-never changes version numbers; fork releases are tagged with the plain semver
-(for example `0.148.0`) and the release workflow publishes
-`codex-<target>.tar.gz` + sha256 checksums.
+never changes version numbers; fork releases keep the upstream semver and are
+tagged `rust-v<version>` (for example `rust-v0.148.0`), and the release
+workflow publishes `codex-<target>.tar.gz` + sha256 checksums.
 
 ## License
 
