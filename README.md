@@ -11,6 +11,27 @@ codex tree from an upstream tag. The actual code lives upstream; `BASE_TAG`
 pins the upstream tag the current patch queue applies to (currently
 `rust-v0.147.0`).
 
+## Installing from a release
+
+Standalone Linux users can install or update codEx with the installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+```
+
+The installer resolves the latest fork release, downloads
+`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
+checksum before touching anything, and installs into the standalone layout
+under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
+bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
+afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
+
+Environment overrides:
+
+- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
+- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
+- `CODEX_HOME` - codex home (default: `~/.codex`)
+
 ## What changes versus upstream
 
 ### `/rewind` - roll back conversation and workspace files
@@ -20,13 +41,18 @@ file changes a turn made, without needing git.
 
 **Usage**: type `/rewind`, then choose a scope:
 
-1. **Files and conversation** - pick a past message; the chat forks before that
-   message (a new thread with the conversation truncated there, prompt
-   restored into the composer) and the workspace files are restored to the
-   snapshot taken right before that message.
-2. **Conversation only** - pick a past message from a searchable picker and
-   fork the chat before it; files are left untouched.
+1. **Files and conversation** - pick a past message in the transcript; the chat
+   forks before that message (a new thread with the conversation truncated
+   there, prompt restored into the composer) and the workspace files are
+   restored to the snapshot taken right before that message.
+2. **Conversation only** - pick a past message in the transcript and fork the
+   chat before it; files are left untouched.
 3. **Files only** - pick a numbered snapshot and restore the workspace to it.
+
+Both conversation scopes reuse the transcript picker (the same full-history
+view the old double-Esc backtrack used): the newest user message starts
+highlighted, **Esc/←** step to older messages, **→** steps newer, and **Enter**
+confirms the rewind.
 
 **How snapshots work** (pure files, no git involved):
 
@@ -61,7 +87,8 @@ rewind_respect_gitignore = true  # default true; false snapshots every file
   the request-user-input panel all still use Esc as before.
 - The `chat.interrupt_turn` keybinding is **unbound by default** (you can bind
   it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
-  previous message" backtrack was removed in favor of `/rewind`.
+  previous message" backtrack was removed from the main UI; `/rewind` now
+  reuses its transcript picker for message selection.
 
 ### `codex update`: pure-Rust self-update
 
@@ -91,8 +118,11 @@ rewind_respect_gitignore = true  # default true; false snapshots every file
 
 ### Branding
 
-- `codex --version` prints `codEx 0.147.0 (codEx fork)`; the status bar shows
-  `codEx <version>`.
+- `codex --version` prints
+  `codEx 0.147.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
+  bar shows `codEx <version>`.
+- The TUI welcome screen, session header, and status header display `codEx`;
+  tips reference `codEx` as well.
 - The version number itself **matches the upstream base tag** (e.g. `0.147.0`),
   so version parsing stays plain semver and fork release tags stay clean.
 

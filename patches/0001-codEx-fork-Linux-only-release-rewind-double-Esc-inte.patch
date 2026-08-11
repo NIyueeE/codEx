@@ -1,8 +1,8 @@
-From b9454258a5369c1ce890952b9c80f227da059a18 Mon Sep 17 00:00:00 2001
+From 17301449494464358fb074b78fec96173d578194 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Tue, 11 Aug 2026 11:18:05 +0800
-Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
- interrupt, pure-Rust update, patch-queue model
+Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
+ pure-Rust update, patch-queue model
 
 - Trim release/CI to Linux + CLI only; add fork release archives (codex-<target>.tar.gz + sha256)
 - Add /rewind: conversation rollback via searchable picker and plain-file workspace snapshots
@@ -37,12 +37,12 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  .github/workflows/v8-canary.yml               |  447 -----
  .gitignore                                    |    4 +
  BASE_TAG                                      |    1 +
- README.md                                     |  214 ++-
+ README.md                                     |  223 ++-
  announcement_tip.toml                         |   17 -
  codex-rs/Cargo.lock                           |  274 +--
  codex-rs/cli/Cargo.toml                       |    3 +
  codex-rs/cli/src/doctor/updates.rs            |   53 +-
- codex-rs/cli/src/main.rs                      |   81 +-
+ codex-rs/cli/src/main.rs                      |   90 +-
  codex-rs/cli/src/self_update.rs               |  345 ++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/sandbox_cloud_config.rs    |    4 +-
@@ -50,13 +50,17 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  codex-rs/core/config.schema.json              |   10 +-
  codex-rs/core/src/config/config_tests.rs      |   32 +
  codex-rs/core/src/config/mod.rs               |   20 +-
+ .../src/event_processor_with_human_output.rs  |    2 +-
+ codex-rs/login/src/device_code_auth.rs        |    4 +-
+ codex-rs/login/src/device_code_auth_tests.rs  |    2 +-
  codex-rs/thread-manager-sample/src/main.rs    |    2 +
  codex-rs/tui/Cargo.toml                       |    1 +
  codex-rs/tui/src/app/event_dispatch.rs        |   46 +-
  codex-rs/tui/src/app/input.rs                 |   71 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
- codex-rs/tui/src/app/tests.rs                 |  437 ++++-
- codex-rs/tui/src/app_backtrack.rs             |   96 +-
+ codex-rs/tui/src/app/tests.rs                 |  587 +++++-
+ .../app/tests/session_lifecycle_requests.rs   |    4 +-
+ codex-rs/tui/src/app_backtrack.rs             |  172 +-
  codex-rs/tui/src/app_event.rs                 |   24 +
  codex-rs/tui/src/bottom_pane/chat_composer.rs |  125 +-
  .../bottom_pane/chat_composer/footer_state.rs |    2 +-
@@ -116,7 +120,12 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  .../src/chatwidget/tests/status_and_layout.rs |    8 +-
  codex-rs/tui/src/chatwidget/turn_runtime.rs   |    1 +
  codex-rs/tui/src/history_cell/notices.rs      |   19 +-
+ codex-rs/tui/src/history_cell/session.rs      |    6 +-
  ...pdate_available_history_cell_snapshot.snap |   11 -
+ ...session_header_clamps_to_narrow_width.snap |    2 +-
+ ...s__session_header_halfwidth_directory.snap |    4 +-
+ ..._session_header_halfwidth_sound_marks.snap |    4 +-
+ ...s__session_header_indicates_yolo_mode.snap |    4 +-
  ...nfo_availability_nux_tooltip_snapshot.snap |    4 +-
  ...pdate_available_history_cell_snapshot.snap |   14 +-
  ...pdate_available_history_cell_snapshot.snap |   12 -
@@ -125,10 +134,13 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  codex-rs/tui/src/keymap_setup.rs              |    8 +-
  codex-rs/tui/src/lib.rs                       |    5 +-
  codex-rs/tui/src/npm_registry.rs              |  130 --
- codex-rs/tui/src/rewind/actions.rs            |  240 +++
+ codex-rs/tui/src/onboarding/welcome.rs        |    4 +-
+ codex-rs/tui/src/rewind/actions.rs            |  172 ++
  codex-rs/tui/src/rewind/mod.rs                |  374 ++++
  codex-rs/tui/src/rewind/rewind_tests.rs       |  202 ++
  codex-rs/tui/src/slash_command.rs             |    3 +
+ ...ter_long_transcript_fresh_header_only.snap |    4 +-
+ ...eader_fast_status_fast_capable_models.snap |    4 +-
  ...rejection_reports_unavailable_message.snap |    5 -
  ...__tests__keymap_picker_all_tab_search.snap |    2 +-
  ...ap_setup__tests__keymap_picker_custom.snap |    6 +-
@@ -137,6 +149,7 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  ...up__tests__keymap_picker_global_chord.snap |    6 +-
  ...ap_setup__tests__keymap_picker_narrow.snap |    6 +-
  ...ymap_setup__tests__keymap_picker_wide.snap |    6 +-
+ codex-rs/tui/src/status/card.rs               |    2 +-
  ...ched_limits_hide_credits_without_flag.snap |    2 +-
  ..._snapshot_includes_credits_and_limits.snap |    2 +-
  ...ludes_enterprise_monthly_credit_limit.snap |    2 +-
@@ -158,11 +171,12 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  ...hly_credit_details_in_narrow_terminal.snap |    2 +-
  ...ipt_overlay_status_rate_limit_refresh.snap |    4 +-
  codex-rs/tui/src/status_indicator_widget.rs   |   25 +-
- codex-rs/tui/src/tooltips.rs                  |  406 ----
+ codex-rs/tui/src/tooltips.rs                  |  408 +---
  codex-rs/tui/src/update_action.rs             |  105 +-
  codex-rs/tui/src/update_prompt.rs             |    7 +-
  codex-rs/tui/src/update_versions.rs           |   23 +-
  codex-rs/tui/src/updates.rs                   |   52 +-
+ codex-rs/tui/tests/suite/focus_palette.rs     |    2 +-
  codex-rs/utils/cli/src/fork.rs                |   14 +
  codex-rs/utils/cli/src/lib.rs                 |    3 +
  install.sh                                    |  197 ++
@@ -189,7 +203,7 @@ Subject: [PATCH] codEx fork: Linux-only release, /rewind, double-Esc
  scripts/bootstrap.sh                          |   30 +
  scripts/gen-patches.sh                        |   33 +
  scripts/update.sh                             |   62 +
- 177 files changed, 3223 insertions(+), 9550 deletions(-)
+ 191 files changed, 3420 insertions(+), 9579 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -6822,10 +6836,10 @@ index 0000000..21475d8
 @@ -0,0 +1 @@
 +rust-v0.147.0
 diff --git a/README.md b/README.md
-index 06b02fc..81c2efa 100644
+index 06b02fc..651164f 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,185 @@
+@@ -1,81 +1,194 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -6903,19 +6917,25 @@ index 06b02fc..81c2efa 100644
 -# Install using Homebrew
 -brew install --cask codex
 -```
-+1. **Files and conversation** - pick a past message; the chat forks before that
-+   message (a new thread with the conversation truncated there, prompt
-+   restored into the composer) and the workspace files are restored to the
-+   snapshot taken right before that message.
-+2. **Conversation only** - pick a past message from a searchable picker and
-+   fork the chat before it; files are left untouched.
++1. **Files and conversation** - pick a past message in the transcript; the chat
++   forks before that message (a new thread with the conversation truncated
++   there, prompt restored into the composer) and the workspace files are
++   restored to the snapshot taken right before that message.
++2. **Conversation only** - pick a past message in the transcript and fork the
++   chat before it; files are left untouched.
 +3. **Files only** - pick a numbered snapshot and restore the workspace to it.
  
 -Then simply run `codex` to get started.
-+**How snapshots work** (pure files, no git involved):
++Both conversation scopes reuse the transcript picker (the same full-history
++view the old double-Esc backtrack used): the newest user message starts
++highlighted, **Esc/←** step to older messages, **→** steps newer, and **Enter**
++confirms the rewind.
  
 -<details>
 -<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
++**How snapshots work** (pure files, no git involved):
+ 
+-Each GitHub Release contains many executables, but in practice, you likely want one of these:
 +- Before each user turn is submitted, the TUI snapshots the workspace into
 +  `~/.codex/snapshots/<workspace-hash>/<turn>/` (or `$CODEX_HOME/snapshots/...`).
 +  Each snapshot contains a `manifest.json` (relative path, size, mtime for every
@@ -6927,21 +6947,21 @@ index 06b02fc..81c2efa 100644
 +- Restore copies snapshot files back over the workspace and deletes files that
 +  were created after the snapshot (gitignored paths are left alone).
  
--Each GitHub Release contains many executables, but in practice, you likely want one of these:
-+**Configuration** (`config.toml`):
- 
 -- macOS
 -  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
 -  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
 -- Linux
 -  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
 -  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
++**Configuration** (`config.toml`):
+ 
+-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
 +```toml
 +rewind_enabled = true            # master switch, default true
 +rewind_respect_gitignore = true  # default true; false snapshots every file
 +```
  
--Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+-</details>
 +### Esc: single press does nothing, double press stops the reply
 +
 +- A single **Esc** in the main UI/composer is a **no-op** - it no longer
@@ -6955,7 +6975,8 @@ index 06b02fc..81c2efa 100644
 +  the request-user-input panel all still use Esc as before.
 +- The `chat.interrupt_turn` keybinding is **unbound by default** (you can bind
 +  it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
-+  previous message" backtrack was removed in favor of `/rewind`.
++  previous message" backtrack was removed from the main UI; `/rewind` now
++  reuses its transcript picker for message selection.
 +
 +### `codex update`: pure-Rust self-update
 +
@@ -6985,8 +7006,11 @@ index 06b02fc..81c2efa 100644
 +
 +### Branding
 +
-+- `codex --version` prints `codEx 0.147.0 (codEx fork)`; the status bar shows
-+  `codEx <version>`.
++- `codex --version` prints
++  `codEx 0.147.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
++  bar shows `codEx <version>`.
++- The TUI welcome screen, session header, and status header display `codEx`;
++  tips reference `codEx` as well.
 +- The version number itself **matches the upstream base tag** (e.g. `0.147.0`),
 +  so version parsing stays plain semver and fork release tags stay clean.
 +
@@ -7031,20 +7055,19 @@ index 06b02fc..81c2efa 100644
 +cargo build --release --bin codex
 +```
  
--</details>
+-### Using Codex with your ChatGPT plan
 +To rebuild the tree from scratch from the upstream tag:
  
--### Using Codex with your ChatGPT plan
+-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
 +```sh
 +bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
 +cd tree
 +cargo build --release --bin codex
 +```
  
--Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
-+## Upgrading to a new upstream tag
- 
 -You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
++## Upgrading to a new upstream tag
++
 +```sh
 +bash scripts/update.sh rust-v0.148.0
 +```
@@ -8459,7 +8482,7 @@ index b13de06..87634fc 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 4c88718..a227eab 100644
+index 4c88718..e36e8fa 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -55,9 +55,8 @@ mod plugin_cmd;
@@ -8473,7 +8496,7 @@ index 4c88718..a227eab 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -88,13 +87,14 @@ use codex_protocol::protocol::AskForApproval;
+@@ -88,13 +87,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -8486,11 +8509,14 @@ index 4c88718..a227eab 100644
      author,
 -    version,
 +    name = "codEx",
-+    version = concat!(env!("CARGO_PKG_VERSION"), " (codEx fork)"),
++    version = concat!(
++        env!("CARGO_PKG_VERSION"),
++        " (codEx fork, https://github.com/NIyueeE/codEx)"
++    ),
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -161,7 +161,7 @@ enum Subcommand {
+@@ -161,7 +164,7 @@ enum Subcommand {
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
@@ -8499,7 +8525,7 @@ index 4c88718..a227eab 100644
      Update,
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
-@@ -752,7 +752,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
+@@ -752,7 +755,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -8508,7 +8534,7 @@ index 4c88718..a227eab 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -771,55 +771,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -771,55 +774,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -8572,7 +8598,7 @@ index 4c88718..a227eab 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -831,10 +801,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -831,10 +804,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -8585,7 +8611,7 @@ index 4c88718..a227eab 100644
      }
  }
  
-@@ -1025,7 +995,7 @@ async fn cli_main(
+@@ -1025,7 +998,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -8594,7 +8620,7 @@ index 4c88718..a227eab 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1310,7 +1280,7 @@ async fn cli_main(
+@@ -1310,7 +1283,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -8603,7 +8629,7 @@ index 4c88718..a227eab 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1377,7 +1347,7 @@ async fn cli_main(
+@@ -1377,7 +1350,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -8612,7 +8638,7 @@ index 4c88718..a227eab 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1449,7 +1419,7 @@ async fn cli_main(
+@@ -1449,7 +1422,7 @@ async fn cli_main(
                  root_remote_auth_token_env.as_deref(),
                  "update",
              )?;
@@ -8621,7 +8647,7 @@ index 4c88718..a227eab 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -3282,6 +3252,17 @@ mod tests {
+@@ -3282,6 +3255,23 @@ mod tests {
          assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
      }
  
@@ -8629,7 +8655,13 @@ index 4c88718..a227eab 100644
 +    fn version_string_identifies_codex_fork() {
 +        let command = MultitoolCli::command();
 +        let version = command.get_version().expect("version");
-+        assert_eq!(version, concat!(env!("CARGO_PKG_VERSION"), " (codEx fork)"));
++        assert_eq!(
++            version,
++            concat!(
++                env!("CARGO_PKG_VERSION"),
++                " (codEx fork, https://github.com/NIyueeE/codEx)"
++            )
++        );
 +        assert!(
 +            command.get_about().unwrap().to_string().contains("codEx"),
 +            "about should mention codEx"
@@ -9215,6 +9247,49 @@ index fc3b7f5..ccaa3ad 100644
              disable_paste_burst: cfg.disable_paste_burst.unwrap_or(false),
              analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
              feedback_enabled: cfg
+diff --git a/codex-rs/exec/src/event_processor_with_human_output.rs b/codex-rs/exec/src/event_processor_with_human_output.rs
+index e3463d7..c6f230c 100644
+--- a/codex-rs/exec/src/event_processor_with_human_output.rs
++++ b/codex-rs/exec/src/event_processor_with_human_output.rs
+@@ -215,7 +215,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
+         session_configured_event: &SessionConfiguredEvent,
+     ) {
+         const VERSION: &str = env!("CARGO_PKG_VERSION");
+-        eprintln!("OpenAI Codex v{VERSION}\n--------");
++        eprintln!("codEx v{VERSION}\n--------");
+         for (key, value) in config_summary_entries(config, session_configured_event) {
+             eprintln!("{} {}", format!("{key}:").style(self.bold), value);
+         }
+diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
+index a909da4..fc41544 100644
+--- a/codex-rs/login/src/device_code_auth.rs
++++ b/codex-rs/login/src/device_code_auth.rs
+@@ -149,11 +149,11 @@ async fn poll_for_token(
+ fn device_code_prompt(verification_url: &str, code: &str) -> String {
+     let version = env!("CARGO_PKG_VERSION");
+     format!(
+-        "\nWelcome to Codex [v{ANSI_GRAY}{version}{ANSI_RESET}]\n{ANSI_GRAY}OpenAI's command-line coding agent{ANSI_RESET}\n\
++        "\nWelcome to codEx [v{ANSI_GRAY}{version}{ANSI_RESET}]\n{ANSI_GRAY}a community fork of OpenAI's command-line coding agent{ANSI_RESET}\n\
+ \nFollow these steps to sign in with ChatGPT using device code authorization:\n\
+ \n1. Open this link in your browser and sign in to your account\n   {ANSI_BLUE}{verification_url}{ANSI_RESET}\n\
+ \n2. Enter this one-time code {ANSI_GRAY}(expires in 15 minutes){ANSI_RESET}\n   {ANSI_BLUE}{code}{ANSI_RESET}\n\
+-\n{ANSI_GRAY}Continue only if you started this login in Codex. If a website or another person gave you this code, cancel.{ANSI_RESET}\n",
++\n{ANSI_GRAY}Continue only if you started this login in codEx. If a website or another person gave you this code, cancel.{ANSI_RESET}\n",
+     )
+ }
+ 
+diff --git a/codex-rs/login/src/device_code_auth_tests.rs b/codex-rs/login/src/device_code_auth_tests.rs
+index ba6071b..5ee6210 100644
+--- a/codex-rs/login/src/device_code_auth_tests.rs
++++ b/codex-rs/login/src/device_code_auth_tests.rs
+@@ -5,6 +5,6 @@ fn device_code_prompt_renders_phishing_warning() {
+     let prompt = device_code_prompt("https://example.com/device", "ABCD-EFGH");
+ 
+     assert!(prompt.contains(
+-        "\x1b[90mContinue only if you started this login in Codex. If a website or another person gave you this code, cancel.\x1b[0m"
++        "\x1b[90mContinue only if you started this login in codEx. If a website or another person gave you this code, cancel.\x1b[0m"
+     ));
+ }
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
 index 1e7f8d7..8ceff5f 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
@@ -9241,7 +9316,7 @@ index 8d79afc..2076571 100644
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 2d55735..630ca83 100644
+index 2d55735..1c7fcba 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
 @@ -145,6 +145,32 @@ impl App {
@@ -9261,7 +9336,7 @@ index 2d55735..630ca83 100644
 +                self.chat_widget.maybe_send_next_queued_input();
 +            }
 +            AppEvent::OpenRewindMessagePicker { restore_files } => {
-+                self.show_rewind_message_picker(restore_files);
++                self.show_rewind_message_picker(tui, restore_files);
 +                self.chat_widget.maybe_send_next_queued_input();
 +            }
 +            AppEvent::OpenRewindSnapshotPicker => {
@@ -9436,7 +9511,7 @@ index 51877ce..c998fe8 100644
              self.mark_primary_thread_parent_owned(started.session.thread_id);
          }
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 2ef3387..4f50bb4 100644
+index 2ef3387..115977d 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -5978,13 +5978,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
@@ -9456,7 +9531,7 @@ index 2ef3387..4f50bb4 100644
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -6048,6 +6044,380 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -6048,6 +6044,530 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
@@ -9661,6 +9736,156 @@ index 2ef3387..4f50bb4 100644
 +}
 +
 +#[tokio::test]
++async fn rewind_message_selection_reuses_transcript_overlay() -> Result<()> {
++    let codex_home = tempfile::tempdir()?;
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .build()
++        .await?;
++    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
++    app.config = config.clone();
++    let mut app_server = crate::start_embedded_app_server_for_picker(&config).await?;
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++
++    let thread_id = ThreadId::new();
++    app.chat_widget
++        .handle_thread_session(crate::session_state::ThreadSessionState {
++            thread_id,
++            forked_from_id: None,
++            fork_parent_title: None,
++            thread_name: None,
++            model: "gpt-test".to_string(),
++            model_provider_id: "test-provider".to_string(),
++            service_tier: None,
++            approval_policy: AskForApproval::Never,
++            approvals_reviewer: ApprovalsReviewer::User,
++            permission_profile: PermissionProfile::read_only(),
++            active_permission_profile: None,
++            cwd: test_path_buf("/home/user/project").abs(),
++            runtime_workspace_roots: Vec::new(),
++            instruction_source_paths: Vec::new(),
++            reasoning_effort: None,
++            collaboration_mode: None,
++            personality: None,
++            message_history: None,
++            network_proxy: None,
++            rollout_path: Some(PathBuf::new()),
++        });
++    let user_cell = |text: &str| -> Arc<dyn HistoryCell> {
++        Arc::new(UserHistoryCell {
++            message: text.to_string(),
++            text_elements: Vec::new(),
++            local_image_paths: Vec::new(),
++            remote_image_urls: Vec::new(),
++        }) as Arc<dyn HistoryCell>
++    };
++    app.transcript_cells = vec![
++        user_cell("first question"),
++        plain_line_cell("answer first"),
++        user_cell("second question"),
++        plain_line_cell("answer second"),
++    ];
++
++    // "Conversation only": the transcript overlay opens with the newest user
++    // message highlighted, reusing the old double-Esc backtrack picker.
++    app.show_rewind_message_picker(&mut tui, /*restore_files*/ false);
++    assert!(matches!(&app.overlay, Some(Overlay::Transcript(_))));
++    assert!(app.backtrack.overlay_preview_active);
++    assert_eq!(app.backtrack.nth_user_message, 1);
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::Rewind {
++            restore_files: false
++        }
++    );
++
++    // Esc steps to the older message; Enter confirms the rewind fork without
++    // touching files.
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
++    )
++    .await?;
++    assert_eq!(app.backtrack.nth_user_message, 0);
++    assert!(
++        matches!(&app.overlay, Some(Overlay::Transcript(_))),
++        "overlay stays open while stepping"
++    );
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
++    )
++    .await?;
++    assert!(app.overlay.is_none(), "overlay closes on confirm");
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::EditPrompt,
++        "state resets after confirm"
++    );
++    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    assert!(
++        events.iter().any(|event| matches!(
++            event,
++            AppEvent::ForkSessionForPromptEdit {
++                thread_id: event_thread_id,
++                nth_user_message: 0,
++                prompt,
++            } if *event_thread_id == thread_id && prompt.text == "first question"
++        )),
++        "should fork before the selected message: {events:?}"
++    );
++    assert!(
++        !events
++            .iter()
++            .any(|event| matches!(event, AppEvent::RewindRestoreFiles { .. })),
++        "conversation-only rewind must not restore files"
++    );
++
++    // "Files and conversation": confirming the newest message also restores
++    // the snapshot taken for that turn.
++    app.show_rewind_message_picker(&mut tui, /*restore_files*/ true);
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::Rewind {
++            restore_files: true
++        }
++    );
++    assert_eq!(app.backtrack.nth_user_message, 1);
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
++    )
++    .await?;
++    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    assert!(
++        events.iter().any(|event| matches!(
++            event,
++            AppEvent::ForkSessionForPromptEdit {
++                thread_id: event_thread_id,
++                nth_user_message: 1,
++                prompt,
++            } if *event_thread_id == thread_id && prompt.text == "second question"
++        )),
++        "should fork before the newest message: {events:?}"
++    );
++    assert!(
++        events.iter().any(|event| matches!(
++            event,
++            AppEvent::RewindRestoreFiles { index: 2, prompt }
++                if prompt == "second question"
++        )),
++        "should restore the snapshot for the selected turn: {events:?}"
++    );
++
++    app_server.shutdown().await?;
++    Ok(())
++}
++
++#[tokio::test]
 +async fn rewind_forks_newest_message_completed_after_attach() -> Result<()> {
 +    // A turn completed after the TUI attached renders in the transcript but is
 +    // never appended to the thread channel's turns snapshot. /rewind must still
@@ -9837,7 +10062,7 @@ index 2ef3387..4f50bb4 100644
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -7076,7 +7446,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -7076,7 +7596,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -9845,7 +10070,7 @@ index 2ef3387..4f50bb4 100644
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -7088,7 +7457,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -7088,7 +7607,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -9853,7 +10078,7 @@ index 2ef3387..4f50bb4 100644
      })
      .await;
  }
-@@ -7709,9 +8077,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -7709,9 +8227,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -9863,7 +10088,7 @@ index 2ef3387..4f50bb4 100644
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -7720,8 +8085,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -7720,8 +8235,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -9872,7 +10097,7 @@ index 2ef3387..4f50bb4 100644
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -7756,15 +8119,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -7756,15 +8269,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -9893,7 +10118,7 @@ index 2ef3387..4f50bb4 100644
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -7772,25 +8137,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -7772,25 +8287,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -9924,7 +10149,7 @@ index 2ef3387..4f50bb4 100644
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -7800,33 +8164,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -7800,33 +8314,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -9960,8 +10185,29 @@ index 2ef3387..4f50bb4 100644
  async fn start_config_write_test_app_server(app: &App) -> Result<AppServerSession> {
      Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
  }
+diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+index c560f72..9d86935 100644
+--- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
+@@ -933,14 +933,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+         };
+         let partial = render_overlay(overlay);
+         assert!(partial.contains("Earlier messages are available — scroll up to load them"));
+-        assert!(!partial.contains("OpenAI Codex"));
++        assert!(!partial.contains("codEx"));
+         assert!(!partial.contains("This is a test announcement"));
+         assert!(!partial.contains('%'));
+ 
+         overlay.set_history_state(crate::pager_overlay::TranscriptHistoryState::LoadingOlder);
+         let loading = render_overlay(overlay);
+         assert!(loading.contains("Loading earlier messages..."));
+-        assert!(!loading.contains("OpenAI Codex"));
++        assert!(!loading.contains("codEx"));
+         assert!(!loading.contains('%'));
+     } else {
+         panic!("expected transcript overlay");
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 6eebdf2..2c4a933 100644
+index 6eebdf2..e30fd35 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
 @@ -1,17 +1,10 @@
@@ -9987,7 +10233,67 @@ index 6eebdf2..2c4a933 100644
  //!
  //! The transcript overlay (`Ctrl+T`) renders committed transcript cells plus a render-only live
  //! tail derived from the current in-flight `ChatWidget.active_cell`.
-@@ -168,21 +161,6 @@ impl App {
+@@ -54,7 +47,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
+ pub(crate) const SIDE_EDIT_PREVIOUS_UNAVAILABLE_MESSAGE: &str =
+     "Editing previous prompts is unavailable in side conversations.";
+ 
+-/// Aggregates all backtrack-related state used by the App.
++/// What confirming a highlighted transcript selection should do.
++#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
++pub(crate) enum BacktrackConfirmMode {
++    /// Original backtrack: fork before the prompt and restore it for editing.
++    #[default]
++    EditPrompt,
++    /// `/rewind`: fork before the prompt, optionally restoring workspace files.
++    Rewind { restore_files: bool },
++}
++
++/// Aggregates all backtrack/rewind transcript-selection state used by the App.
+ #[derive(Default)]
+ pub(crate) struct BacktrackState {
+     /// True when Esc has primed backtrack mode in the main view.
+@@ -70,6 +73,8 @@ pub(crate) struct BacktrackState {
+     pub(crate) nth_user_message: usize,
+     /// True when the transcript overlay is showing a backtrack preview.
+     pub(crate) overlay_preview_active: bool,
++    /// How a confirmed selection is applied.
++    pub(crate) confirm_mode: BacktrackConfirmMode,
+ }
+ 
+ /// A user-visible backtrack choice that can be reopened on a source-preserving branch.
+@@ -82,6 +87,31 @@ pub(crate) struct BacktrackSelection {
+ }
+ 
+ impl App {
++    /// Opens the transcript overlay for `/rewind` message selection.
++    ///
++    /// Reuses the original double-Esc backtrack picker: the full conversation
++    /// history is shown with the newest user message highlighted, Esc/Left
++    /// step to older messages, Right steps newer, and Enter confirms. Returns
++    /// `false` when there is nothing to rewind.
++    pub(crate) fn begin_rewind_overlay_selection(
++        &mut self,
++        tui: &mut tui::Tui,
++        restore_files: bool,
++    ) -> bool {
++        if !has_backtrack_target(&self.transcript_cells) {
++            return false;
++        }
++        self.backtrack.confirm_mode = BacktrackConfirmMode::Rewind { restore_files };
++        self.backtrack.base_id = self.chat_widget.thread_id();
++        self.backtrack.overlay_preview_active = true;
++        self.open_transcript_overlay(tui);
++        if let Some(last) = user_count(&self.transcript_cells).checked_sub(1) {
++            self.apply_backtrack_selection_internal(last);
++        }
++        tui.frame_requester().schedule_frame();
++        true
++    }
++
+     /// Route overlay events while the transcript overlay is active.
+     ///
+     /// If backtrack preview is active, Esc / Left steps selection, Right steps forward, Enter
+@@ -168,21 +198,6 @@ impl App {
          }
      }
  
@@ -10009,7 +10315,7 @@ index 6eebdf2..2c4a933 100644
      /// Request a source-preserving branch before the selected prompt.
      pub(crate) fn apply_backtrack_selection(&mut self, selection: BacktrackSelection) {
          if self.chat_widget.side_conversation_active() {
-@@ -249,33 +227,6 @@ impl App {
+@@ -249,33 +264,6 @@ impl App {
          }
      }
  
@@ -10043,7 +10349,54 @@ index 6eebdf2..2c4a933 100644
      /// When overlay is already open, begin preview mode and select latest user message.
      fn begin_overlay_backtrack_preview(&mut self, tui: &mut tui::Tui) {
          if !has_backtrack_target(&self.transcript_cells) {
-@@ -443,26 +394,24 @@ impl App {
+@@ -408,15 +396,43 @@ impl App {
+         Ok(())
+     }
+ 
+-    /// Handle Enter in overlay backtrack preview: confirm selection and reset state.
++    /// Handle Enter in overlay preview: confirm selection and reset state.
++    ///
++    /// In backtrack mode this forks before the selected prompt and restores it
++    /// for editing; in `/rewind` mode it forks before the prompt and optionally
++    /// restores workspace files (mirroring the old `/rewind` message picker
++    /// actions).
+     fn overlay_confirm_backtrack(&mut self, tui: &mut tui::Tui) {
+         let nth_user_message = self.backtrack.nth_user_message;
+         let selection = self.backtrack_selection(nth_user_message);
++        let mode = self.backtrack.confirm_mode;
+         self.close_transcript_overlay(tui);
+-        if let Some(selection) = selection {
+-            self.apply_backtrack_selection(selection);
++        let Some(selection) = selection else {
+             tui.frame_requester().schedule_frame();
++            return;
++        };
++        match mode {
++            BacktrackConfirmMode::EditPrompt => self.apply_backtrack_selection(selection),
++            BacktrackConfirmMode::Rewind { restore_files } => {
++                // Snapshots are numbered from 1 (one per submitted user
++                // message, taken before its turn), so the snapshot for message
++                // `nth` (0-based transcript ordinal) is `nth + 1`.
++                let index = nth_user_message as u64 + 1;
++                let prompt_text = selection.prompt.text.clone();
++                self.app_event_tx.send(AppEvent::ForkSessionForPromptEdit {
++                    thread_id: selection.thread_id,
++                    nth_user_message: selection.nth_user_message,
++                    prompt: selection.prompt,
++                });
++                if restore_files {
++                    self.app_event_tx.send(AppEvent::RewindRestoreFiles {
++                        index,
++                        prompt: prompt_text,
++                    });
++                }
++            }
+         }
++        tui.frame_requester().schedule_frame();
+     }
+ 
+     /// Handle Esc in overlay backtrack preview: step selection if armed, else forward.
+@@ -443,26 +459,25 @@ impl App {
          Ok(())
      }
  
@@ -10062,6 +10415,7 @@ index 6eebdf2..2c4a933 100644
          self.backtrack.nth_user_message = usize::MAX;
 -        // In case a hint is somehow still visible (e.g., race with overlay open/close).
 -        self.chat_widget.clear_esc_backtrack_hint();
++        self.backtrack.confirm_mode = BacktrackConfirmMode::EditPrompt;
      }
  
      fn backtrack_selection(&self, nth_user_message: usize) -> Option<BacktrackSelection> {
@@ -10079,7 +10433,7 @@ index 6eebdf2..2c4a933 100644
              return None;
          }
  
-@@ -480,7 +429,7 @@ impl App {
+@@ -480,7 +495,7 @@ impl App {
              .collect();
  
          Some(BacktrackSelection {
@@ -10088,13 +10442,15 @@ index 6eebdf2..2c4a933 100644
              nth_user_message,
              prompt: UserMessage {
                  text: selected.message.clone(),
-@@ -491,6 +440,21 @@ impl App {
+@@ -491,6 +506,23 @@ impl App {
              },
          })
      }
 +
 +    /// Lists rewindable user messages with their transcript ordinals, most
-+    /// recent first. Used by the `/rewind` conversation picker.
++    /// recent first. Tests use this to mirror what the `/rewind` transcript
++    /// picker offers (the picker itself highlights cells directly).
++    #[cfg(test)]
 +    pub(crate) fn rewind_message_selections(&self) -> Vec<(usize, BacktrackSelection)> {
 +        let count = user_count(&self.transcript_cells);
 +        (0..count)
@@ -12155,6 +12511,32 @@ index f1affa8..abe8bbb 100644
          ]
      }
  
+diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
+index 03df014..05c9723 100644
+--- a/codex-rs/tui/src/history_cell/session.rs
++++ b/codex-rs/tui/src/history_cell/session.rs
+@@ -317,10 +317,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
+ 
+         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
+ 
+-        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
++        // Title line rendered inside the box: ">_ codEx (vX)"
+         let title_spans: Vec<Span<'static>> = vec![
+             Span::from(">_ ").dim(),
+-            Span::from("OpenAI Codex").bold(),
++            Span::from("codEx").bold(),
+             Span::from(" ").dim(),
+             Span::from(format!("(v{})", self.version)).dim(),
+         ];
+@@ -391,7 +391,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
+ 
+     fn raw_lines(&self) -> Vec<Line<'static>> {
+         let mut lines = vec![
+-            Line::from(format!("OpenAI Codex (v{})", self.version)),
++            Line::from(format!("codEx (v{})", self.version)),
+             Line::from(format!(
+                 "model: {}{}",
+                 self.model,
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
 deleted file mode 100644
 index a9dd9ca..0000000
@@ -12172,8 +12554,81 @@ index a9dd9ca..0000000
 -│ See full release notes:                         │
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
+index 2baf486..f792c3f 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
+@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+ expression: "render_lines(&lines).join(\"\\n\")"
+ ---
+ ╭──────────────────────────────────────────╮
+-│ >_ OpenAI Codex (vtest)                  │
++│ >_ codEx (vtest)                         │
+ │                                          │
+ │ model:       gpt-5.6-sol xhigh   fast  … │
+ │ directory:   project                     │
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
+index 51d3652..f23bfd0 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
+@@ -6,7 +6,7 @@ Buffer {
+     area: Rect { x: 0, y: 0, width: 42, height: 6 },
+     content: [
+         "╭────────────────────────────────────────╮",
+-        "│ >_ OpenAI Codex (vtest)                │",
++        "│ >_ codEx (vtest)                       │",
+         "│                                        │",
+         "│ model:     gpt-5   /model to change    │",
+         "│ directory: …ﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project │", // hidden by multi-width symbols: [(15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " ")]
+@@ -15,7 +15,7 @@ Buffer {
+     styles: [
+         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 5, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+-        x: 17, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 10, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 13, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+         x: 18, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 21, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
+index 0fb1727..1b328bb 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
+@@ -6,7 +6,7 @@ Buffer {
+     area: Rect { x: 0, y: 0, width: 80, height: 6 },
+     content: [
+         "╭───────────────────────────────────────────╮                                   ",
+-        "│ >_ OpenAI Codex (vtest)                   │                                   ",
++        "│ >_ codEx (vtest)                          │                                   ",
+         "│                                           │                                   ",
+         "│ model:     gpt-5-ｶﾞ-ﾊﾟ   /model to change │                                   ", // hidden by multi-width symbols: [(20, " "), (23, " ")]
+         "│ directory: project                        │                                   ",
+@@ -17,7 +17,7 @@ Buffer {
+         x: 45, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+         x: 0, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 5, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
+-        x: 17, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 10, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 45, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+         x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+         x: 45, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
+index 04f6458..3669f3c 100644
+--- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
++++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
+@@ -1,9 +1,9 @@
+ ---
+-source: tui/src/history_cell.rs
++source: tui/src/history_cell/tests.rs
+ expression: rendered
+ ---
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (vtest)               │
++│ >_ codEx (vtest)                      │
+ │                                       │
+ │ model:       gpt-5   /model to change │
+ │ directory:   /tmp/project             │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..834b366 100644
+index ad0fc4b..fa543cb 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -12184,7 +12639,7 @@ index ad0fc4b..834b366 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ OpenAI Codex (v0.147.0)          │
++│ >_ codEx (v0.147.0)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │
@@ -12490,22 +12945,37 @@ index 61ff242..0000000
 -        );
 -    }
 -}
+diff --git a/codex-rs/tui/src/onboarding/welcome.rs b/codex-rs/tui/src/onboarding/welcome.rs
+index 880e587..4303521 100644
+--- a/codex-rs/tui/src/onboarding/welcome.rs
++++ b/codex-rs/tui/src/onboarding/welcome.rs
+@@ -94,8 +94,8 @@ impl WidgetRef for &WelcomeWidget {
+         lines.push(Line::from(vec![
+             "  ".into(),
+             "Welcome to ".into(),
+-            "Codex".bold(),
+-            ", OpenAI's command-line coding agent".into(),
++            "codEx".bold(),
++            ", a community fork of OpenAI's command-line coding agent".into(),
+         ]));
+ 
+         Paragraph::new(lines)
 diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
 new file mode 100644
-index 0000000..56b65da
+index 0000000..995e5e9
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/actions.rs
-@@ -0,0 +1,240 @@
+@@ -0,0 +1,172 @@
 +//! `/rewind` UI actions: scope picker, message picker, snapshot picker, and
 +//! file restoration. The file snapshot engine lives in [`super`].
 +
 +use crate::app::App;
-+use crate::app_backtrack::BacktrackSelection;
 +use crate::app_event::AppEvent;
 +use crate::bottom_pane::SelectionItem;
 +use crate::bottom_pane::SelectionViewParams;
 +use crate::bottom_pane::popup_consts::standard_popup_hint_line;
 +use crate::rewind;
++use crate::tui;
 +
 +const REWIND_TITLE: &str = "Rewind";
 +const NO_MESSAGES_TO_REWIND: &str = "No previous messages to rewind.";
@@ -12519,63 +12989,13 @@ index 0000000..56b65da
 +            .show_selection_view(rewind_scope_selection_params());
 +    }
 +
-+    /// Shows the searchable message picker for conversation rollback.
-+    pub(crate) fn show_rewind_message_picker(&mut self, restore_files: bool) {
-+        let selections = self.rewind_message_selections();
-+        if selections.is_empty() {
++    /// Opens the transcript overlay for conversation rollback, reusing the
++    /// original double-Esc backtrack picker instead of a custom list.
++    pub(crate) fn show_rewind_message_picker(&mut self, tui: &mut tui::Tui, restore_files: bool) {
++        if !self.begin_rewind_overlay_selection(tui, restore_files) {
 +            self.chat_widget
 +                .add_info_message(NO_MESSAGES_TO_REWIND.to_string(), /*hint*/ None);
-+            return;
 +        }
-+
-+        let items = selections
-+            .into_iter()
-+            .map(|(nth, selection)| {
-+                // Snapshots are numbered from 1 (one per submitted user
-+                // message, taken before its turn), so the snapshot for message
-+                // `nth` (0-based transcript ordinal) is `nth + 1`.
-+                let index = nth as u64 + 1;
-+                let prompt_text = selection.prompt.text.clone();
-+                let thread_id = selection.thread_id;
-+                let prompt = selection.prompt.clone();
-+                SelectionItem {
-+                    name: message_one_line(&selection),
-+                    description: Some(format!("Message {}", nth + 1)),
-+                    search_value: Some(selection.prompt.text),
-+                    actions: vec![Box::new(move |tx| {
-+                        tx.send(AppEvent::ForkSessionForPromptEdit {
-+                            thread_id,
-+                            nth_user_message: nth,
-+                            prompt: prompt.clone(),
-+                        });
-+                        if restore_files {
-+                            tx.send(AppEvent::RewindRestoreFiles {
-+                                index,
-+                                prompt: prompt_text.clone(),
-+                            });
-+                        }
-+                    })],
-+                    dismiss_on_select: true,
-+                    ..Default::default()
-+                }
-+            })
-+            .collect();
-+
-+        let subtitle = if restore_files {
-+            "Pick a message to rewind to; workspace files are restored to that point"
-+        } else {
-+            "Pick a message to rewind the conversation to"
-+        };
-+        self.chat_widget.show_selection_view(SelectionViewParams {
-+            view_id: Some("rewind_messages"),
-+            title: Some(REWIND_TITLE.to_string()),
-+            subtitle: Some(subtitle.to_string()),
-+            footer_hint: Some(standard_popup_hint_line()),
-+            is_searchable: true,
-+            search_placeholder: Some("Search messages".to_string()),
-+            items,
-+            ..Default::default()
-+        });
 +    }
 +
 +    /// Shows the snapshot picker for file-only rollback.
@@ -12710,24 +13130,6 @@ index 0000000..56b65da
 +        ],
 +        ..Default::default()
 +    }
-+}
-+
-+fn message_one_line(selection: &BacktrackSelection) -> String {
-+    let first_line = selection
-+        .prompt
-+        .text
-+        .lines()
-+        .next()
-+        .unwrap_or_default()
-+        .trim();
-+    if first_line.is_empty() {
-+        return "(attachment)".to_string();
-+    }
-+    let mut name = first_line.chars().take(90).collect::<String>();
-+    if first_line.chars().count() > 90 {
-+        name.push('…');
-+    }
-+    name
 +}
 +
 +fn snapshot_label(snapshot: &rewind::RewindSnapshotInfo) -> String {
@@ -13352,6 +13754,38 @@ index 07cb2c1..2004690 100644
              | SlashCommand::Init
              | SlashCommand::Compact
              | SlashCommand::Keymap
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
+index 98d6015..5ca1295 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
+@@ -1,9 +1,9 @@
+ ---
+-source: tui/src/app.rs
++source: tui/src/app/tests.rs
+ expression: rendered
+ ---
+ ╭─────────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)                │
++│ >_ codEx (v<VERSION>)                       │
+ │                                             │
+ │ model:     gpt-test high   /model to change │
+ │ directory: /tmp/project                     │
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
+index 08afd02..d545154 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
+@@ -1,9 +1,9 @@
+ ---
+-source: tui/src/app.rs
++source: tui/src/app/tests.rs
+ expression: rendered
+ ---
+ ╭────────────────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)                       │
++│ >_ codEx (v<VERSION>)                              │
+ │                                                    │
+ │ model:     gpt-5.4 xhigh   fast   /model to change │
+ │ directory: /tmp/project                            │
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__side_backtrack_rejection_reports_unavailable_message.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__side_backtrack_rejection_reports_unavailable_message.snap
 deleted file mode 100644
 index 841e0c0..0000000
@@ -13510,8 +13944,21 @@ index 4ccc5e4..f41b33f 100644
 +  Chat         - Interrupt Turn             unbound
  
    left/right group · enter edit shortcut · * custom · - unbound · esc close
+diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
+index 382a9e3..7a36643 100644
+--- a/codex-rs/tui/src/status/card.rs
++++ b/codex-rs/tui/src/status/card.rs
+@@ -708,7 +708,7 @@ impl HistoryCell for StatusHistoryCell {
+         let mut lines: Vec<Line<'static>> = Vec::new();
+         lines.push(Line::from(vec![
+             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
+-            Span::from("OpenAI Codex").bold(),
++            Span::from("codEx").bold(),
+             Span::from(" ").dim(),
+             Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
+         ]));
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
-index c7d89b1..e31d5ea 100644
+index c7d89b1..f59469b 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13519,12 +13966,12 @@ index c7d89b1..e31d5ea 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
-index c1636b6..e979851 100644
+index c1636b6..c1f778c 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13532,12 +13979,12 @@ index c1636b6..e979851 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
-index 765ad8d..8cd4230 100644
+index 765ad8d..d93c4be 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13545,12 +13992,12 @@ index 765ad8d..8cd4230 100644
  
  ╭───────────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                         │
-+│  >_ OpenAI Codex (v0.147.0)                                                       │
++│  >_ codEx (v0.147.0)                                                              │
  │                                                                                   │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date                     │
  │ information on rate limits and credits                                            │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
-index 1525751..b8f0fa4 100644
+index 1525751..9e4cf83 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13558,12 +14005,12 @@ index 1525751..b8f0fa4 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
-index 7a4f58a..3efc809 100644
+index 7a4f58a..e4fbccd 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13571,12 +14018,12 @@ index 7a4f58a..3efc809 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
-index 96b2ed1..8ba0ae6 100644
+index 96b2ed1..a3434ac 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13584,12 +14031,12 @@ index 96b2ed1..8ba0ae6 100644
  
  ╭───────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                 │
-+│  >_ OpenAI Codex (v0.147.0)                                               │
++│  >_ codEx (v0.147.0)                                                      │
  │                                                                           │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
  │ information on rate limits and credits                                    │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
-index 4604b26..924f079 100644
+index 4604b26..1bba72d 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13597,12 +14044,12 @@ index 4604b26..924f079 100644
  
  ╭───────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                             │
-+│  >_ OpenAI Codex (v0.147.0)                                           │
++│  >_ codEx (v0.147.0)                                                  │
  │                                                                       │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date         │
  │ information on rate limits and credits                                │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
-index c739d55..e70f108 100644
+index c739d55..eb445ae 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13610,12 +14057,12 @@ index c739d55..e70f108 100644
  
  ╭───────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                             │
-+│  >_ OpenAI Codex (v0.147.0)                                           │
++│  >_ codEx (v0.147.0)                                                  │
  │                                                                       │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date         │
  │ information on rate limits and credits                                │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
-index 0aba51f..10957de 100644
+index 0aba51f..b4d39d0 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13623,12 +14070,12 @@ index 0aba51f..10957de 100644
  
  ╭──────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                │
-+│  >_ OpenAI Codex (v0.147.0)                                              │
++│  >_ codEx (v0.147.0)                                                     │
  │                                                                          │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date            │
  │ information on rate limits and credits                                   │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
-index 533be27..1c4b322 100644
+index 533be27..0503736 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13636,12 +14083,12 @@ index 533be27..1c4b322 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
-index 631982b..c368ac5 100644
+index 631982b..acafc39 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13649,12 +14096,12 @@ index 631982b..c368ac5 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
-index 8facd56..cf78a16 100644
+index 8facd56..57444c8 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13662,12 +14109,12 @@ index 8facd56..cf78a16 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
-index d46a483..01e303f 100644
+index d46a483..9f75390 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13675,12 +14122,12 @@ index d46a483..01e303f 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
-index d46a483..01e303f 100644
+index d46a483..9f75390 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13688,12 +14135,12 @@ index d46a483..01e303f 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
-index 17442d7..3e0f83a 100644
+index 17442d7..0a275be 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13701,12 +14148,12 @@ index 17442d7..3e0f83a 100644
  
  ╭────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)              │
-+│  >_ OpenAI Codex (v0.147.0)            │
++│  >_ codEx (v0.147.0)                   │
  │                                        │
  │ Visit                                  │
  │ https://chatgpt.com/codex/settings/usa │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
-index 6b28b53..bf8ea8f 100644
+index 6b28b53..37b0a0c 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13714,12 +14161,12 @@ index 6b28b53..bf8ea8f 100644
  
  ╭────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                          │
-+│  >_ OpenAI Codex (v0.147.0)                                        │
++│  >_ codEx (v0.147.0)                                               │
  │                                                                    │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date      │
  │ information on rate limits and credits                             │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
-index 9683bee..ca09c25 100644
+index 9683bee..a71e350 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13727,12 +14174,12 @@ index 9683bee..ca09c25 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ OpenAI Codex (v0.147.0)                                                 │
++│  >_ codEx (v0.147.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
-index 6b6fad6..fec2013 100644
+index 6b6fad6..7de010f 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13740,12 +14187,12 @@ index 6b6fad6..fec2013 100644
  
  ╭──────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                    │
-+│  >_ OpenAI Codex (v0.147.0)                                                  │
++│  >_ codEx (v0.147.0)                                                         │
  │                                                                              │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date                │
  │ information on rate limits and credits                                       │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
-index cf6fa2c..7934254 100644
+index cf6fa2c..9d3022f 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -13753,12 +14200,12 @@ index cf6fa2c..7934254 100644
  
  ╭────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                  │
-+│  >_ OpenAI Codex (v0.147.0)                │
++│  >_ codEx (v0.147.0)                       │
  │                                            │
  │ Visit                                      │
  │ https://chatgpt.com/codex/settings/usage   │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
-index e2f12c8..d65b84b 100644
+index e2f12c8..d61183c 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
 @@ -7,7 +7,7 @@ before:
@@ -13766,7 +14213,7 @@ index e2f12c8..d65b84b 100644
  
  ╭──────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                │
-+│  >_ OpenAI Codex (v0.147.0)                                              │
++│  >_ codEx (v0.147.0)                                                     │
  │                                                                          │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date            │
  │ information on rate limits and credits                                   │
@@ -13775,7 +14222,7 @@ index e2f12c8..d65b84b 100644
  
  ╭───────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                 │
-+│  >_ OpenAI Codex (v0.147.0)                                               │
++│  >_ codEx (v0.147.0)                                                      │
  │                                                                           │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
  │ information on rate limits and credits                                    │
@@ -13816,7 +14263,7 @@ index 6e4de3b..9221206 100644
              spans.push(format!("({pretty_elapsed})").dim());
          }
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 79e74f5..26e090d 100644
+index 79e74f5..0ba6e96 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
 @@ -3,9 +3,6 @@ use codex_protocol::account::PlanType;
@@ -13828,6 +14275,15 @@ index 79e74f5..26e090d 100644
 -
  const IS_MACOS: bool = cfg!(target_os = "macos");
  const IS_WINDOWS: bool = cfg!(target_os = "windows");
+ 
+@@ -13,7 +10,7 @@ const APP_TOOLTIP: &str = "Try the **Desktop app**. Run 'codex app' or visit htt
+ const FAST_TOOLTIP: &str =
+     "*New* Use **/fast** to enable our fastest inference with increased plan usage.";
+ const OTHER_TOOLTIP: &str = "*New* Build faster with the **Desktop app**. Run 'codex app' or visit https://chatgpt.com/codex?app-landing-page=true";
+-const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with Codex.";
++const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with codEx.";
+ const FREE_GO_TOOLTIP: &str =
+     "*New* For a limited time, Codex is included in your plan for free – let’s build together.";
  
 @@ -52,10 +49,6 @@ fn experimental_tooltips() -> Vec<&'static str> {
  pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<String> {
@@ -14600,6 +15056,19 @@ index 948551a..a8dc0d9 100644
          .headers(default_headers())
          .send()
          .await?
+diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
+index c820024..c8d63d2 100644
+--- a/codex-rs/tui/tests/suite/focus_palette.rs
++++ b/codex-rs/tui/tests/suite/focus_palette.rs
+@@ -125,7 +125,7 @@ impl PtyCodex {
+             self.read_output(Duration::from_millis(/*millis*/ 50))?;
+             self.answer_startup_queries()?;
+ 
+-            if self.palette_answered && self.screen_contains("OpenAI Codex") {
++            if self.palette_answered && self.screen_contains("codEx") {
+                 return Ok(());
+             }
+ 
 diff --git a/codex-rs/utils/cli/src/fork.rs b/codex-rs/utils/cli/src/fork.rs
 new file mode 100644
 index 0000000..6b69db1
