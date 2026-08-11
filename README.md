@@ -11,6 +11,27 @@ codex tree from an upstream tag. The actual code lives upstream; `BASE_TAG`
 pins the upstream tag the current patch queue applies to (currently
 `rust-v0.147.0`).
 
+## Installing from a release
+
+Standalone Linux users can install or update codEx with the installer:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+```
+
+The installer resolves the latest fork release, downloads
+`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
+checksum before touching anything, and installs into the standalone layout
+under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
+bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
+afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
+
+Environment overrides:
+
+- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
+- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
+- `CODEX_HOME` - codex home (default: `~/.codex`)
+
 ## What changes versus upstream
 
 ### `/rewind` - roll back conversation and workspace files
@@ -144,27 +165,6 @@ bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and a
 cd tree
 cargo build --release --bin codex
 ```
-
-## Installing from a release
-
-Standalone Linux users can install or update codEx with the installer:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
-```
-
-The installer resolves the latest fork release, downloads
-`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
-checksum before touching anything, and installs into the standalone layout
-under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
-bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
-afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
-
-Environment overrides:
-
-- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
-- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
-- `CODEX_HOME` - codex home (default: `~/.codex`)
 
 ## Upgrading to a new upstream tag
 
