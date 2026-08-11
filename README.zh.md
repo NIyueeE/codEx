@@ -149,8 +149,8 @@ fork。它只保存增量:
 | `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.147.0`) |
 | `patches/` | 包含所有分支改动的 `git format-patch` 补丁系列 |
 | `scripts/bootstrap.sh` | 浅克隆 `openai/codex@BASE_TAG` 并 `git am` 应用补丁 |
-| `scripts/update.sh` | 升级到新的上游 tag(应用、解决冲突、重新生成) |
-| `scripts/gen-patches.sh` | 从 bootstrap 树的 git 历史重新生成 `patches/` |
+| `scripts/update.sh` | 升级到新的上游 tag(应用补丁、与 CI 相同的检查、重新生成) |
+| `scripts/gen-patches.sh` | 在 bootstrap 树内将 `patches/` 重新生成为模块化系列(每个提交一个补丁) |
 
 `bootstrap.sh` + `git am` 会生成完整、可构建的 codEx 代码树;CI 和 release
 工作流在构建前正是这么做的。参见下面的
@@ -163,7 +163,7 @@ fork。它只保存增量:
 
 ```sh
 bash scripts/bootstrap.sh        # 将 openai/codex@BASE_TAG 克隆到 tree/ 并应用补丁
-cd tree
+cd tree/codex-rs
 cargo build --release --bin codex
 ```
 
@@ -180,12 +180,15 @@ cargo build --release --bin codex
 bash scripts/update.sh rust-v0.148.0
 ```
 
-`update.sh` 克隆新 tag,用 `git am --3way` 应用补丁队列,构建并测试,然后
-重新生成 `patches/` 并更新 `BASE_TAG`。如果补丁冲突,在 `update-work/` 中
-解决(`git am --continue`),然后用 `bash scripts/gen-patches.sh rust-v0.148.0`
-重新生成。补丁队列从不改变版本号;分支 release 保持上游 semver,并以
-`rust-v<version>` 打 tag(例如 `rust-v0.148.0`),release 工作流发布
-`codex-<target>.tar.gz` + sha256 校验和。
+`update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
+然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
+以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
+均可(`rust-v0.148.0` 或 `0.148.0`)。如果补丁冲突,在 `update-work/` 中解决
+(`git am --continue`),然后在 bootstrap 树内用
+`bash scripts/gen-patches.sh rust-v0.148.0` 重新生成(精简仓库没有上游历史,
+脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.148.0`),release 工作流
+发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证
 

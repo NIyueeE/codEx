@@ -27,10 +27,14 @@ cargo build --release --bin codex   # build the CLI
 cargo fmt --check                   # rustfmt check
 ```
 
-- `bash scripts/update.sh <tag>` — upgrade to a new upstream tag: applies the
-  queue with `git am --3way`, tests, then regenerates `patches/` and `BASE_TAG`
-- `bash scripts/gen-patches.sh [tag]` — regenerate `patches/` from the tree's
-  git history
+- `bash scripts/update.sh <tag>` — upgrade to a new upstream tag (`rust-v0.148.0`
+  or `0.148.0` both work): clones into `update-work/`, applies the queue with
+  `git am --3way`, runs the CI-equivalent checks (build, fmt, nextest) from
+  `codex-rs/`, then regenerates `patches/` and `BASE_TAG`
+- `bash scripts/gen-patches.sh <base-tag> [output-dir]` — regenerate `patches/`
+  as a modular one-patch-per-commit series; run it from inside a bootstrapped
+  tree (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
+  It refuses to run in the slim repo, whose history has no upstream base commit
 - `pre-commit install` — local hooks (codespell, README ASCII check,
   patch-queue sanity check, `cargo fmt --check`)
 

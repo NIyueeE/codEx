@@ -170,8 +170,8 @@ stores only the delta:
 | `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
 | `patches/` | `git format-patch` series with every fork change |
 | `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
-| `scripts/update.sh` | upgrade to a new upstream tag (apply, resolve conflicts, regen) |
-| `scripts/gen-patches.sh` | regenerate `patches/` from the bootstrapped tree's git history |
+| `scripts/update.sh` | upgrade to a new upstream tag (apply, CI-equivalent checks, regen) |
+| `scripts/gen-patches.sh` | regenerate `patches/` as a modular series (one patch per commit) from inside a bootstrapped tree |
 
 `bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 and release workflows do exactly that before building. See
@@ -185,7 +185,7 @@ bootstrapped tree:
 
 ```sh
 bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
-cd tree
+cd tree/codex-rs
 cargo build --release --bin codex
 ```
 
@@ -203,13 +203,18 @@ cargo build --release --bin codex
 bash scripts/update.sh rust-v0.148.0
 ```
 
-`update.sh` clones the new tag, applies the patch queue with `git am --3way`,
-builds and tests, then regenerates `patches/` and updates `BASE_TAG`. If a
-patch conflicts, resolve it in `update-work/` (`git am --continue`), then
-regenerate with `bash scripts/gen-patches.sh rust-v0.148.0`. The patch queue
-never changes version numbers; fork releases keep the upstream semver and are
-tagged `rust-v<version>` (for example `rust-v0.148.0`), and the release
-workflow publishes `codex-<target>.tar.gz` + sha256 checksums.
+`update.sh` clones the new tag into `update-work/`, applies the patch queue
+with `git am --3way`, then runs the same checks as CI (build, `cargo fmt
+--check`, and the `codex-tui`/`codex-core` nextest runs) from the `codex-rs`
+workspace. It accepts the tag with or without the `rust-v` prefix
+(`rust-v0.148.0` or `0.148.0`). If a patch conflicts, resolve it in
+`update-work/` (`git am --continue`), then regenerate with
+`bash scripts/gen-patches.sh rust-v0.148.0` from inside the bootstrapped tree
+(the slim repo has no upstream history, so the script refuses to run there).
+The patch queue never changes version numbers; fork releases keep the
+upstream semver and are tagged `rust-v<version>` (for example
+`rust-v0.148.0`), and the release workflow publishes
+`codex-<target>.tar.gz` + sha256 checksums.
 
 ## License
 
