@@ -51,8 +51,8 @@ file changes a turn made, without needing git.
 
 Both conversation scopes reuse the transcript picker (the same full-history
 view the old double-Esc backtrack used): the newest user message starts
-highlighted, **Esc/←** step to older messages, **→** steps newer, and **Enter**
-confirms the rewind.
+highlighted, **Esc** or **Left** steps to older messages, **Right** steps
+newer, and **Enter** confirms the rewind.
 
 **How snapshots work** (pure files, no git involved):
 

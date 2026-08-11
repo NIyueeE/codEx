@@ -1,4 +1,4 @@
-From 17301449494464358fb074b78fec96173d578194 Mon Sep 17 00:00:00 2001
+From 531df74471b3d148cd6d6bf46e65c399733c4d31 Mon Sep 17 00:00:00 2001
 From: niyue <n1yu3@proton.me>
 Date: Tue, 11 Aug 2026 11:18:05 +0800
 Subject: codEx fork: Linux-only release, /rewind, double-Esc interrupt,
@@ -6836,7 +6836,7 @@ index 0000000..21475d8
 @@ -0,0 +1 @@
 +rust-v0.147.0
 diff --git a/README.md b/README.md
-index 06b02fc..651164f 100644
+index 06b02fc..c0feede 100644
 --- a/README.md
 +++ b/README.md
 @@ -1,81 +1,194 @@
@@ -6928,8 +6928,8 @@ index 06b02fc..651164f 100644
 -Then simply run `codex` to get started.
 +Both conversation scopes reuse the transcript picker (the same full-history
 +view the old double-Esc backtrack used): the newest user message starts
-+highlighted, **Esc/←** step to older messages, **→** steps newer, and **Enter**
-+confirms the rewind.
++highlighted, **Esc** or **Left** steps to older messages, **Right** steps
++newer, and **Enter** confirms the rewind.
  
 -<details>
 -<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
