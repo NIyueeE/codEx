@@ -1,0 +1,81 @@
+# Pre-commit hooks for the codEx slim patch-queue repository.
+#
+# These are lightweight local checks; the blocking CI remains the enforced
+# gate and still runs the same checks. Install with:
+#
+#   pip install pre-commit
+#   pre-commit install
+#
+# The cargo-fmt hook only runs when a bootstrapped tree exists (tree/), which
+# is where the actual Rust sources live.
+
+repos:
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.3
+    hooks:
+      - id: codespell
+        args: [-I, .codespellignore]
+
+  - repo: local
+    hooks:
+      - id: readme-asciicheck
+        name: README ASCII check
+        description: Mirrors the CI asciicheck rule (ASCII plus U+2728)
+        entry: python3
+        language: system
+        files: ^README\.md$
+        args:
+          - -c
+          - |
+            import sys
+            path = "README.md"
+            allowed = {0x2728}
+            data = open(path, encoding="utf-8").read()
+            bad = sorted({c for c in data if ord(c) > 127 and ord(c) not in allowed})
+            if bad:
+                print(f"{path}: non-ASCII characters: {[hex(ord(c)) for c in bad]}")
+                sys.exit(1)
+
+      - id: patch-queue-check
+        name: Patch queue sanity check
+        description: Validates patches/ numbering, naming, and BASE_TAG
+        entry: python3
+        language: system
+        files: ^(patches/.*\.patch|BASE_TAG)$
+        args:
+          - -c
+          - |
+            import pathlib, re, sys
+            patches = sorted(pathlib.Path("patches").glob("*.patch"))
+            if not patches:
+                print("no patches found under patches/")
+                sys.exit(1)
+            for i, p in enumerate(patches, 1):
+                if not p.name.startswith(f"{i:04d}-"):
+                    print(f"patch numbering gap or bad name: {p.name} (expected {i:04d}-...)")
+                    sys.exit(1)
+                if not re.fullmatch(r"[0-9]{4}-[a-zA-Z0-9-]+\.patch", p.name):
+                    print(f"patch name must match NNNN-lowercase-hyphen.patch: {p.name}")
+                    sys.exit(1)
+                if p.stat().st_size == 0:
+                    print(f"patch is empty: {p.name}")
+                    sys.exit(1)
+            base = pathlib.Path("BASE_TAG")
+            if not base.is_file() or not base.read_text().strip():
+                print("BASE_TAG is missing or empty")
+                sys.exit(1)
+            print(f"patch queue OK: {len(patches)} patches, base {base.read_text().strip()}")
+
+      - id: cargo-fmt
+        name: cargo fmt --check (bootstrapped tree)
+        description: Runs rustfmt when a bootstrapped tree exists under tree/
+        entry: bash
+        language: system
+        pass_filenames: false
+        always_run: true
+        args:
+          - -c
+          - |
+            if [ -d tree/codex-rs ]; then
+              cd tree/codex-rs && cargo fmt --check
+            fi
