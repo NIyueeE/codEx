@@ -1,0 +1,259 @@
+From 40c75575d4be58ddcf8c1394ab96069401986bf0 Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Tue, 11 Aug 2026 10:09:53 +0800
+Subject: install: standalone installer script
+
+Adds a POSIX-sh installer modeled on the official Codex install script:
+it resolves the latest codEx fork release (or CODEX_RELEASE), downloads
+codex-<target>.tar.gz plus its published sha256 checksum, verifies the
+checksum before touching anything, and installs into the standalone
+layout that codex update recognizes (~/.codex/packages/standalone/
+releases/<version>-<target>/ with codex-resources/bwrap), with a codex
+symlink in CODEX_INSTALL_DIR. Installation is atomic via a staging
+directory and a per-install lock; unsupported platforms and checksum
+mismatches are refused. README gains an "Installing from a release"
+section.
+---
+ README.md  |  21 ++++++
+ install.sh | 197 +++++++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 218 insertions(+)
+ create mode 100755 install.sh
+
+diff --git a/README.md b/README.md
+index c518fa7..da566f7 100644
+--- a/README.md
++++ b/README.md
+@@ -145,6 +145,27 @@ cd tree
+ cargo build --release --bin codex
+ ```
+ 
++## Installing from a release
++
++Standalone Linux users can install or update codEx with the installer:
++
++```sh
++curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
++```
++
++The installer resolves the latest fork release, downloads
++`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
++checksum before touching anything, and installs into the standalone layout
++under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
++bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
++afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
++
++Environment overrides:
++
++- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
++- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
++- `CODEX_HOME` - codex home (default: `~/.codex`)
++
+ ## Upgrading to a new upstream tag
+ 
+ ```sh
+diff --git a/install.sh b/install.sh
+new file mode 100755
+index 0000000..c56fcf3
+--- /dev/null
++++ b/install.sh
+@@ -0,0 +1,197 @@
++#!/bin/sh
++#
++# codEx standalone installer
++#
++# Downloads the latest codEx fork release from GitHub, verifies its sha256
++# checksum, and installs it into the standalone layout that `codex update`
++# recognizes:
++#
++#   $CODEX_HOME/packages/standalone/releases/<version>-<target>/
++#     codex
++#     codex-resources/bwrap
++#
++# A `codex` symlink is placed in $CODEX_INSTALL_DIR (default ~/.local/bin).
++#
++# Usage:
++#   curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
++#
++# Environment:
++#   CODEX_RELEASE            version to install (default: latest)
++#   CODEX_INSTALL_DIR        directory for the codex symlink (default: ~/.local/bin)
++#   CODEX_HOME               codex home (default: ~/.codex)
++#   CODEX_RELEASES_BASE_URL  base URL for release assets (testing/mirrors)
++
++set -eu
++
++FORK_REPO="NIyueeE/codEx"
++DEFAULT_RELEASES_BASE_URL="https://github.com/${FORK_REPO}/releases/download"
++RELEASES_BASE_URL="${CODEX_RELEASES_BASE_URL:-$DEFAULT_RELEASES_BASE_URL}"
++API_BASE_URL="${CODEX_API_BASE_URL:-https://api.github.com/repos/${FORK_REPO}}"
++
++CODEX_INSTALL_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
++CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
++STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
++RELEASES_DIR="$STANDALONE_ROOT/releases"
++CURRENT_LINK="$STANDALONE_ROOT/current"
++LOCK_DIR="$STANDALONE_ROOT/install.lock"
++
++step() { printf '==> %s\n' "$1"; }
++warn() { printf 'WARNING: %s\n' "$1" >&2; }
++die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
++
++cleanup() {
++  [ -n "${tmp_dir:-}" ] && rm -rf "$tmp_dir"
++  rmdir "$LOCK_DIR" 2>/dev/null || true
++}
++
++require_command() {
++  command -v "$1" >/dev/null 2>&1 || die "required command '$1' was not found"
++}
++
++normalize_version() {
++  case "$1" in
++    "" | latest)
++      printf 'latest\n'
++      ;;
++    rust-v*)
++      printf '%s\n' "${1#rust-v}"
++      ;;
++    v*)
++      printf '%s\n' "${1#v}"
++      ;;
++    *)
++      printf '%s\n' "$1"
++      ;;
++  esac
++}
++
++detect_target() {
++  os="$(uname -s)"
++  arch="$(uname -m)"
++  case "$os-$arch" in
++    Linux-x86_64)
++      printf 'x86_64-unknown-linux-musl\n'
++      ;;
++    Linux-aarch64 | Linux-arm64)
++      printf 'aarch64-unknown-linux-musl\n'
++      ;;
++    *)
++      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 and aarch64 binaries only"
++      ;;
++  esac
++}
++
++resolve_latest_tag() {
++  curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
++    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
++    head -1
++}
++
++file_sha256() {
++  if command -v sha256sum >/dev/null 2>&1; then
++    sha256sum "$1" | awk '{print $1}'
++  elif command -v shasum >/dev/null 2>&1; then
++    shasum -a 256 "$1" | awk '{print $1}'
++  elif command -v openssl >/dev/null 2>&1; then
++    openssl dgst -sha256 "$1" | sed 's/^.*= //'
++  else
++    die "sha256sum, shasum, or openssl is required to verify the codEx download"
++  fi
++}
++
++acquire_lock() {
++  mkdir -p "$STANDALONE_ROOT"
++  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
++    die "another codEx install is in progress (lock: $LOCK_DIR); if this is stale, remove it and retry"
++  fi
++}
++
++install() {
++  require_command curl
++  require_command tar
++  require_command uname
++
++  target="$(detect_target)"
++  version="$(normalize_version "${CODEX_RELEASE:-latest}")"
++
++  step "Resolving codEx release..."
++  if [ "$version" = "latest" ]; then
++    tag="$(resolve_latest_tag)"
++    [ -n "$tag" ] || die "failed to resolve the latest codEx release from $API_BASE_URL"
++    version="${tag#rust-v}"
++  else
++    tag="rust-v$version"
++  fi
++  step "Installing codEx $version ($target) from $FORK_REPO"
++
++  acquire_lock
++  trap cleanup EXIT INT TERM
++  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-install.XXXXXX")"
++
++  asset="codex-$target.tar.gz"
++  archive_url="$RELEASES_BASE_URL/$tag/$asset"
++  checksum_url="$archive_url.sha256"
++  archive_path="$tmp_dir/$asset"
++  checksum_path="$tmp_dir/$asset.sha256"
++
++  step "Downloading $asset..."
++  curl -fL --retry 3 --connect-timeout 10 -o "$archive_path" "$archive_url" ||
++    die "failed to download $archive_url"
++  curl -fL --retry 3 --connect-timeout 10 -o "$checksum_path" "$checksum_url" ||
++    die "failed to download checksum $checksum_url"
++
++  step "Verifying sha256 checksum..."
++  actual="$(file_sha256 "$archive_path")"
++  expected="$(awk '{print $1}' "$checksum_path")"
++  [ -n "$expected" ] || die "checksum file $checksum_path is empty or malformed"
++  [ "$actual" = "$expected" ] ||
++    die "checksum mismatch for $asset (expected $expected, got $actual); refusing to install"
++
++  release_dir="$RELEASES_DIR/$version-$target"
++  staging_dir="$RELEASES_DIR/.staging.$version-$target.$$"
++
++  step "Installing to $release_dir..."
++  rm -rf "$staging_dir"
++  mkdir -p "$staging_dir/codex-resources" "$RELEASES_DIR"
++  tar -xzf "$archive_path" -C "$staging_dir"
++  [ -f "$staging_dir/codex" ] || die "release archive does not contain a codex binary"
++  [ -f "$staging_dir/bwrap" ] || die "release archive does not contain bwrap"
++  mv "$staging_dir/bwrap" "$staging_dir/codex-resources/bwrap"
++  chmod +x "$staging_dir/codex" "$staging_dir/codex-resources/bwrap"
++
++  # Atomically replace a previous install of the same version.
++  if [ -e "$release_dir" ]; then
++    rm -rf "$release_dir"
++  fi
++  mv "$staging_dir" "$release_dir"
++
++  # Point $STANDALONE_ROOT/current at the new release. Replace the symlink
++  # atomically so a concurrent reader never sees a half-updated link.
++  mkdir -p "$STANDALONE_ROOT"
++  tmp_link="$STANDALONE_ROOT/.current.$$"
++  ln -s "$release_dir" "$tmp_link"
++  mv -Tf "$tmp_link" "$CURRENT_LINK" 2>/dev/null ||
++    { rm -f "$CURRENT_LINK"; mv "$tmp_link" "$CURRENT_LINK"; }
++
++  step "Linking codex into $CODEX_INSTALL_DIR..."
++  mkdir -p "$CODEX_INSTALL_DIR"
++  ln -sfn "$CURRENT_LINK/codex" "$CODEX_INSTALL_DIR/codex"
++
++  bin_path="$CODEX_INSTALL_DIR/codex"
++  step "Verifying installation..."
++  version_output="$("$bin_path" --version 2>&1)" ||
++    die "installed binary at $bin_path failed to run: $version_output"
++  printf '%s\n' "$version_output"
++
++  case ":$PATH:" in
++    *":$CODEX_INSTALL_DIR:"*) ;;
++    *)
++      warn "$CODEX_INSTALL_DIR is not on your PATH; add it, for example:"
++      printf '  export PATH="%s:$PATH"\n' "$CODEX_INSTALL_DIR"
++      ;;
++  esac
++
++  printf '\n🎉 codEx %s installed. Run `codex update` to upgrade in the future.\n' "$version"
++}
++
++install
+-- 
+2.55.0
+
