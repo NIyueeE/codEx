@@ -78,17 +78,24 @@ newer, and **Enter** confirms the rewind.
   `$CODEX_HOME/snapshots/...`). Side-conversation messages and pending steer
   edits don't create snapshots, so the numbering stays aligned with the
   transcript ordinals used by the pickers. Each snapshot contains a
-  `manifest.json` (relative path, size, mtime for every file, plus a prompt
-  excerpt) and the file contents under `files/`.
-- Snapshots are **incremental**: a file is only copied again when its size or
-  mtime changed since the previous snapshot, so repeated turns are cheap.
+  `manifest.json` (relative path, size, mtime, object id for every file, plus
+  a prompt excerpt) and the file contents under `files/`.
+- Storage is a small **content-addressed store** (no git involved): each
+  unique file content is saved once under `objects/` and every snapshot's
+  `files/` entries are hardlinks into it. Unchanged files are linked from the
+  previous snapshot without being re-read, and identical content from any
+  earlier turn is never stored twice.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
-- The most recent **20 snapshots** are kept per workspace; older ones are pruned.
+- The most recent **20 snapshots** are kept per workspace; older ones are
+  pruned and their unreferenced objects are garbage-collected.
 - Restore copies snapshot files back over the workspace and deletes files that
-  were created after the snapshot (gitignored paths are left alone).
-  Deduplicated files are resolved through the incremental chain when restoring
-  older snapshots; if no copy exists anywhere in the chain, the restore fails
-  with the missing paths listed instead of silently keeping current content.
+  were created after the snapshot (gitignored paths are left alone). Restored
+  files keep their original mtime so later snapshots stay cheap. Snapshots
+  created by older codEx versions (plain copies) remain restorable through the
+  snapshot chain; if no copy exists anywhere, the restore fails with the
+  missing paths listed instead of silently keeping current content.
+- The **Files only** picker shows how many files each turn changed, and file
+  restore is refused while a task is running.
 
 **Configuration** (`config.toml`):
 
