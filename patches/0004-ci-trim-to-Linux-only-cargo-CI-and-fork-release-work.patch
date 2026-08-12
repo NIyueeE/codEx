@@ -1,4 +1,4 @@
-From 7b0a4bc5c0514107e2e15e70753b687551a9c5a9 Mon Sep 17 00:00:00 2001
+From 91a80839b41b9f50a96db14f4b5b054fca3921e0 Mon Sep 17 00:00:00 2001
 From: codEx Fork Bot <codex-fork-bot@localhost>
 Date: Tue, 11 Aug 2026 01:16:54 +0800
 Subject: ci: trim to Linux-only cargo CI and fork release workflow

@@ -1,4 +1,4 @@
-From 4a3b4bebec8b4e0a9ddf799ede6aae6f8e8576d0 Mon Sep 17 00:00:00 2001
+From efa2fbc8eb9642545b2b447a305849453327d7a4 Mon Sep 17 00:00:00 2001
 From: codEx Fork Bot <codex-fork-bot@localhost>
 Date: Tue, 11 Aug 2026 01:19:52 +0800
 Subject: config: disable update chatter and remove announcement fetch

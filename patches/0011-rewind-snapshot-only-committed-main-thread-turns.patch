@@ -1,0 +1,36 @@
+From f2af5e51e74c5db914539e37040b66435de4e64d Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Wed, 12 Aug 2026 21:35:46 +0800
+Subject: rewind: snapshot only committed main-thread turns
+
+- Side-conversation submissions no longer create rewind snapshots, and
+  pending steer edits are snapshotted once when they are actually
+  re-submitted after an interrupt instead of at every Enter press.
+- This keeps the snapshot numbering aligned with the main transcript
+  ordinals the /rewind pickers rely on; previously every side message or
+  discarded steer silently shifted the index mapping.
+---
+ codex-rs/tui/src/chatwidget/input_submission.rs | 7 ++++++-
+ 1 file changed, 6 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
+index 824d004..ac2a21c 100644
+--- a/codex-rs/tui/src/chatwidget/input_submission.rs
++++ b/codex-rs/tui/src/chatwidget/input_submission.rs
+@@ -161,7 +161,12 @@ impl ChatWidget {
+             return (app_command.is_some(), app_command);
+         }
+ 
+-        if self.config.rewind_enabled {
++        // Snapshot only committed main-thread turns: side-conversation
++        // messages and pending steer edits never enter the main transcript, so
++        // snapshotting them would shift the snapshot numbering the `/rewind`
++        // pickers rely on. Steers are snapshotted once when they are actually
++        // re-submitted after the interrupt.
++        if self.config.rewind_enabled && render_in_history && !self.active_side_conversation {
+             self.snapshot_workspace_before_turn(&text);
+         }
+ 
+-- 
+2.55.0
+

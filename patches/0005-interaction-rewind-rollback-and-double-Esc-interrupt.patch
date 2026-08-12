@@ -1,4 +1,4 @@
-From 278f9aba612e1d1d089819e3b0f0783076789611 Mon Sep 17 00:00:00 2001
+From ac513be4eff27ed0375a097ebaf704048fcfeb76 Mon Sep 17 00:00:00 2001
 From: codEx Fork Bot <codex-fork-bot@localhost>
 Date: Tue, 11 Aug 2026 01:18:58 +0800
 Subject: interaction: /rewind rollback and double-Esc interrupt

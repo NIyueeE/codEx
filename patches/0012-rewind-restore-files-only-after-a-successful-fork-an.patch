@@ -1,0 +1,318 @@
+From 09f5914abcdc1013e3eba6d4108a15be4675033b Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Wed, 12 Aug 2026 21:35:52 +0800
+Subject: rewind: restore files only after a successful fork and verify the
+ snapshot
+
+- ForkSessionForPromptEdit now carries an optional RewindRestoreRequest
+  that is executed only after the fork and thread attach succeed, so a
+  failed conversation rewind (steer, in-progress turn, thread switch)
+  never rolls back workspace files on its own.
+- rewind_restore_files verifies the snapshot's recorded prompt against
+  the selected message and resolves drift by picking the closest matching
+  snapshot, instead of silently restoring whichever snapshot matches the
+  index or falling back to the newest one.
+- Removes the standalone RewindRestoreFiles event; the end-to-end test
+  now exercises the picker's real mapping (nth + 1) and asserts the files
+  are restored to the snapshot taken right before the selected message.
+---
+ codex-rs/tui/src/app/event_dispatch.rs | 15 ++++++---
+ codex-rs/tui/src/app/tests.rs          | 45 +++++++++++---------------
+ codex-rs/tui/src/app_backtrack.rs      | 12 +++----
+ codex-rs/tui/src/app_event.rs          | 21 ++++++++----
+ codex-rs/tui/src/rewind/actions.rs     | 29 +++++++----------
+ 5 files changed, 62 insertions(+), 60 deletions(-)
+
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index 1c7fcba..0d01e72 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -165,9 +165,6 @@ impl App {
+                 self.show_rewind_snapshot_picker();
+                 self.chat_widget.maybe_send_next_queued_input();
+             }
+-            AppEvent::RewindRestoreFiles { index, prompt } => {
+-                self.rewind_restore_files(index, prompt);
+-            }
+             AppEvent::RewindRestoreSnapshot { index } => {
+                 self.rewind_restore_snapshot(index);
+             }
+@@ -317,6 +314,7 @@ impl App {
+                 thread_id,
+                 nth_user_message,
+                 mut prompt,
++                restore_files,
+             } => {
+                 if self.chat_widget.thread_id() != Some(thread_id) {
+                     return Ok(AppRunControl::Continue);
+@@ -394,7 +392,16 @@ impl App {
+                             )
+                             .await
+                         {
+-                            Ok(()) => self.chat_widget.restore_user_message_to_composer(prompt),
++                            Ok(()) => {
++                                self.chat_widget.restore_user_message_to_composer(prompt);
++                                // Files are restored only after the fork and
++                                // thread attach both succeed, so a failed
++                                // conversation rewind never rolls back the
++                                // workspace on its own.
++                                if let Some(request) = restore_files {
++                                    self.rewind_restore_files(request.index, request.prompt);
++                                }
++                            }
+                             Err(err) => {
+                                 self.restore_backtrack_prompt_after_branch_error(prompt, err);
+                             }
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 115977d..f101a1b 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -6007,6 +6007,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+             thread_id,
+             nth_user_message,
+             prompt,
++            restore_files: None,
+         } if thread_id == expected.thread_id
+             && nth_user_message == expected.nth_user_message
+             && prompt == expected.prompt
+@@ -6181,7 +6182,10 @@ async fn rewind_files_and_conversation_forks_thread_before_selected_message() ->
+         /*respect_gitignore*/ true,
+     )?;
+ 
+-    // Exactly what the "Files and conversation" picker action sends.
++    // Exactly what the "Files and conversation" picker sends: the fork event
++    // carries the file-restore request (snapshot `nth + 1`, the snapshot taken
++    // right before the selected message), and the restore only runs after the
++    // fork succeeds.
+     app.handle_event(
+         &mut tui,
+         &mut app_server,
+@@ -6189,15 +6193,10 @@ async fn rewind_files_and_conversation_forks_thread_before_selected_message() ->
+             thread_id,
+             nth_user_message: nth,
+             prompt: selection.prompt.clone(),
+-        },
+-    )
+-    .await?;
+-    app.handle_event(
+-        &mut tui,
+-        &mut app_server,
+-        AppEvent::RewindRestoreFiles {
+-            index: nth as u64,
+-            prompt: selection.prompt.text.clone(),
++            restore_files: Some(crate::app_event::RewindRestoreRequest {
++                index: nth as u64 + 1,
++                prompt: selection.prompt.text.clone(),
++            }),
+         },
+     )
+     .await?;
+@@ -6237,7 +6236,7 @@ async fn rewind_files_and_conversation_forks_thread_before_selected_message() ->
+     );
+     assert_eq!(
+         std::fs::read_to_string(&workspace_file)?,
+-        "v2",
++        "v3",
+         "files should be restored to the snapshot taken before the selected turn"
+     );
+     app_server.shutdown().await?;
+@@ -6342,16 +6341,11 @@ async fn rewind_message_selection_reuses_transcript_overlay() -> Result<()> {
+                 thread_id: event_thread_id,
+                 nth_user_message: 0,
+                 prompt,
++                restore_files: None,
+             } if *event_thread_id == thread_id && prompt.text == "first question"
+         )),
+         "should fork before the selected message: {events:?}"
+     );
+-    assert!(
+-        !events
+-            .iter()
+-            .any(|event| matches!(event, AppEvent::RewindRestoreFiles { .. })),
+-        "conversation-only rewind must not restore files"
+-    );
+ 
+     // "Files and conversation": confirming the newest message also restores
+     // the snapshot taken for that turn.
+@@ -6377,18 +6371,14 @@ async fn rewind_message_selection_reuses_transcript_overlay() -> Result<()> {
+                 thread_id: event_thread_id,
+                 nth_user_message: 1,
+                 prompt,
+-            } if *event_thread_id == thread_id && prompt.text == "second question"
++                restore_files: Some(request),
++            } if *event_thread_id == thread_id
++                && prompt.text == "second question"
++                && request.index == 2
++                && request.prompt == "second question"
+         )),
+         "should fork before the newest message: {events:?}"
+     );
+-    assert!(
+-        events.iter().any(|event| matches!(
+-            event,
+-            AppEvent::RewindRestoreFiles { index: 2, prompt }
+-                if prompt == "second question"
+-        )),
+-        "should restore the snapshot for the selected turn: {events:?}"
+-    );
+ 
+     app_server.shutdown().await?;
+     Ok(())
+@@ -6523,6 +6513,7 @@ async fn rewind_forks_newest_message_completed_after_attach() -> Result<()> {
+             thread_id,
+             nth_user_message: 2,
+             prompt: crate::chatwidget::UserMessage::from("third question"),
++            restore_files: None,
+         },
+     )
+     .await?;
+@@ -7092,6 +7083,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
+             thread_id: source_thread_id,
+             nth_user_message: 1,
+             prompt: prompt.clone(),
++            restore_files: None,
+         },
+     ))
+     .await?;
+@@ -7190,6 +7182,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
+             thread_id: source_thread_id,
+             nth_user_message: 0,
+             prompt: crate::chatwidget::UserMessage::from("first prompt"),
++            restore_files: None,
+         },
+     ))
+     .await?;
+diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
+index e30fd35..7d58d9d 100644
+--- a/codex-rs/tui/src/app_backtrack.rs
++++ b/codex-rs/tui/src/app_backtrack.rs
+@@ -215,6 +215,7 @@ impl App {
+             thread_id: selection.thread_id,
+             nth_user_message: selection.nth_user_message,
+             prompt: selection.prompt,
++            restore_files: None,
+         });
+     }
+ 
+@@ -419,17 +420,16 @@ impl App {
+                 // `nth` (0-based transcript ordinal) is `nth + 1`.
+                 let index = nth_user_message as u64 + 1;
+                 let prompt_text = selection.prompt.text.clone();
++                let restore_files = restore_files.then(|| crate::app_event::RewindRestoreRequest {
++                    index,
++                    prompt: prompt_text,
++                });
+                 self.app_event_tx.send(AppEvent::ForkSessionForPromptEdit {
+                     thread_id: selection.thread_id,
+                     nth_user_message: selection.nth_user_message,
+                     prompt: selection.prompt,
++                    restore_files,
+                 });
+-                if restore_files {
+-                    self.app_event_tx.send(AppEvent::RewindRestoreFiles {
+-                        index,
+-                        prompt: prompt_text,
+-                    });
+-                }
+             }
+         }
+         tui.frame_requester().schedule_frame();
+diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
+index 1114b04..54f1539 100644
+--- a/codex-rs/tui/src/app_event.rs
++++ b/codex-rs/tui/src/app_event.rs
+@@ -184,6 +184,15 @@ pub(crate) enum KeymapCaptureMode {
+     Chord,
+ }
+ 
++/// A pending `/rewind` file-restore request attached to a conversation fork.
++#[derive(Debug, Clone)]
++pub(crate) struct RewindRestoreRequest {
++    /// Snapshot index expected from the transcript-ordinal mapping.
++    pub(crate) index: u64,
++    /// Selected prompt text, used to verify and locate the matching snapshot.
++    pub(crate) prompt: String,
++}
++
+ #[allow(clippy::large_enum_variant)]
+ #[derive(Debug)]
+ pub(crate) enum AppEvent {
+@@ -313,10 +322,15 @@ pub(crate) enum AppEvent {
+     },
+ 
+     /// Branch before a selected prompt and reopen it in the new thread's composer.
++    ///
++    /// `restore_files` optionally carries a `/rewind` file-restore request that
++    /// is executed only after the fork succeeds, so workspace files are never
++    /// rolled back when the conversation branch fails.
+     ForkSessionForPromptEdit {
+         thread_id: ThreadId,
+         nth_user_message: usize,
+         prompt: UserMessage,
++        restore_files: Option<RewindRestoreRequest>,
+     },
+ 
+     /// Open the `/rewind` scope picker (files and/or conversation rollback).
+@@ -331,13 +345,6 @@ pub(crate) enum AppEvent {
+     /// Open the `/rewind` snapshot picker to restore workspace files only.
+     OpenRewindSnapshotPicker,
+ 
+-    /// Restore workspace files for a conversation rewind, with `prompt` used
+-    /// as a fallback to locate the snapshot when the index mapping drifted.
+-    RewindRestoreFiles {
+-        index: u64,
+-        prompt: String,
+-    },
+-
+     /// Restore the workspace files from a stored rewind snapshot.
+     RewindRestoreSnapshot {
+         index: u64,
+diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
+index 995e5e9..e7d8649 100644
+--- a/codex-rs/tui/src/rewind/actions.rs
++++ b/codex-rs/tui/src/rewind/actions.rs
+@@ -89,29 +89,24 @@ impl App {
+ 
+     /// Restores workspace files for a conversation rewind.
+     ///
+-    /// `index` is the transcript ordinal of the selected message, which matches
+-    /// the snapshot numbering unless submissions and transcript cells drifted;
+-    /// the snapshot's recorded prompt is then used as a fallback.
++    /// `index` is the snapshot index expected from the transcript-ordinal
++    /// mapping (`nth + 1`). The snapshot's recorded prompt is verified against
++    /// the selected message and used to locate the closest matching snapshot
++    /// when submissions and transcript cells drifted; files are left untouched
++    /// when no snapshot matches.
+     pub(crate) fn rewind_restore_files(&mut self, index: u64, prompt: String) {
+         let codex_home = self.config.codex_home.as_path();
+         let cwd = self.config.cwd.as_path();
+         let snapshots = rewind::list_snapshots(codex_home, cwd);
+-        let snapshot = snapshots
+-            .iter()
+-            .find(|snapshot| snapshot.index == index)
+-            .or_else(|| {
+-                snapshots
+-                    .iter()
+-                    .rev()
+-                    .find(|snapshot| snapshot.prompt == rewind::prompt_excerpt(&prompt))
+-            })
+-            .or_else(|| snapshots.last());
+-        let Some(snapshot) = snapshot else {
+-            self.chat_widget
+-                .add_error_message("No matching file snapshot found for this message.".to_string());
++        let Some(snapshot_index) = rewind::resolve_snapshot_for_message(&snapshots, index, &prompt)
++        else {
++            self.chat_widget.add_error_message(
++                "No matching file snapshot found for this message; files were not restored."
++                    .to_string(),
++            );
+             return;
+         };
+-        self.rewind_restore_snapshot(snapshot.index);
++        self.rewind_restore_snapshot(snapshot_index);
+     }
+ }
+ 
+-- 
+2.55.0
+

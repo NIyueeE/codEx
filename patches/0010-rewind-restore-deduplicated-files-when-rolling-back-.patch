@@ -1,0 +1,479 @@
+From 3d920f2c9278a599205513856c76c0189b91aaf0 Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Wed, 12 Aug 2026 21:35:40 +0800
+Subject: rewind: restore deduplicated files when rolling back older snapshots
+
+- restore_snapshot now resolves manifest entries without a physical copy
+  by walking back through the incremental chain to the newest snapshot
+  that holds the file, so restoring an older snapshot no longer leaves
+  deduplicated files at their current content.
+- A size check guards the chain lookup, and when no copy exists anywhere
+  the restore fails with the missing paths listed instead of silently
+  succeeding with a partial restore.
+- take_snapshot removes the partially written snapshot directory when
+  the walk or manifest write fails, and list_snapshots skips directories
+  without a manifest instead of showing blank picker entries.
+- Adds regression tests for middle-snapshot restore, corrupt chains,
+  and manifest-less snapshot directories.
+---
+ codex-rs/tui/src/rewind/mod.rs          | 195 +++++++++++++++++-------
+ codex-rs/tui/src/rewind/rewind_tests.rs | 173 +++++++++++++++++++++
+ 2 files changed, 317 insertions(+), 51 deletions(-)
+
+diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
+index 04321ce..cbbc7ba 100644
+--- a/codex-rs/tui/src/rewind/mod.rs
++++ b/codex-rs/tui/src/rewind/mod.rs
+@@ -11,6 +11,7 @@
+ //! the previous snapshot are not copied again. The most recent
+ //! [`MAX_SNAPSHOTS`] snapshots are retained per workspace.
+ 
++use std::cmp::Reverse;
+ use std::collections::BTreeSet;
+ use std::fs;
+ use std::io;
+@@ -104,55 +105,63 @@ pub(crate) fn take_snapshot(
+         })
+         .unwrap_or_default();
+ 
+-    let mut entries = Vec::new();
+-    let snapshot_root = root.clone();
+-    for entry in workspace_walker(cwd, respect_gitignore, Some(&snapshot_root)) {
+-        let entry = entry.map_err(io::Error::other)?;
+-        if !entry
+-            .file_type()
+-            .is_some_and(|file_type| file_type.is_file())
+-        {
+-            continue;
+-        }
+-        let path = entry.path();
+-        let relative = path
+-            .strip_prefix(cwd)
+-            .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
+-        let relative_string = relative.to_string_lossy().replace('\\', "/");
+-        if is_ignored_path(&relative_string) {
+-            continue;
+-        }
+-        let metadata = entry.metadata().map_err(io::Error::other)?;
+-        let size = metadata.len();
+-        let mtime_ns = mtime_nanos(&metadata)?;
+-        if previous_files.get(relative_string.as_str()) == Some(&(size, mtime_ns)) {
++    // Walk and manifest writing happen inside a closure so a failure can
++    // clean up the partially written snapshot directory before returning.
++    let snapshot_result = (|| -> io::Result<()> {
++        let mut entries = Vec::new();
++        let snapshot_root = root.clone();
++        for entry in workspace_walker(cwd, respect_gitignore, Some(&snapshot_root)) {
++            let entry = entry.map_err(io::Error::other)?;
++            if !entry
++                .file_type()
++                .is_some_and(|file_type| file_type.is_file())
++            {
++                continue;
++            }
++            let path = entry.path();
++            let relative = path
++                .strip_prefix(cwd)
++                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
++            let relative_string = relative.to_string_lossy().replace('\\', "/");
++            if is_ignored_path(&relative_string) {
++                continue;
++            }
++            let metadata = entry.metadata().map_err(io::Error::other)?;
++            let size = metadata.len();
++            let mtime_ns = mtime_nanos(&metadata)?;
++            if previous_files.get(relative_string.as_str()) == Some(&(size, mtime_ns)) {
++                entries.push(SnapshotFileEntry {
++                    path: relative_string,
++                    size,
++                    mtime_ns,
++                });
++                continue;
++            }
++            let dest = files_dir.join(&relative_string);
++            if let Some(parent) = dest.parent() {
++                fs::create_dir_all(parent)?;
++            }
++            fs::copy(path, &dest)?;
+             entries.push(SnapshotFileEntry {
+                 path: relative_string,
+                 size,
+                 mtime_ns,
+             });
+-            continue;
+         }
+-        let dest = files_dir.join(&relative_string);
+-        if let Some(parent) = dest.parent() {
+-            fs::create_dir_all(parent)?;
+-        }
+-        fs::copy(path, &dest)?;
+-        entries.push(SnapshotFileEntry {
+-            path: relative_string,
+-            size,
+-            mtime_ns,
+-        });
+-    }
+-    entries.sort_by(|a, b| a.path.cmp(&b.path));
++        entries.sort_by(|a, b| a.path.cmp(&b.path));
+ 
+-    let manifest = SnapshotManifest {
+-        version: MANIFEST_VERSION,
+-        created_at: now_unix_seconds(),
+-        prompt: prompt_excerpt(prompt),
+-        files: entries,
+-    };
+-    write_manifest(&snapshot_dir, &manifest)?;
++        let manifest = SnapshotManifest {
++            version: MANIFEST_VERSION,
++            created_at: now_unix_seconds(),
++            prompt: prompt_excerpt(prompt),
++            files: entries,
++        };
++        write_manifest(&snapshot_dir, &manifest)
++    })();
++    if let Err(err) = snapshot_result {
++        let _ = fs::remove_dir_all(&snapshot_dir);
++        return Err(err);
++    }
+     prune_old_snapshots(&root, MAX_SNAPSHOTS)?;
+     Ok(snapshot_dir)
+ }
+@@ -172,11 +181,15 @@ pub(crate) fn list_snapshots(codex_home: &Path, cwd: &Path) -> Vec<RewindSnapsho
+         else {
+             continue;
+         };
+-        let manifest = read_manifest(&entry.path()).ok().flatten();
++        // Skip directories without a usable manifest (e.g. interrupted
++        // snapshots that were never cleaned up).
++        let Some(manifest) = read_manifest(&entry.path()).ok().flatten() else {
++            continue;
++        };
+         snapshots.push(RewindSnapshotInfo {
+             index,
+-            created_at: manifest.as_ref().map(|m| m.created_at).unwrap_or_default(),
+-            prompt: manifest.map(|m| m.prompt).unwrap_or_default(),
++            created_at: manifest.created_at,
++            prompt: manifest.prompt,
+         });
+     }
+     snapshots.sort_by_key(|snapshot| snapshot.index);
+@@ -187,14 +200,19 @@ pub(crate) fn list_snapshots(codex_home: &Path, cwd: &Path) -> Vec<RewindSnapsho
+ ///
+ /// Files recorded in the snapshot are copied back (overwriting current
+ /// content) and files present in the workspace but absent from the snapshot
+-/// are deleted. Returns the number of files restored.
++/// are deleted. Returns the number of files restored. Incremental snapshots
++/// only record unchanged files in their manifest, so the physical copy is
++/// resolved by walking back through older snapshots in the chain; when no
++/// copy exists the restore fails with the missing paths listed instead of
++/// silently leaving the current file content in place.
+ pub(crate) fn restore_snapshot(
+     codex_home: &Path,
+     cwd: &Path,
+     index: u64,
+     respect_gitignore: bool,
+ ) -> io::Result<usize> {
+-    let snapshot_dir = snapshots_root(codex_home, cwd).join(format!("{index:06}"));
++    let snapshot_root = snapshots_root(codex_home, cwd);
++    let snapshot_dir = snapshot_root.join(format!("{index:06}"));
+     let manifest = read_manifest(&snapshot_dir)?.ok_or_else(|| {
+         io::Error::new(
+             io::ErrorKind::NotFound,
+@@ -203,16 +221,37 @@ pub(crate) fn restore_snapshot(
+     })?;
+ 
+     let mut restored = 0;
++    let mut missing = Vec::new();
+     for entry in &manifest.files {
+         let source = snapshot_dir.join(FILES_DIR_NAME).join(&entry.path);
+         let target = cwd.join(&entry.path);
+         if let Some(parent) = target.parent() {
+             fs::create_dir_all(parent)?;
+         }
+-        if source.is_file() {
+-            fs::copy(&source, &target)?;
+-            restored += 1;
++        let source = if source.is_file() {
++            source
++        } else {
++            match find_snapshot_file(&snapshot_root, index, &entry.path, entry.size) {
++                Some(found) => found,
++                None => {
++                    missing.push(entry.path.clone());
++                    continue;
++                }
++            }
++        };
++        fs::copy(&source, &target)?;
++        restored += 1;
++    }
++    if !missing.is_empty() {
++        let mut message = format!(
++            "snapshot {index} is missing file contents for {} path(s):",
++            missing.len()
++        );
++        for path in missing.iter().take(5) {
++            message.push('\n');
++            message.push_str(path);
+         }
++        return Err(io::Error::new(io::ErrorKind::NotFound, message));
+     }
+ 
+     let manifest_paths = manifest
+@@ -220,7 +259,6 @@ pub(crate) fn restore_snapshot(
+         .iter()
+         .map(|entry| entry.path.as_str())
+         .collect::<BTreeSet<_>>();
+-    let snapshot_root = snapshots_root(codex_home, cwd);
+     for entry in workspace_walker(cwd, respect_gitignore, Some(&snapshot_root)) {
+         let entry = entry.map_err(io::Error::other)?;
+         if !entry
+@@ -365,6 +403,61 @@ pub(crate) fn prompt_excerpt(prompt: &str) -> String {
+     excerpt
+ }
+ 
++/// Finds the newest snapshot at or below `index` that holds a physical copy of
++/// `relative` in its `files/` directory.
++///
++/// Incremental snapshots only record unchanged files in their manifest; the
++/// content for such an entry lives in the most recent older snapshot that
++/// copied the file. A size check guards against truncated or corrupted copies.
++fn find_snapshot_file(
++    root: &Path,
++    index: u64,
++    relative: &str,
++    expected_size: u64,
++) -> Option<PathBuf> {
++    (1..=index).rev().find_map(|candidate| {
++        let path = root
++            .join(format!("{candidate:06}"))
++            .join(FILES_DIR_NAME)
++            .join(relative);
++        fs::metadata(&path)
++            .ok()
++            .filter(|metadata| metadata.is_file() && metadata.len() == expected_size)
++            .map(|_| path)
++    })
++}
++
++/// Resolves the snapshot to restore for a conversation rewind.
++///
++/// Prefers the snapshot numbered `expected_index` (the transcript-ordinal
++/// mapping) when it also carries the selected prompt excerpt. Otherwise picks
++/// the snapshot whose prompt matches and whose index is closest to
++/// `expected_index`, breaking ties toward the newer snapshot so duplicate
++/// prompts resolve to their latest submission. Returns `None` when no snapshot
++/// matches the prompt.
++pub(crate) fn resolve_snapshot_for_message(
++    snapshots: &[RewindSnapshotInfo],
++    expected_index: u64,
++    prompt: &str,
++) -> Option<u64> {
++    let expected_prompt = prompt_excerpt(prompt);
++    snapshots
++        .iter()
++        .find(|snapshot| snapshot.index == expected_index && snapshot.prompt == expected_prompt)
++        .or_else(|| {
++            snapshots
++                .iter()
++                .filter(|snapshot| snapshot.prompt == expected_prompt)
++                .min_by_key(|snapshot| {
++                    (
++                        snapshot.index.abs_diff(expected_index),
++                        Reverse(snapshot.index),
++                    )
++                })
++        })
++        .map(|snapshot| snapshot.index)
++}
++
+ #[cfg(test)]
+ #[path = "rewind_tests.rs"]
+ mod tests;
+diff --git a/codex-rs/tui/src/rewind/rewind_tests.rs b/codex-rs/tui/src/rewind/rewind_tests.rs
+index f205ae2..f9c0fe8 100644
+--- a/codex-rs/tui/src/rewind/rewind_tests.rs
++++ b/codex-rs/tui/src/rewind/rewind_tests.rs
+@@ -163,6 +163,179 @@ fn restore_rolls_back_changes_and_deletes_new_files() {
+     assert!(!workspace.path().join("new-dir/nested.txt").exists());
+ }
+ 
++#[test]
++fn restore_older_snapshot_restores_deduplicated_files() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "one",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot one");
++    // The unchanged file is deduplicated: snapshot two only records a
++    // manifest entry and holds no physical copy.
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "two",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot two");
++    fs::write(&file, b"v3").expect("modify");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "three",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot three");
++
++    // Restoring the middle snapshot must recover the deduplicated content from
++    // the chain instead of silently leaving the current "v3" content in place.
++    let restored = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        /*index*/ 2,
++        /*respect_gitignore*/ true,
++    )
++    .expect("restore snapshot two");
++    assert_eq!(restored, 1);
++    assert_eq!(
++        fs::read(&file).expect("read notes.txt"),
++        b"v1",
++        "deduplicated file content should be resolved from the snapshot chain"
++    );
++}
++
++#[test]
++fn restore_fails_loudly_when_snapshot_chain_is_missing_content() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "notes.txt", b"v1");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "one",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot one");
++    // Snapshot two deduplicates notes.txt...
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "two",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot two");
++    // ...and snapshot one's physical copy is then removed (corrupt chain).
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    fs::remove_file(root.join("000001/files/notes.txt")).expect("remove copy");
++
++    let err = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        /*index*/ 2,
++        /*respect_gitignore*/ true,
++    )
++    .expect_err("restore should fail when no copy exists anywhere in the chain");
++    assert!(
++        err.to_string().contains("missing file contents"),
++        "error should list the missing paths: {err}"
++    );
++    assert!(
++        err.to_string().contains("notes.txt"),
++        "error should name the missing path: {err}"
++    );
++}
++
++#[test]
++fn list_snapshots_skips_directories_without_a_manifest() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "file.txt", b"data");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        "one",
++        /*respect_gitignore*/ true,
++    )
++    .expect("snapshot one");
++
++    // Simulate an interrupted snapshot that left a directory without a
++    // manifest behind.
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    fs::create_dir_all(root.join("000099/files")).expect("create stray dir");
++
++    let snapshots = list_snapshots(codex_home.path(), workspace.path());
++    assert_eq!(
++        snapshots.iter().map(|info| info.index).collect::<Vec<_>>(),
++        vec![1],
++        "manifest-less snapshot directories should not be listed"
++    );
++}
++
++#[test]
++fn resolve_snapshot_for_message_prefers_exact_index_and_prompt() {
++    let snapshots = vec![
++        RewindSnapshotInfo {
++            index: 1,
++            created_at: 0,
++            prompt: "first".to_string(),
++        },
++        RewindSnapshotInfo {
++            index: 2,
++            created_at: 0,
++            prompt: "second".to_string(),
++        },
++    ];
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "second"),
++        Some(2)
++    );
++}
++
++#[test]
++fn resolve_snapshot_for_message_falls_back_to_closest_prompt_match() {
++    let snapshots = vec![
++        RewindSnapshotInfo {
++            index: 1,
++            created_at: 0,
++            prompt: "first".to_string(),
++        },
++        RewindSnapshotInfo {
++            index: 2,
++            created_at: 0,
++            prompt: "(side question)".to_string(),
++        },
++        RewindSnapshotInfo {
++            index: 3,
++            created_at: 0,
++            prompt: "first".to_string(),
++        },
++    ];
++    // The expected index 2 was consumed by an unrelated snapshot; the closest
++    // matching snapshot (index 3, tie broken toward newer) wins.
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "first"),
++        Some(3)
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 4, "first"),
++        Some(3)
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "absent"),
++        None
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&[], /*expected_index*/ 1, "first"),
++        None
++    );
++}
++
+ #[test]
+ fn snapshot_count_is_pruned_to_max() {
+     let codex_home = tempfile::tempdir().expect("codex home");
+-- 
+2.55.0
+

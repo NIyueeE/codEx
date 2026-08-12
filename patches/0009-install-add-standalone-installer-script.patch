@@ -1,4 +1,4 @@
-From 935e71e38294f1f5df617ce87b96b0396e5a311f Mon Sep 17 00:00:00 2001
+From 0e44e5f41fc62314bf18ff07f316b7af6adb4c03 Mon Sep 17 00:00:00 2001
 From: codEx Fork Bot <codex-fork-bot@localhost>
 Date: Tue, 11 Aug 2026 16:26:03 +0800
 Subject: install: add standalone installer script

@@ -73,16 +73,22 @@ newer, and **Enter** confirms the rewind.
 
 **How snapshots work** (pure files, no git involved):
 
-- Before each user turn is submitted, the TUI snapshots the workspace into
-  `~/.codex/snapshots/<workspace-hash>/<turn>/` (or `$CODEX_HOME/snapshots/...`).
-  Each snapshot contains a `manifest.json` (relative path, size, mtime for every
-  file, plus a prompt excerpt) and the file contents under `files/`.
+- Before each main-thread user turn is submitted, the TUI snapshots the
+  workspace into `~/.codex/snapshots/<workspace-hash>/<turn>/` (or
+  `$CODEX_HOME/snapshots/...`). Side-conversation messages and pending steer
+  edits don't create snapshots, so the numbering stays aligned with the
+  transcript ordinals used by the pickers. Each snapshot contains a
+  `manifest.json` (relative path, size, mtime for every file, plus a prompt
+  excerpt) and the file contents under `files/`.
 - Snapshots are **incremental**: a file is only copied again when its size or
   mtime changed since the previous snapshot, so repeated turns are cheap.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
 - The most recent **20 snapshots** are kept per workspace; older ones are pruned.
 - Restore copies snapshot files back over the workspace and deletes files that
   were created after the snapshot (gitignored paths are left alone).
+  Deduplicated files are resolved through the incremental chain when restoring
+  older snapshots; if no copy exists anywhere in the chain, the restore fails
+  with the missing paths listed instead of silently keeping current content.
 
 **Configuration** (`config.toml`):
 
