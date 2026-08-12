@@ -74,21 +74,29 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
   未变化的文件直接从上一份快照链接、无需重新读取,任何早期回合出现过的
   相同内容也绝不会重复存储。
 - 遍历会跳过 `.git`,默认遵循 `.gitignore` 文件。
-- 每个对话只保留最近 **20 个**快照(可用 `rewind_max_snapshots` 配置);
+- 每个对话默认保留最近 **100 个**快照(可用 `rewind_max_snapshots` 配置);
   更旧的按对话清理,同时回收不再被任何快照引用的对象。
 - 恢复时把快照文件复制回工作区,并删除快照之后创建的文件(被 gitignore 的
   路径保持不动)。还原后的文件会恢复原始 mtime,让后续快照继续保持低开销。
-  旧版 codEx(纯复制)产生的快照仍可通过快照链正常还原;如果链上任何位置
-  都不存在该文件的副本,恢复会失败并列出缺失路径,而不是静默保留当前内容。
+  如果某份快照的物理副本缺失,恢复会失败并列出缺失路径,而不是静默保留
+  当前内容。
 - **Files only** picker 会列出所有对话的快照(标注短对话 id 与每回合的变更
   文件数);任务运行中拒绝还原文件。
 
-**配置**(`config.toml`):
+**配置**(codEx 数据目录下的 `config.toml`):
+
+| 字段 | 默认值 | 说明 |
+| --- | --- | --- |
+| `rewind_enabled` | `true` | `/rewind` 总开关。为 `false` 时命令禁用且不再拍摄快照。 |
+| `rewind_respect_gitignore` | `true` | 为 `true` 时快照跳过 `.gitignore` 匹配的文件(始终跳过 `.git`);设为 `false` 则快照所有文件。 |
+| `rewind_max_snapshots` | `100` | 每个对话保留的快照数量(`1`-`10000`),更旧的会被修剪。 |
+
+示例:
 
 ```toml
-rewind_enabled = true            # 总开关,默认 true
-rewind_respect_gitignore = true  # 默认 true;false 则快照所有文件
-rewind_max_snapshots = 20        # 每个对话保留的快照数,默认 20
+rewind_enabled = true            # 总开关
+rewind_respect_gitignore = true  # 快照时遵循 .gitignore
+rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 ```
 
 ### Esc:单击无操作,双击停止回复

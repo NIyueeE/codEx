@@ -1,0 +1,93 @@
+From 91c4a00fb1574365edf17137b8b656d07976e145 Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Wed, 12 Aug 2026 22:50:38 +0800
+Subject: config: raise rewind snapshot retention default to 100
+
+- Each conversation now retains up to 100 file snapshots by default
+  (matching Claude Code's per-session checkpoint cap), up from 20, with
+  the range clamped to 1-10000.
+---
+ codex-rs/config/src/config_toml.rs         | 2 +-
+ codex-rs/core/config.schema.json           | 2 +-
+ codex-rs/core/src/config/config_tests.rs   | 2 +-
+ codex-rs/core/src/config/mod.rs            | 4 ++--
+ codex-rs/thread-manager-sample/src/main.rs | 2 +-
+ 5 files changed, 6 insertions(+), 6 deletions(-)
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 93bfb9c..7fb2de8 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -483,7 +483,7 @@ pub struct ConfigToml {
+     pub rewind_respect_gitignore: Option<bool>,
+ 
+     /// Maximum number of `/rewind` file snapshots retained per conversation.
+-    /// Defaults to `20`.
++    /// Defaults to `100`.
+     pub rewind_max_snapshots: Option<usize>,
+ 
+     /// When true, disables burst-paste detection for typed input entirely.
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index 9c7607d..87b13bf 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -5751,7 +5751,7 @@
+       "type": "boolean"
+     },
+     "rewind_max_snapshots": {
+-      "description": "Maximum number of `/rewind` file snapshots retained per conversation. Defaults to `20`.",
++      "description": "Maximum number of `/rewind` file snapshots retained per conversation. Defaults to `100`.",
+       "type": "integer",
+       "minimum": 1,
+       "maximum": 10000
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index bb0b389..83ce36c 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -540,7 +540,7 @@ async fn rewind_defaults_on_and_respects_gitignore() -> std::io::Result<()> {
+         .await?;
+     assert!(config.rewind_enabled);
+     assert!(config.rewind_respect_gitignore);
+-    assert_eq!(config.rewind_max_snapshots, 20);
++    assert_eq!(config.rewind_max_snapshots, 100);
+     assert!(!config.check_for_update_on_startup);
+     Ok(())
+ }
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index 2bdc89f..0a1a174 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -1103,7 +1103,7 @@ pub struct Config {
+     pub rewind_respect_gitignore: bool,
+ 
+     /// Maximum number of `/rewind` file snapshots retained per conversation.
+-    /// Defaults to `20`.
++    /// Defaults to `100`.
+     pub rewind_max_snapshots: usize,
+ 
+     /// When true, disables burst-paste detection for typed input entirely.
+@@ -3965,7 +3965,7 @@ impl Config {
+         let rewind_respect_gitignore = cfg.rewind_respect_gitignore.unwrap_or(true);
+         let rewind_max_snapshots = cfg
+             .rewind_max_snapshots
+-            .unwrap_or(20)
++            .unwrap_or(100)
+             .clamp(1, 10_000);
+         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
+ 
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index cede57d..d307ae5 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -312,7 +312,7 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+         check_for_update_on_startup: false,
+         rewind_enabled: true,
+         rewind_respect_gitignore: true,
+-        rewind_max_snapshots: 20,
++        rewind_max_snapshots: 100,
+         disable_paste_burst: false,
+         analytics_enabled: Some(false),
+         feedback_enabled: false,
+-- 
+2.55.0
+

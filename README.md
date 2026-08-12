@@ -88,25 +88,32 @@ newer, and **Enter** confirms the rewind.
   previous snapshot without being re-read, and identical content from any
   earlier turn is never stored twice.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
-- The most recent **20 snapshots per conversation** are kept (configurable via
-  `rewind_max_snapshots`); older ones are pruned per conversation and their
-  unreferenced objects are garbage-collected.
+- The most recent **100 snapshots per conversation** are kept by default
+  (configurable via `rewind_max_snapshots`); older ones are pruned per
+  conversation and their unreferenced objects are garbage-collected.
 - Restore copies snapshot files back over the workspace and deletes files that
   were created after the snapshot (gitignored paths are left alone). Restored
-  files keep their original mtime so later snapshots stay cheap. Snapshots
-  created by older codEx versions (plain copies) remain restorable through the
-  snapshot chain; if no copy exists anywhere, the restore fails with the
-  missing paths listed instead of silently keeping current content.
+  files keep their original mtime so later snapshots stay cheap. If a
+  snapshot's physical copy is missing, the restore fails with the missing
+  paths listed instead of silently keeping current content.
 - The **Files only** picker lists snapshots from all conversations (each
   labeled with a short conversation id and its per-turn change count), and
   file restore is refused while a task is running.
 
-**Configuration** (`config.toml`):
+**Configuration** (`config.toml` under the codEx data directory):
+
+| Field | Default | Description |
+| --- | --- | --- |
+| `rewind_enabled` | `true` | Master switch for `/rewind`. When `false`, the command is disabled and no snapshots are taken. |
+| `rewind_respect_gitignore` | `true` | When `true`, snapshots skip `.gitignore`-matched files (and always skip `.git`); set to `false` to snapshot every file. |
+| `rewind_max_snapshots` | `100` | How many file snapshots are retained per conversation (`1`-`10000`). Older snapshots are pruned. |
+
+Example:
 
 ```toml
-rewind_enabled = true            # master switch, default true
-rewind_respect_gitignore = true  # default true; false snapshots every file
-rewind_max_snapshots = 20        # snapshots kept per conversation, default 20
+rewind_enabled = true            # master switch
+rewind_respect_gitignore = true  # respect .gitignore when snapshotting
+rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 ```
 
 ### Esc: single press does nothing, double press stops the reply
