@@ -61,10 +61,14 @@ file changes a turn made, without needing git.
 1. **Files and conversation** - pick a past message in the transcript; the chat
    forks before that message (a new thread with the conversation truncated
    there, prompt restored into the composer) and the workspace files are
-   restored to the snapshot taken right before that message.
+   restored to the snapshot taken right before that message. A confirmation
+   shows how many files would be restored and deleted before anything is
+   applied; if no matching snapshot exists, the conversation still rewinds
+   without touching files.
 2. **Conversation only** - pick a past message in the transcript and fork the
    chat before it; files are left untouched.
-3. **Files only** - pick a numbered snapshot and restore the workspace to it.
+3. **Files only** - pick a numbered snapshot; a confirmation shows how many
+   files would be restored and deleted before the workspace is touched.
 
 Both conversation scopes reuse the transcript picker (the same full-history
 view the old double-Esc backtrack used): the newest user message starts
@@ -98,7 +102,9 @@ newer, and **Enter** confirms the rewind.
   paths listed instead of silently keeping current content.
 - The **Files only** picker lists snapshots from all conversations (each
   labeled with a short conversation id and its per-turn change count), and
-  file restore is refused while a task is running.
+  file restore is refused while a task is running. Every restore is preceded
+  by a dry-run preview that reports the files that would be restored and
+  deleted (and is skipped entirely when nothing would change).
 
 **Configuration** (`config.toml` under the codEx data directory):
 
@@ -115,6 +121,23 @@ rewind_enabled = true            # master switch
 rewind_respect_gitignore = true  # respect .gitignore when snapshotting
 rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 ```
+
+**Limitations**:
+
+- Snapshot capture is best effort: a failed capture is logged and the turn
+  continues, so a conversation rewind may have no matching file state.
+- Restore overwrites the current contents of affected files and deletes files
+  that were created after the snapshot; edits made after the snapshot are not
+  preserved.
+- Shell commands can change databases, services, network resources, git
+  state, or files outside the active directory; rewind does not reverse those
+  side effects, and other processes can edit the workspace between capture
+  and restore.
+- Snapshots contain the full contents of captured files (excluding
+  `.gitignore`-matched paths by default) and are stored under the codEx data
+  directory; treat them like source code, not as secret-free metadata.
+- Rewind is a convenience for revising recent work, not a replacement for git
+  commits or backups.
 
 ### Esc: single press does nothing, double press stops the reply
 
