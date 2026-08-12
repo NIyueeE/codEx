@@ -1,0 +1,32 @@
+From 9c2ccdf70276d7c99852c96acc5804fe474f700e Mon Sep 17 00:00:00 2001
+From: codEx Fork Bot <codex-fork-bot@localhost>
+Date: Wed, 12 Aug 2026 23:36:29 +0800
+Subject: test: tolerate real elapsed time in safety retry goal assertions
+
+- The goal extension accounts the retry turn's real wall-clock time into
+  the active source goal, so source_goal.time_used_seconds is 12 plus the
+  turn duration. Under heavy parallel test load the turn crosses a second
+  boundary and the exact 12 assertion flakes; assert >= 12 instead.
+---
+ codex-rs/tui/src/app/tests/safety_buffering.rs | 5 ++++-
+ 1 file changed, 4 insertions(+), 1 deletion(-)
+
+diff --git a/codex-rs/tui/src/app/tests/safety_buffering.rs b/codex-rs/tui/src/app/tests/safety_buffering.rs
+index 42fc6bc..566c70b 100644
+--- a/codex-rs/tui/src/app/tests/safety_buffering.rs
++++ b/codex-rs/tui/src/app/tests/safety_buffering.rs
+@@ -747,7 +747,10 @@ goals = true
+     let expected_source_tokens = if committed_steer.is_some() { 150 } else { 50 };
+     assert_eq!(source_goal.objective, RETRY_GOAL);
+     assert_eq!(source_goal.tokens_used, expected_source_tokens);
+-    assert_eq!(source_goal.time_used_seconds, 12);
++    assert!(
++        source_goal.time_used_seconds >= 12,
++        "the goal keeps its 12s baseline plus the retry turn's real elapsed time"
++    );
+     assert_eq!(retry_goal.objective, RETRY_GOAL);
+     assert!(retry_goal.tokens_used >= expected_source_tokens);
+     assert!(retry_goal.time_used_seconds >= 12);
+-- 
+2.55.0
+
