@@ -64,29 +64,31 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
 **快照原理**(纯文件,不涉及 git):
 
 - 每个主线程用户回合提交前,TUI 将工作区快照到
-  `~/.codex/snapshots/<workspace-hash>/<turn>/`(或 `$CODEX_HOME/snapshots/...`)。
-  侧对话消息和待发送的 steer 编辑不会创建快照,因此快照编号与 picker 使用
-  的 transcript 序号保持一致。每个快照包含一个 `manifest.json`(每个文件的
-  相对路径、大小、mtime、对象 id,外加 prompt 摘要)以及 `files/` 下的文件内容。
+  `~/.codex/snapshots/<workspace-hash>/threads/<对话>/<turn>/`(或
+  `$CODEX_HOME/snapshots/...`)。每个对话拥有独立的快照链,对话之间互不挤占,
+  编号始终与 picker 使用的 transcript 序号一致。侧对话消息和待发送的 steer
+  编辑不会创建快照。每个快照包含一个 `manifest.json`(每个文件的相对路径、
+  大小、mtime、对象 id,外加 prompt 摘要)以及 `files/` 下的文件内容。
 - 存储采用小型**内容寻址对象库**(同样不涉及 git):每个唯一文件内容在
   `objects/` 下只保存一份,每个快照的 `files/` 条目都是指向对象库的硬链接。
   未变化的文件直接从上一份快照链接、无需重新读取,任何早期回合出现过的
   相同内容也绝不会重复存储。
 - 遍历会跳过 `.git`,默认遵循 `.gitignore` 文件。
-- 每个工作区只保留最近 **20 个**快照;更旧的会被清理,同时回收不再被任何
-  快照引用的对象。
+- 每个对话只保留最近 **20 个**快照(可用 `rewind_max_snapshots` 配置);
+  更旧的按对话清理,同时回收不再被任何快照引用的对象。
 - 恢复时把快照文件复制回工作区,并删除快照之后创建的文件(被 gitignore 的
   路径保持不动)。还原后的文件会恢复原始 mtime,让后续快照继续保持低开销。
   旧版 codEx(纯复制)产生的快照仍可通过快照链正常还原;如果链上任何位置
   都不存在该文件的副本,恢复会失败并列出缺失路径,而不是静默保留当前内容。
-- **Files only** picker 会显示每个回合改变了多少文件;任务运行中拒绝还原
-  文件。
+- **Files only** picker 会列出所有对话的快照(标注短对话 id 与每回合的变更
+  文件数);任务运行中拒绝还原文件。
 
 **配置**(`config.toml`):
 
 ```toml
 rewind_enabled = true            # 总开关,默认 true
 rewind_respect_gitignore = true  # 默认 true;false 则快照所有文件
+rewind_max_snapshots = 20        # 每个对话保留的快照数,默认 20
 ```
 
 ### Esc:单击无操作,双击停止回复

@@ -74,34 +74,39 @@ newer, and **Enter** confirms the rewind.
 **How snapshots work** (pure files, no git involved):
 
 - Before each main-thread user turn is submitted, the TUI snapshots the
-  workspace into `~/.codex/snapshots/<workspace-hash>/<turn>/` (or
-  `$CODEX_HOME/snapshots/...`). Side-conversation messages and pending steer
-  edits don't create snapshots, so the numbering stays aligned with the
-  transcript ordinals used by the pickers. Each snapshot contains a
-  `manifest.json` (relative path, size, mtime, object id for every file, plus
-  a prompt excerpt) and the file contents under `files/`.
+  workspace into `~/.codex/snapshots/<workspace-hash>/threads/<conversation>/<turn>/`
+  (or `$CODEX_HOME/snapshots/...`). Each conversation owns an independent
+  snapshot chain, so conversations never evict each other's snapshots and the
+  numbering always matches the picker's transcript ordinals.
+  Side-conversation messages and pending steer edits don't create snapshots.
+  Each snapshot contains a `manifest.json` (relative path, size, mtime, object
+  id for every file, plus a prompt excerpt) and the file contents under
+  `files/`.
 - Storage is a small **content-addressed store** (no git involved): each
   unique file content is saved once under `objects/` and every snapshot's
   `files/` entries are hardlinks into it. Unchanged files are linked from the
   previous snapshot without being re-read, and identical content from any
   earlier turn is never stored twice.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
-- The most recent **20 snapshots** are kept per workspace; older ones are
-  pruned and their unreferenced objects are garbage-collected.
+- The most recent **20 snapshots per conversation** are kept (configurable via
+  `rewind_max_snapshots`); older ones are pruned per conversation and their
+  unreferenced objects are garbage-collected.
 - Restore copies snapshot files back over the workspace and deletes files that
   were created after the snapshot (gitignored paths are left alone). Restored
   files keep their original mtime so later snapshots stay cheap. Snapshots
   created by older codEx versions (plain copies) remain restorable through the
   snapshot chain; if no copy exists anywhere, the restore fails with the
   missing paths listed instead of silently keeping current content.
-- The **Files only** picker shows how many files each turn changed, and file
-  restore is refused while a task is running.
+- The **Files only** picker lists snapshots from all conversations (each
+  labeled with a short conversation id and its per-turn change count), and
+  file restore is refused while a task is running.
 
 **Configuration** (`config.toml`):
 
 ```toml
 rewind_enabled = true            # master switch, default true
 rewind_respect_gitignore = true  # default true; false snapshots every file
+rewind_max_snapshots = 20        # snapshots kept per conversation, default 20
 ```
 
 ### Esc: single press does nothing, double press stops the reply
