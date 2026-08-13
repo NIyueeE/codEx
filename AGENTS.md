@@ -41,12 +41,14 @@ cargo fmt --check                   # rustfmt check
 ## Coding Style & Naming Conventions
 
 - Rust: standard `rustfmt`; keep `cargo fmt --check` clean
-- Patches: sequential `NNNN-` prefixes, lowercase hyphenated names, never
-  empty; patch content never changes version numbers
+- Patches: sequential `NNNN-` prefixes, alphanumeric hyphenated names (never
+  empty; underscores are rejected by the sanity check). `format-patch` derives
+  names from commit subjects and truncates long ones, so keep subjects
+  concise. Patch content never changes version numbers
 - `README.md` must be ASCII-only (U+2728 allowed), enforced by CI
   (`asciicheck`); update `README.zh.md` alongside it
-- Keep codespell clean (`.codespellignore`); Bash scripts use
-  `set -euo pipefail`
+- Keep codespell clean (`.codespellignore` for pre-commit, `.codespellrc` for
+  CI); Bash scripts use `set -euo pipefail`
 
 ## Testing Guidelines
 
@@ -61,6 +63,9 @@ RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
 Add regression tests with bug fixes (e.g. `/rewind` tests). `repo-checks.yml`
 also runs the `codex_package` Python unit tests and the `codex-tui`/
 `codex-core` boundary check.
+
+TUI snapshot tests are environment-independent: the footer shortcuts pin a
+test-only WSL flag, so the full suite passes on WSL hosts and Linux CI alike.
 
 ## Commit & Pull Request Guidelines
 
