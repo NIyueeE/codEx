@@ -6,8 +6,10 @@
 #   pip install pre-commit
 #   pre-commit install
 #
-# The cargo-fmt hook only runs when a bootstrapped tree exists (tree/), which
-# is where the actual Rust sources live.
+# The cargo-fmt and config-schema hooks only run when a bootstrapped tree
+# exists (tree/, or update-work/ during an upgrade), which is where the
+# actual Rust sources live. The patch-export hook re-exports the queue from
+# that tree and fails when patches/ drifted from it.
 
 repos:
   - repo: https://github.com/codespell-project/codespell
@@ -64,4 +66,71 @@ repos:
           - |
             if [ -d tree/codex-rs ]; then
               cd tree/codex-rs && cargo fmt --check
+            fi
+
+      - id: config-schema-check
+        name: Config schema fixture check
+        description: Mirrors CI config_schema_matches_fixture; regenerates core/config.schema.json and fails on drift
+        entry: bash
+        language: system
+        pass_filenames: false
+        always_run: true
+        args:
+          - -c
+          - |
+            code_dir=""
+            if [[ -d tree/codex-rs ]]; then
+              code_dir=tree/codex-rs
+            elif [[ -d update-work/codex-rs ]]; then
+              code_dir=update-work/codex-rs
+            fi
+            if [[ -z "$code_dir" ]]; then
+              echo "config-schema-check: no bootstrapped tree (tree/ or update-work/); skipping"
+              exit 0
+            fi
+            fixture="$code_dir/core/config.schema.json"
+            tmp="$(mktemp)"
+            trap 'rm -f "$tmp"' EXIT
+            if ! (cd "$code_dir" && cargo run -q -p codex-core --bin codex-write-config-schema -- --out "$tmp"); then
+              echo "config-schema-check: failed to generate the config schema" >&2
+              exit 1
+            fi
+            if ! diff -u "$fixture" "$tmp"; then
+              echo "config-schema-check: $fixture is out of date." >&2
+              echo "Fix: (cd $code_dir && cargo run -p codex-core --bin codex-write-config-schema)" >&2
+              echo "then re-export the queue: (cd $code_dir && bash ../scripts/gen-patches.sh \"$(cat BASE_TAG)\")" >&2
+              exit 1
+            fi
+
+      - id: patch-export-check
+        name: Patch export matches tree
+        description: Re-exports the queue from the bootstrapped tree and fails if patches/ drifted
+        entry: bash
+        language: system
+        pass_filenames: false
+        always_run: true
+        args:
+          - -c
+          - |
+            workdir=""
+            if [[ -d tree/codex-rs ]]; then
+              workdir=tree
+            elif [[ -d update-work/codex-rs ]]; then
+              workdir=update-work
+            fi
+            if [[ -z "$workdir" ]]; then
+              echo "patch-export-check: no bootstrapped tree (tree/ or update-work/); skipping"
+              exit 0
+            fi
+            base_tag="$(cat BASE_TAG)"
+            tmp="$(mktemp -d)"
+            trap 'rm -rf "$tmp"' EXIT
+            if ! (cd "$workdir" && bash ../scripts/gen-patches.sh "$base_tag" "$tmp" >/dev/null 2>&1); then
+              echo "patch-export-check: gen-patches.sh failed; fix the tree/queue first" >&2
+              exit 1
+            fi
+            if ! diff -rq patches "$tmp" >/dev/null; then
+              echo "patch-export-check: patches/ drifted from the bootstrapped tree." >&2
+              echo "Re-export: (cd $workdir && bash ../scripts/gen-patches.sh \"$base_tag\")" >&2
+              exit 1
             fi

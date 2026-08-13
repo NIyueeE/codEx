@@ -41,7 +41,8 @@ cargo fmt --check                   # rustfmt check
 - `bash scripts/check-patch-modules.sh --tree DIR [--patches DIR]` — validate
   the module manifest against a tree and/or an exported patches/ dir
 - `pre-commit install` — local hooks (codespell, README ASCII check,
-  patch-module layout check, `cargo fmt --check`)
+  patch-module layout check, `cargo fmt --check`, config schema fixture
+  check, patch export drift check)
 
 ## Coding Style & Naming Conventions
 
