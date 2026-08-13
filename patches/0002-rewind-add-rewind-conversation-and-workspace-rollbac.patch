@@ -1,0 +1,4634 @@
+From 2108581a299edadde4a93ccad8d343d204ecbff4 Mon Sep 17 00:00:00 2001
+From: Won Park <won@openai.com>
+Date: Fri, 14 Aug 2026 01:13:00 +0800
+Subject: rewind: add /rewind conversation and workspace rollback
+
+---
+ codex-rs/config/src/config_toml.rs            |   18 +-
+ codex-rs/core/config.schema.json              |   18 +-
+ codex-rs/core/src/config/config_tests.rs      |   35 +
+ codex-rs/core/src/config/mod.rs               |   29 +-
+ codex-rs/thread-manager-sample/src/main.rs    |    3 +
+ codex-rs/tui/Cargo.toml                       |    1 +
+ codex-rs/tui/src/app/event_dispatch.rs        |   63 +-
+ codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
+ codex-rs/tui/src/app/tests.rs                 |  627 +++++++-
+ codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
+ codex-rs/tui/src/app_backtrack.rs             |  174 ++-
+ codex-rs/tui/src/app_event.rs                 |   41 +
+ codex-rs/tui/src/chatwidget.rs                |   21 +-
+ .../tui/src/chatwidget/input_submission.rs    |   61 +
+ codex-rs/tui/src/chatwidget/slash_dispatch.rs |    4 +
+ ...hatwidget__tests__rewind_scope_picker.snap |   14 +
+ .../tui/src/chatwidget/tests/app_server.rs    |    3 +
+ .../chatwidget/tests/composer_submission.rs   |   35 +-
+ .../src/chatwidget/tests/slash_commands.rs    |    3 +-
+ codex-rs/tui/src/rewind/actions.rs            |  376 +++++
+ codex-rs/tui/src/rewind/mod.rs                | 1319 +++++++++++++++++
+ codex-rs/tui/src/rewind/rewind_tests.rs       | 1191 +++++++++++++++
+ codex-rs/tui/src/slash_command.rs             |    3 +
+ 23 files changed, 3891 insertions(+), 156 deletions(-)
+ create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
+ create mode 100644 codex-rs/tui/src/rewind/actions.rs
+ create mode 100644 codex-rs/tui/src/rewind/mod.rs
+ create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
+
+diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
+index 5ffa42d..7fb2de8 100644
+--- a/codex-rs/config/src/config_toml.rs
++++ b/codex-rs/config/src/config_toml.rs
+@@ -468,10 +468,24 @@ pub struct ConfigToml {
+     pub project_root_markers: Option<Vec<String>>,
+ 
+     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
+-    /// Set to `false` only if your Codex updates are centrally managed.
+-    /// Defaults to `true`.
++    /// The codEx fork disables the network check by default; set to `true` to opt in.
++    /// Defaults to `false`.
+     pub check_for_update_on_startup: Option<bool>,
+ 
++    /// When `true`, enables the `/rewind` command and takes a file snapshot of
++    /// the workspace before each turn so the fork can roll back changes.
++    /// Defaults to `true`.
++    pub rewind_enabled: Option<bool>,
++
++    /// When `true`, `/rewind` snapshots respect `.gitignore` (and skip the
++    /// `.git` directory). Set to `false` to snapshot every file.
++    /// Defaults to `true`.
++    pub rewind_respect_gitignore: Option<bool>,
++
++    /// Maximum number of `/rewind` file snapshots retained per conversation.
++    /// Defaults to `100`.
++    pub rewind_max_snapshots: Option<usize>,
++
+     /// When true, disables burst-paste detection for typed input entirely.
+     /// All characters are inserted as they are received, and no buffering
+     /// or placeholder replacement will occur for fast keypress bursts.
+diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
+index fd463f4..87b13bf 100644
+--- a/codex-rs/core/config.schema.json
++++ b/codex-rs/core/config.schema.json
+@@ -4966,7 +4966,7 @@
+       "type": "string"
+     },
+     "check_for_update_on_startup": {
+-      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. Set to `false` only if your Codex updates are centrally managed. Defaults to `true`.",
++      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. The codEx fork disables the network check by default; set to `true` to opt in. Defaults to `false`.",
+       "type": "boolean"
+     },
+     "cli_auth_credentials_store": {
+@@ -5742,6 +5742,20 @@
+       "description": "Review model override used by the `/review` feature.",
+       "type": "string"
+     },
++    "rewind_enabled": {
++      "description": "When `true`, enables the `/rewind` command and takes a file snapshot of the workspace before each turn so the fork can roll back changes. Defaults to `true`.",
++      "type": "boolean"
++    },
++    "rewind_respect_gitignore": {
++      "description": "When `true`, `/rewind` snapshots respect `.gitignore` (and skip the `.git` directory). Set to `false` to snapshot every file. Defaults to `true`.",
++      "type": "boolean"
++    },
++    "rewind_max_snapshots": {
++      "description": "Maximum number of `/rewind` file snapshots retained per conversation. Defaults to `100`.",
++      "type": "integer",
++      "minimum": 1,
++      "maximum": 10000
++    },
+     "sandbox_mode": {
+       "allOf": [
+         {
+@@ -5852,4 +5866,4 @@
+   },
+   "title": "ConfigToml",
+   "type": "object"
+-}
+\ No newline at end of file
++}
+diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
+index e3e91a6..83ce36c 100644
+--- a/codex-rs/core/src/config/config_tests.rs
++++ b/codex-rs/core/src/config/config_tests.rs
+@@ -531,6 +531,41 @@ enabled = false
+     Ok(())
+ }
+ 
++#[tokio::test]
++async fn rewind_defaults_on_and_respects_gitignore() -> std::io::Result<()> {
++    let codex_home = TempDir::new()?;
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .build()
++        .await?;
++    assert!(config.rewind_enabled);
++    assert!(config.rewind_respect_gitignore);
++    assert_eq!(config.rewind_max_snapshots, 100);
++    assert!(!config.check_for_update_on_startup);
++    Ok(())
++}
++
++#[tokio::test]
++async fn rewind_can_be_disabled_in_config() -> std::io::Result<()> {
++    let codex_home = TempDir::new()?;
++    std::fs::write(
++        codex_home.path().join(CONFIG_TOML_FILE),
++        r#"
++rewind_enabled = false
++rewind_respect_gitignore = false
++rewind_max_snapshots = 5
++"#,
++    )?;
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .build()
++        .await?;
++    assert!(!config.rewind_enabled);
++    assert!(!config.rewind_respect_gitignore);
++    assert_eq!(config.rewind_max_snapshots, 5);
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
+     let codex_home = tempdir()?;
+diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
+index fc3b7f5..0a1a174 100644
+--- a/codex-rs/core/src/config/mod.rs
++++ b/codex-rs/core/src/config/mod.rs
+@@ -1088,10 +1088,24 @@ pub struct Config {
+     pub notices: Notice,
+ 
+     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
+-    /// Set to `false` only if your Codex updates are centrally managed.
+-    /// Defaults to `true`.
++    /// The codEx fork disables the network check by default; set to `true` to opt in.
++    /// Defaults to `false`.
+     pub check_for_update_on_startup: bool,
+ 
++    /// When `true`, enables the `/rewind` command and takes a file snapshot of
++    /// the workspace before each turn so the fork can roll back changes.
++    /// Defaults to `true`.
++    pub rewind_enabled: bool,
++
++    /// When `true`, `/rewind` snapshots respect `.gitignore` (and skip the
++    /// `.git` directory). Set to `false` to snapshot every file.
++    /// Defaults to `true`.
++    pub rewind_respect_gitignore: bool,
++
++    /// Maximum number of `/rewind` file snapshots retained per conversation.
++    /// Defaults to `100`.
++    pub rewind_max_snapshots: usize,
++
+     /// When true, disables burst-paste detection for typed input entirely.
+     /// All characters are inserted as they are received, and no buffering
+     /// or placeholder replacement will occur for fast keypress bursts.
+@@ -3946,7 +3960,13 @@ impl Config {
+ 
+         let review_model = override_review_model.or(cfg.review_model);
+ 
+-        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
++        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(false);
++        let rewind_enabled = cfg.rewind_enabled.unwrap_or(true);
++        let rewind_respect_gitignore = cfg.rewind_respect_gitignore.unwrap_or(true);
++        let rewind_max_snapshots = cfg
++            .rewind_max_snapshots
++            .unwrap_or(100)
++            .clamp(1, 10_000);
+         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
+ 
+         let log_dir = cfg
+@@ -4257,6 +4277,9 @@ impl Config {
+             active_project,
+             notices,
+             check_for_update_on_startup,
++            rewind_enabled,
++            rewind_respect_gitignore,
++            rewind_max_snapshots,
+             disable_paste_burst: cfg.disable_paste_burst.unwrap_or(false),
+             analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
+             feedback_enabled: cfg
+diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
+index 1e7f8d7..d307ae5 100644
+--- a/codex-rs/thread-manager-sample/src/main.rs
++++ b/codex-rs/thread-manager-sample/src/main.rs
+@@ -310,6 +310,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+         active_project: ProjectConfig { trust_level: None },
+         notices: Notice::default(),
+         check_for_update_on_startup: false,
++        rewind_enabled: true,
++        rewind_respect_gitignore: true,
++        rewind_max_snapshots: 100,
+         disable_paste_burst: false,
+         analytics_enabled: Some(false),
+         feedback_enabled: false,
+diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
+index 8d79afc..2076571 100644
+--- a/codex-rs/tui/Cargo.toml
++++ b/codex-rs/tui/Cargo.toml
+@@ -74,6 +74,7 @@ diffy = { workspace = true }
+ dirs = { workspace = true }
+ dunce = { workspace = true }
+ image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
++ignore = { workspace = true }
+ itertools = { workspace = true }
+ lazy_static = { workspace = true }
+ pathdiff = { workspace = true }
+diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
+index 2d55735..677f291 100644
+--- a/codex-rs/tui/src/app/event_dispatch.rs
++++ b/codex-rs/tui/src/app/event_dispatch.rs
+@@ -145,6 +145,33 @@ impl App {
+                 // Leaving alt-screen may blank the inline viewport; force a redraw either way.
+                 tui.frame_requester().schedule_frame();
+             }
++            AppEvent::OpenRewindPicker => {
++                if !self.config.rewind_enabled {
++                    self.chat_widget.add_error_message(
++                        "/rewind is disabled. Set `rewind_enabled = true` in config.toml to enable it."
++                            .to_string(),
++                    );
++                    self.chat_widget.maybe_send_next_queued_input();
++                    return Ok(AppRunControl::Continue);
++                }
++                self.show_rewind_scope_picker();
++                self.chat_widget.maybe_send_next_queued_input();
++            }
++            AppEvent::OpenRewindMessagePicker { restore_files } => {
++                self.show_rewind_message_picker(tui, restore_files);
++                self.chat_widget.maybe_send_next_queued_input();
++            }
++            AppEvent::OpenRewindSnapshotPicker => {
++                self.show_rewind_snapshot_picker();
++                self.chat_widget.maybe_send_next_queued_input();
++            }
++            AppEvent::RewindPreviewSnapshot { thread_id, index } => {
++                self.show_rewind_restore_confirmation(&thread_id, index);
++                self.chat_widget.maybe_send_next_queued_input();
++            }
++            AppEvent::RewindRestoreSnapshot { thread_id, index } => {
++                self.rewind_restore_snapshot(&thread_id, index);
++            }
+             AppEvent::OpenExternalAgentConfigMigration => {
+                 match crate::external_agent_config_migration::flow::handle_external_agent_config_migration_prompt(
+                     tui,
+@@ -291,6 +318,7 @@ impl App {
+                 thread_id,
+                 nth_user_message,
+                 mut prompt,
++                restore_files,
+             } => {
+                 if self.chat_widget.thread_id() != Some(thread_id) {
+                     return Ok(AppRunControl::Continue);
+@@ -303,9 +331,23 @@ impl App {
+                 self.refresh_in_memory_config_from_disk_best_effort("forking the thread")
+                     .await;
+                 let config = self.fresh_session_config();
+-                let turns = match self.thread_event_channels.get(&thread_id) {
+-                    Some(channel) => Some(channel.store.lock().await.turns.clone()),
+-                    None => None,
++                // The channel's turns are a snapshot taken when the thread was
++                // attached; turns completed since then render live in the
++                // transcript but are never appended to the channel store.
++                // Resolve the selected message against the app server's
++                // canonical persisted turns so messages submitted after attach
++                // (e.g. the newest message) can be rewound, and fall back to
++                // the channel store when a fresh read is unavailable (e.g.
++                // paginated threads without a turns view).
++                let turns = match app_server
++                    .thread_read(thread_id, /*include_turns*/ true)
++                    .await
++                {
++                    Ok(thread) if !thread.turns.is_empty() => Some(thread.turns),
++                    _ => match self.thread_event_channels.get(&thread_id) {
++                        Some(channel) => Some(channel.store.lock().await.turns.clone()),
++                        None => None,
++                    },
+                 };
+                 let started = match turns {
+                     Some(turns) => match crate::app_backtrack::backtrack_fork_before_turn_id(
+@@ -354,7 +396,20 @@ impl App {
+                             )
+                             .await
+                         {
+-                            Ok(()) => self.chat_widget.restore_user_message_to_composer(prompt),
++                            Ok(()) => {
++                                self.chat_widget.restore_user_message_to_composer(prompt);
++                                // Files are restored only after the fork and
++                                // thread attach both succeed, so a failed
++                                // conversation rewind never rolls back the
++                                // workspace on its own.
++                                if let Some(request) = restore_files {
++                                    self.rewind_restore_files(
++                                        request.thread_id,
++                                        request.index,
++                                        request.prompt,
++                                    );
++                                }
++                            }
+                             Err(err) => {
+                                 self.restore_backtrack_prompt_after_branch_error(prompt, err);
+                             }
+diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
+index 51877ce..c998fe8 100644
+--- a/codex-rs/tui/src/app/session_lifecycle.rs
++++ b/codex-rs/tui/src/app/session_lifecycle.rs
+@@ -754,6 +754,11 @@ impl App {
+             initial_user_message,
+         );
+         self.replace_chat_widget(ChatWidget::new_with_app_event(init));
++        // The previous thread's transcript cells and terminal scrollback must
++        // not leak into the attached thread: replay below appends new cells, so
++        // without this the old conversation stays visible after a fork, resume,
++        // or `/rewind` conversation rollback.
++        self.reset_for_thread_switch(tui)?;
+         if started.blocks_direct_input {
+             self.mark_primary_thread_parent_owned(started.session.thread_id);
+         }
+diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
+index 2ef3387..95350d3 100644
+--- a/codex-rs/tui/src/app/tests.rs
++++ b/codex-rs/tui/src/app/tests.rs
+@@ -5978,13 +5978,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+             rollout_path: Some(PathBuf::new()),
+         });
+ 
+-    app.backtrack.base_id = Some(base_id);
+-    app.backtrack.primed = true;
+-    app.backtrack.nth_user_message = user_count(&app.transcript_cells).saturating_sub(1);
+-
+-    let selection = app
+-        .confirm_backtrack_from_main()
+-        .expect("backtrack selection");
++    let selections = app.rewind_message_selections();
++    let (selected_nth, selection) = selections.into_iter().next().expect("rewind selection");
++    assert_eq!(selected_nth, 1);
+     let expected = BacktrackSelection {
+         thread_id: base_id,
+         nth_user_message: 1,
+@@ -6011,6 +6007,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+             thread_id,
+             nth_user_message,
+             prompt,
++            restore_files: None,
+         } if thread_id == expected.thread_id
+             && nth_user_message == expected.nth_user_message
+             && prompt == expected.prompt
+@@ -6048,6 +6045,567 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+     );
+ }
+ 
++#[tokio::test]
++async fn rewind_files_and_conversation_forks_thread_before_selected_message() -> Result<()> {
++    // Build a rollout with three completed turns so the app server has real
++    // persisted turns to fork from.
++    let codex_home = tempfile::tempdir()?;
++    let workspace = tempfile::tempdir()?;
++    let filename_ts = "2025-01-05T12-00-00";
++    let meta_rfc3339 = "2025-01-05T12:00:00Z";
++    let thread_id = app_test_support::create_fake_rollout(
++        codex_home.path(),
++        filename_ts,
++        meta_rfc3339,
++        "first question",
++        /*model_provider*/ None,
++        /*git_info*/ None,
++    )
++    .map_err(|error| color_eyre::eyre::eyre!("failed to create fake rollout: {error}"))?;
++    let rollout_path = app_test_support::rollout_path(codex_home.path(), filename_ts, &thread_id);
++    let contents = std::fs::read_to_string(&rollout_path)?;
++    // Keep only the session_meta line; rebuild the conversation with explicit
++    // turn lifecycle events (task_started / item_completed / task_complete).
++    let session_meta_line = contents
++        .lines()
++        .next()
++        .expect("session meta line")
++        .to_string();
++    let mut lines = vec![session_meta_line];
++    let event_line = |payload: serde_json::Value| {
++        serde_json::json!({
++            "timestamp": meta_rfc3339,
++            "type": "event_msg",
++            "payload": payload,
++        })
++        .to_string()
++    };
++    for (turn_id, prompt) in [
++        ("turn-1", "first question"),
++        ("turn-2", "second question"),
++        ("turn-3", "third question"),
++    ] {
++        lines.push(event_line(serde_json::json!({
++            "type": "task_started",
++            "turn_id": turn_id,
++            "model_context_window": null,
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "user_message",
++            "message": prompt,
++            "kind": "plain",
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "agent_message",
++            "message": "ok",
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "task_complete",
++            "turn_id": turn_id,
++            "last_agent_message": null,
++            "error": null,
++            "started_at": 10,
++            "completed_at": 20,
++            "duration_ms": 10_000,
++            "time_to_first_token_ms": null,
++        })));
++    }
++    std::fs::write(&rollout_path, lines.join("\n") + "\n")?;
++
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(workspace.path().to_path_buf()),
++            ..Default::default()
++        })
++        .build()
++        .await?;
++    assert!(config.rewind_enabled);
++
++    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
++    app.config = config.clone();
++    let mut app_server = crate::start_embedded_app_server_for_picker(&config)
++        .await
++        .expect("embedded app server");
++    let resumed = app_server
++        .resume_thread(
++            config.clone(),
++            ThreadId::from_string(thread_id.as_str())?,
++            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
++        )
++        .await
++        .expect("resume rollout thread");
++    let thread_id = resumed.session.thread_id;
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++    app.enqueue_primary_thread_session(resumed.session, resumed.turns)
++        .await
++        .expect("primary thread should be registered");
++    // History replay is delivered as app events; run them through the event
++    // loop so `transcript_cells` is populated like in a real session.
++    while let Ok(event) = app_event_rx.try_recv() {
++        app.handle_event(&mut tui, &mut app_server, event).await?;
++    }
++
++    // The `/rewind` message picker builds its selections from transcript cells.
++    let selections = app.rewind_message_selections();
++    assert_eq!(selections.len(), 3, "all turns should be rewindable");
++    let (nth, selection) = selections
++        .into_iter()
++        .next()
++        .expect("newest rewind selection");
++    assert_eq!(nth, 2);
++    assert_eq!(selection.prompt.text, "third question");
++
++    // Mirror the snapshots `/rewind` takes before each turn: one snapshot per
++    // submitted message, numbered from 1, capturing the workspace state.
++    let workspace_file = workspace.path().join("notes.txt");
++    std::fs::write(&workspace_file, "v1")?;
++    crate::rewind::take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &thread_id.to_string(),
++        "first question",
++        /*respect_gitignore*/ true,
++        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
++    )?;
++    std::fs::write(&workspace_file, "v2")?;
++    crate::rewind::take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &thread_id.to_string(),
++        "second question",
++        /*respect_gitignore*/ true,
++        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
++    )?;
++    std::fs::write(&workspace_file, "v3")?;
++    crate::rewind::take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &thread_id.to_string(),
++        "third question",
++        /*respect_gitignore*/ true,
++        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
++    )?;
++
++    // Exactly what the "Files and conversation" picker sends: the fork event
++    // carries the file-restore request (snapshot `nth + 1`, the snapshot taken
++    // right before the selected message), and the restore only runs after the
++    // fork succeeds.
++    app.handle_event(
++        &mut tui,
++        &mut app_server,
++        AppEvent::ForkSessionForPromptEdit {
++            thread_id,
++            nth_user_message: nth,
++            prompt: selection.prompt.clone(),
++            restore_files: Some(crate::app_event::RewindRestoreRequest {
++                thread_id: thread_id.to_string(),
++                index: nth as u64 + 1,
++                prompt: selection.prompt.text.clone(),
++            }),
++        },
++    )
++    .await?;
++    // The fork handler queues the forked thread's replay as app events; run
++    // them through the event loop like the real main loop would.
++    while let Ok(event) = app_event_rx.try_recv() {
++        app.handle_event(&mut tui, &mut app_server, event).await?;
++    }
++
++    let forked_thread_id = app
++        .chat_widget
++        .thread_id()
++        .expect("forked thread should be attached");
++    assert_ne!(forked_thread_id, thread_id);
++    let transcript = app
++        .transcript_cells
++        .iter()
++        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 120)))
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(
++        transcript.contains("first question"),
++        "forked thread should keep the first turn:\n{transcript}"
++    );
++    assert!(
++        transcript.contains("second question"),
++        "forked thread should keep the second turn:\n{transcript}"
++    );
++    assert!(
++        !transcript.contains("third question"),
++        "forked thread should drop the selected turn:\n{transcript}"
++    );
++    assert_eq!(
++        app.chat_widget.composer_text_with_pending(),
++        "third question",
++        "selected prompt should be restored to the composer"
++    );
++    assert_eq!(
++        std::fs::read_to_string(&workspace_file)?,
++        "v3",
++        "files should be restored to the snapshot taken before the selected turn"
++    );
++    app_server.shutdown().await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn rewind_message_selection_reuses_transcript_overlay() -> Result<()> {
++    let codex_home = tempfile::tempdir()?;
++    let workspace = tempfile::tempdir()?;
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(workspace.path().to_path_buf()),
++            ..Default::default()
++        })
++        .build()
++        .await?;
++    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
++    app.config = config.clone();
++    let mut app_server = crate::start_embedded_app_server_for_picker(&config).await?;
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++
++    let thread_id = ThreadId::new();
++    app.chat_widget
++        .handle_thread_session(crate::session_state::ThreadSessionState {
++            thread_id,
++            forked_from_id: None,
++            fork_parent_title: None,
++            thread_name: None,
++            model: "gpt-test".to_string(),
++            model_provider_id: "test-provider".to_string(),
++            service_tier: None,
++            approval_policy: AskForApproval::Never,
++            approvals_reviewer: ApprovalsReviewer::User,
++            permission_profile: PermissionProfile::read_only(),
++            active_permission_profile: None,
++            cwd: test_path_buf("/home/user/project").abs(),
++            runtime_workspace_roots: Vec::new(),
++            instruction_source_paths: Vec::new(),
++            reasoning_effort: None,
++            collaboration_mode: None,
++            personality: None,
++            message_history: None,
++            network_proxy: None,
++            rollout_path: Some(PathBuf::new()),
++        });
++    let user_cell = |text: &str| -> Arc<dyn HistoryCell> {
++        Arc::new(UserHistoryCell {
++            message: text.to_string(),
++            text_elements: Vec::new(),
++            local_image_paths: Vec::new(),
++            remote_image_urls: Vec::new(),
++        }) as Arc<dyn HistoryCell>
++    };
++    app.transcript_cells = vec![
++        user_cell("first question"),
++        plain_line_cell("answer first"),
++        user_cell("second question"),
++        plain_line_cell("answer second"),
++    ];
++
++    // "Conversation only": the transcript overlay opens with the newest user
++    // message highlighted, reusing the old double-Esc backtrack picker.
++    app.show_rewind_message_picker(&mut tui, /*restore_files*/ false);
++    assert!(matches!(&app.overlay, Some(Overlay::Transcript(_))));
++    assert!(app.backtrack.overlay_preview_active);
++    assert_eq!(app.backtrack.nth_user_message, 1);
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::Rewind {
++            restore_files: false
++        }
++    );
++
++    // Esc steps to the older message; Enter confirms the rewind fork without
++    // touching files.
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
++    )
++    .await?;
++    assert_eq!(app.backtrack.nth_user_message, 0);
++    assert!(
++        matches!(&app.overlay, Some(Overlay::Transcript(_))),
++        "overlay stays open while stepping"
++    );
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
++    )
++    .await?;
++    assert!(app.overlay.is_none(), "overlay closes on confirm");
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::EditPrompt,
++        "state resets after confirm"
++    );
++    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    assert!(
++        events.iter().any(|event| matches!(
++            event,
++            AppEvent::ForkSessionForPromptEdit {
++                thread_id: event_thread_id,
++                nth_user_message: 0,
++                prompt,
++                restore_files: None,
++            } if *event_thread_id == thread_id && prompt.text == "first question"
++        )),
++        "should fork before the selected message: {events:?}"
++    );
++
++    // "Files and conversation": confirming the newest message also restores
++    // the snapshot taken for that turn.
++    app.show_rewind_message_picker(&mut tui, /*restore_files*/ true);
++    assert_eq!(
++        app.backtrack.confirm_mode,
++        crate::app_backtrack::BacktrackConfirmMode::Rewind {
++            restore_files: true
++        }
++    );
++    assert_eq!(app.backtrack.nth_user_message, 1);
++
++    // Snapshot the conversation's workspace so the combined rewind has file
++    // state to preview.
++    let workspace_file = workspace.path().join("notes.txt");
++    std::fs::write(&workspace_file, "v1")?;
++    crate::rewind::take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &thread_id.to_string(),
++        "first question",
++        /*respect_gitignore*/ true,
++        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
++    )?;
++    std::fs::write(&workspace_file, "v2")?;
++    crate::rewind::take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &thread_id.to_string(),
++        "second question",
++        /*respect_gitignore*/ true,
++        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
++    )?;
++    // Make the workspace differ from snapshot 2 so the confirmation preview
++    // has changes to report.
++    std::fs::write(&workspace_file, "v3")?;
++    app.handle_backtrack_overlay_event(
++        &mut tui,
++        &mut app_server,
++        TuiEvent::Key(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE)),
++    )
++    .await?;
++    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    assert!(
++        !events
++            .iter()
++            .any(|event| matches!(event, AppEvent::ForkSessionForPromptEdit { .. })),
++        "the fork should wait for the confirmation preview: {events:?}"
++    );
++    // Confirm the preview; the fork event then carries the restore request.
++    app.chat_widget
++        .handle_key_event(KeyEvent::from(KeyCode::Enter));
++    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    assert!(
++        events.iter().any(|event| matches!(
++            event,
++            AppEvent::ForkSessionForPromptEdit {
++                thread_id: event_thread_id,
++                nth_user_message: 1,
++                prompt,
++                restore_files: Some(request),
++            } if *event_thread_id == thread_id
++                && prompt.text == "second question"
++                && request.index == 2
++                && request.prompt == "second question"
++        )),
++        "should fork before the newest message after confirmation: {events:?}"
++    );
++
++    app_server.shutdown().await?;
++    Ok(())
++}
++
++#[tokio::test]
++async fn rewind_forks_newest_message_completed_after_attach() -> Result<()> {
++    // A turn completed after the TUI attached renders in the transcript but is
++    // never appended to the thread channel's turns snapshot. /rewind must still
++    // resolve the newest message against the app server's canonical turns
++    // instead of failing with "the selected prompt was not found in the
++    // persisted thread".
++    let codex_home = tempfile::tempdir()?;
++    let workspace = tempfile::tempdir()?;
++    let filename_ts = "2025-01-05T12-00-00";
++    let meta_rfc3339 = "2025-01-05T12:00:00Z";
++    let thread_id = app_test_support::create_fake_rollout(
++        codex_home.path(),
++        filename_ts,
++        meta_rfc3339,
++        "first question",
++        /*model_provider*/ None,
++        /*git_info*/ None,
++    )
++    .map_err(|error| color_eyre::eyre::eyre!("failed to create fake rollout: {error}"))?;
++    let rollout_path = app_test_support::rollout_path(codex_home.path(), filename_ts, &thread_id);
++    let contents = std::fs::read_to_string(&rollout_path)?;
++    // Keep only the session_meta line; rebuild the conversation with explicit
++    // turn lifecycle events (task_started / item_completed / task_complete).
++    let session_meta_line = contents
++        .lines()
++        .next()
++        .expect("session meta line")
++        .to_string();
++    let mut lines = vec![session_meta_line];
++    let event_line = |payload: serde_json::Value| {
++        serde_json::json!({
++            "timestamp": meta_rfc3339,
++            "type": "event_msg",
++            "payload": payload,
++        })
++        .to_string()
++    };
++    for (turn_id, prompt) in [
++        ("turn-1", "first question"),
++        ("turn-2", "second question"),
++        ("turn-3", "third question"),
++    ] {
++        lines.push(event_line(serde_json::json!({
++            "type": "task_started",
++            "turn_id": turn_id,
++            "model_context_window": null,
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "user_message",
++            "message": prompt,
++            "kind": "plain",
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "agent_message",
++            "message": "ok",
++        })));
++        lines.push(event_line(serde_json::json!({
++            "type": "task_complete",
++            "turn_id": turn_id,
++            "last_agent_message": null,
++            "error": null,
++            "started_at": 10,
++            "completed_at": 20,
++            "duration_ms": 10_000,
++            "time_to_first_token_ms": null,
++        })));
++    }
++    std::fs::write(&rollout_path, lines.join("\n") + "\n")?;
++
++    let config = ConfigBuilder::default()
++        .codex_home(codex_home.path().to_path_buf())
++        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
++        .harness_overrides(ConfigOverrides {
++            cwd: Some(workspace.path().to_path_buf()),
++            ..Default::default()
++        })
++        .build()
++        .await?;
++    assert!(config.rewind_enabled);
++
++    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
++    app.config = config.clone();
++    let mut app_server = crate::start_embedded_app_server_for_picker(&config)
++        .await
++        .expect("embedded app server");
++    let resumed = app_server
++        .resume_thread(
++            config.clone(),
++            ThreadId::from_string(thread_id.as_str())?,
++            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
++        )
++        .await
++        .expect("resume rollout thread");
++    let thread_id = resumed.session.thread_id;
++    let mut tui = crate::tui::test_support::make_test_tui()?;
++    app.enqueue_primary_thread_session(resumed.session, resumed.turns)
++        .await
++        .expect("primary thread should be registered");
++    // History replay is delivered as app events; run them through the event
++    // loop so `transcript_cells` is populated like in a real session.
++    while let Ok(event) = app_event_rx.try_recv() {
++        app.handle_event(&mut tui, &mut app_server, event).await?;
++    }
++
++    // Simulate a turn that completed after attach: the transcript knows all
++    // three user messages, but the channel's turns snapshot only has the
++    // first two (turns completed later are rendered live, never appended).
++    {
++        let mut store = app
++            .thread_event_channels
++            .get(&thread_id)
++            .expect("thread channel")
++            .store
++            .lock()
++            .await;
++        assert_eq!(store.turns.len(), 3);
++        store.turns.truncate(2);
++    }
++
++    // Exactly what the "Conversation only" picker action sends for the newest
++    // message ("third question", transcript ordinal 2).
++    app.handle_event(
++        &mut tui,
++        &mut app_server,
++        AppEvent::ForkSessionForPromptEdit {
++            thread_id,
++            nth_user_message: 2,
++            prompt: crate::chatwidget::UserMessage::from("third question"),
++            restore_files: None,
++        },
++    )
++    .await?;
++    // The fork handler queues the forked thread's replay as app events; run
++    // them through the event loop like the real main loop would.
++    while let Ok(event) = app_event_rx.try_recv() {
++        app.handle_event(&mut tui, &mut app_server, event).await?;
++    }
++
++    let forked_thread_id = app
++        .chat_widget
++        .thread_id()
++        .expect("forked thread should be attached");
++    assert_ne!(forked_thread_id, thread_id);
++    let transcript = app
++        .transcript_cells
++        .iter()
++        .map(|cell| lines_to_single_string(&cell.display_lines(/*width*/ 120)))
++        .collect::<Vec<_>>()
++        .join("\n");
++    assert!(
++        !transcript.contains("Failed to branch"),
++        "fork should succeed even when the newest turn is missing from the channel snapshot:\n{transcript}"
++    );
++    assert!(
++        transcript.contains("first question"),
++        "forked thread should keep the first turn:\n{transcript}"
++    );
++    assert!(
++        transcript.contains("second question"),
++        "forked thread should keep the second turn:\n{transcript}"
++    );
++    assert!(
++        !transcript.contains("third question"),
++        "forked thread should drop the selected turn:\n{transcript}"
++    );
++    assert_eq!(
++        app.chat_widget.composer_text_with_pending(),
++        "third question",
++        "selected prompt should be restored to the composer"
++    );
++    app_server.shutdown().await?;
++    Ok(())
++}
++
+ #[tokio::test]
+ async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
+     let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+@@ -6572,6 +7130,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
+             thread_id: source_thread_id,
+             nth_user_message: 1,
+             prompt: prompt.clone(),
++            restore_files: None,
+         },
+     ))
+     .await?;
+@@ -6670,6 +7229,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
+             thread_id: source_thread_id,
+             nth_user_message: 0,
+             prompt: crate::chatwidget::UserMessage::from("first prompt"),
++            restore_files: None,
+         },
+     ))
+     .await?;
+@@ -7076,7 +7636,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+         app.enqueue_primary_thread_session(started.session, started.turns)
+             .await
+             .expect("primary thread should be registered");
+-        app.backtrack.primed = true;
+         let op = AppCommand::interrupt();
+ 
+         let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
+@@ -7088,7 +7647,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+         .expect("interrupt submission should not fail");
+ 
+         assert_eq!(handled, true);
+-        assert!(!app.backtrack.primed);
+     })
+     .await;
+ }
+@@ -7709,9 +8267,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+     ));
+     app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
+     app.has_emitted_history_lines = true;
+-    app.backtrack.primed = true;
+-    app.backtrack.overlay_preview_active = true;
+-    app.backtrack.nth_user_message = 0;
+     app.backtrack_render_pending = true;
+ 
+     app.reset_app_ui_state_after_clear();
+@@ -7720,8 +8275,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+     assert!(app.transcript_cells.is_empty());
+     assert!(app.deferred_history_lines.is_empty());
+     assert!(!app.has_emitted_history_lines);
+-    assert!(!app.backtrack.primed);
+-    assert!(!app.backtrack.overlay_preview_active);
+     assert!(!app.backtrack_render_pending);
+     assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
+     assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
+@@ -7756,15 +8309,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+ }
+ 
+ #[tokio::test]
+-async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
++async fn single_esc_is_noop_in_main_ui_but_vim_insert_escape_is_preserved() {
+     let mut app = make_test_app().await;
+     let esc = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, KeyModifiers::NONE);
+ 
+     assert!(app.chat_widget.composer_is_empty());
+-    assert!(app.should_handle_backtrack_esc(esc));
++    // No task running: a main-UI Esc is a no-op.
++    app.chat_widget.handle_main_esc_press();
++    assert!(!app.chat_widget.esc_interrupt_active());
++    assert!(!app.chat_widget.composer_owns_esc_key());
+ 
+     app.chat_widget.toggle_vim_mode_and_notify();
+-    assert!(app.should_handle_backtrack_esc(esc));
+ 
+     app.chat_widget
+         .handle_key_event(crossterm::event::KeyEvent::new(
+@@ -7772,25 +8327,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+             KeyModifiers::NONE,
+         ));
+     assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
+-    assert!(!app.should_handle_backtrack_esc(esc));
+ 
+     app.chat_widget.handle_key_event(esc);
+ 
+-    assert!(!app.backtrack.primed);
+     assert!(!app.chat_widget.should_handle_vim_insert_escape(esc));
+-    assert!(app.should_handle_backtrack_esc(esc));
++    assert!(!app.chat_widget.composer_owns_esc_key());
+ }
+ 
+ #[tokio::test]
+-async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_escape() {
++async fn side_conversation_main_ui_esc_is_a_noop_without_stealing_vim_insert_escape() {
+     let mut app = make_test_app().await;
+     let esc = crossterm::event::KeyEvent::new(crossterm::event::KeyCode::Esc, KeyModifiers::NONE);
+ 
+     app.chat_widget
+         .set_side_conversation_active(/*active*/ true);
+     assert!(app.chat_widget.composer_is_empty());
+-    assert!(!app.should_handle_backtrack_esc(esc));
+-    assert!(app.should_reject_side_backtrack_esc(esc));
++    assert!(!app.chat_widget.composer_owns_esc_key());
++
++    app.chat_widget.handle_main_esc_press();
+ 
+     app.chat_widget.toggle_vim_mode_and_notify();
+     app.chat_widget
+@@ -7800,33 +8354,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+         ));
+ 
+     assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
+-    assert!(!app.should_handle_backtrack_esc(esc));
+-    assert!(!app.should_reject_side_backtrack_esc(esc));
++    app.chat_widget.handle_key_event(esc);
++    assert!(!app.chat_widget.should_handle_vim_insert_escape(esc));
+ }
+ 
+-#[tokio::test]
+-async fn side_backtrack_rejection_reports_unavailable_message_snapshot() {
+-    let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
+-    app.backtrack.primed = true;
+-
+-    app.reject_side_backtrack_esc();
+-
+-    assert!(!app.backtrack.primed);
+-    let cell = match app_event_rx.try_recv() {
+-        Ok(AppEvent::InsertHistoryCell(cell)) => cell,
+-        other => panic!("expected InsertHistoryCell event, got {other:?}"),
+-    };
+-    let rendered = cell
+-        .display_lines(/*width*/ 80)
+-        .into_iter()
+-        .map(|line| line.to_string())
+-        .collect::<Vec<_>>()
+-        .join("\n");
+-    assert_app_snapshot!(
+-        "side_backtrack_rejection_reports_unavailable_message",
+-        rendered
+-    );
+-}
+ async fn start_config_write_test_app_server(app: &App) -> Result<AppServerSession> {
+     Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
+ }
+diff --git a/codex-rs/tui/src/app/tests/turn_submission.rs b/codex-rs/tui/src/app/tests/turn_submission.rs
+index 8737007..4e202f8 100644
+--- a/codex-rs/tui/src/app/tests/turn_submission.rs
++++ b/codex-rs/tui/src/app/tests/turn_submission.rs
+@@ -6,6 +6,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
+     let (mut app, mut app_event_rx, mut op_rx) = make_test_app_with_channels().await;
+     let mut tui = crate::tui::test_support::make_test_tui()?;
+     let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
++    // The turn submission takes a /rewind snapshot of the workspace, so the
++    // configured cwd must exist for the snapshot to succeed silently.
++    std::fs::create_dir_all(&app.config.cwd)?;
+     let thread_id = ThreadId::from_string("123e4567-e89b-12d3-a456-426614174000")?;
+     app.active_thread_id = Some(thread_id);
+     app.chat_widget
+diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
+index 6eebdf2..add559f 100644
+--- a/codex-rs/tui/src/app_backtrack.rs
++++ b/codex-rs/tui/src/app_backtrack.rs
+@@ -1,17 +1,10 @@
+ //! Backtracking and transcript overlay event routing.
+ //!
+-//! This file owns backtrack mode (Esc/Enter navigation in the transcript overlay) and also
+-//! mediates a key rendering boundary for the transcript overlay.
+-//!
+-//! Overall goal: keep the main chat view and the transcript overlay in sync while allowing users
+-//! to edit an earlier prompt on a source-preserving branch. Confirming a selection forks before
+-//! the selected turn and restores its prompt in the new composer.
+-//!
+-//! Backtrack operates as a small state machine:
+-//! - The first `Esc` in the main view "primes" the feature and captures a base thread id.
+-//! - A subsequent `Esc` opens the transcript overlay (`Ctrl+T`) and highlights a user message when
+-//!   there is a prompt to reuse.
+-//! - `Enter` requests a fork before the selected prompt and reopens it for editing.
++//! This file owns the transcript-overlay backtrack flow (Esc/Enter navigation
++//! inside the Ctrl+T overlay) and mediates a key rendering boundary for the
++//! overlay. `/rewind` reuses the same fork machinery
++//! ([`backtrack_fork_before_turn_id`] and `ForkSessionForPromptEdit`) from a
++//! searchable picker instead of the removed main-view Esc priming.
+ //!
+ //! The transcript overlay (`Ctrl+T`) renders committed transcript cells plus a render-only live
+ //! tail derived from the current in-flight `ChatWidget.active_cell`.
+@@ -54,7 +47,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
+ pub(crate) const SIDE_EDIT_PREVIOUS_UNAVAILABLE_MESSAGE: &str =
+     "Editing previous prompts is unavailable in side conversations.";
+ 
+-/// Aggregates all backtrack-related state used by the App.
++/// What confirming a highlighted transcript selection should do.
++#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
++pub(crate) enum BacktrackConfirmMode {
++    /// Original backtrack: fork before the prompt and restore it for editing.
++    #[default]
++    EditPrompt,
++    /// `/rewind`: fork before the prompt, optionally restoring workspace files.
++    Rewind { restore_files: bool },
++}
++
++/// Aggregates all backtrack/rewind transcript-selection state used by the App.
+ #[derive(Default)]
+ pub(crate) struct BacktrackState {
+     /// True when Esc has primed backtrack mode in the main view.
+@@ -70,6 +73,8 @@ pub(crate) struct BacktrackState {
+     pub(crate) nth_user_message: usize,
+     /// True when the transcript overlay is showing a backtrack preview.
+     pub(crate) overlay_preview_active: bool,
++    /// How a confirmed selection is applied.
++    pub(crate) confirm_mode: BacktrackConfirmMode,
+ }
+ 
+ /// A user-visible backtrack choice that can be reopened on a source-preserving branch.
+@@ -82,6 +87,31 @@ pub(crate) struct BacktrackSelection {
+ }
+ 
+ impl App {
++    /// Opens the transcript overlay for `/rewind` message selection.
++    ///
++    /// Reuses the original double-Esc backtrack picker: the full conversation
++    /// history is shown with the newest user message highlighted, Esc/Left
++    /// step to older messages, Right steps newer, and Enter confirms. Returns
++    /// `false` when there is nothing to rewind.
++    pub(crate) fn begin_rewind_overlay_selection(
++        &mut self,
++        tui: &mut tui::Tui,
++        restore_files: bool,
++    ) -> bool {
++        if !has_backtrack_target(&self.transcript_cells) {
++            return false;
++        }
++        self.backtrack.confirm_mode = BacktrackConfirmMode::Rewind { restore_files };
++        self.backtrack.base_id = self.chat_widget.thread_id();
++        self.backtrack.overlay_preview_active = true;
++        self.open_transcript_overlay(tui);
++        if let Some(last) = user_count(&self.transcript_cells).checked_sub(1) {
++            self.apply_backtrack_selection_internal(last);
++        }
++        tui.frame_requester().schedule_frame();
++        true
++    }
++
+     /// Route overlay events while the transcript overlay is active.
+     ///
+     /// If backtrack preview is active, Esc / Left steps selection, Right steps forward, Enter
+@@ -168,21 +198,6 @@ impl App {
+         }
+     }
+ 
+-    /// Handle global Esc presses for backtracking when no overlay is present.
+-    pub(crate) fn handle_backtrack_esc_key(&mut self, tui: &mut tui::Tui) {
+-        if !self.chat_widget.composer_is_empty() {
+-            return;
+-        }
+-
+-        if !self.backtrack.primed {
+-            self.prime_backtrack();
+-        } else if self.overlay.is_none() {
+-            self.open_backtrack_preview(tui);
+-        } else if self.backtrack.overlay_preview_active {
+-            self.step_backtrack_and_highlight(tui);
+-        }
+-    }
+-
+     /// Request a source-preserving branch before the selected prompt.
+     pub(crate) fn apply_backtrack_selection(&mut self, selection: BacktrackSelection) {
+         if self.chat_widget.side_conversation_active() {
+@@ -200,6 +215,7 @@ impl App {
+             thread_id: selection.thread_id,
+             nth_user_message: selection.nth_user_message,
+             prompt: selection.prompt,
++            restore_files: None,
+         });
+     }
+ 
+@@ -249,33 +265,6 @@ impl App {
+         }
+     }
+ 
+-    /// Initialize backtrack state and show composer hint.
+-    fn prime_backtrack(&mut self) {
+-        self.backtrack.primed = true;
+-        self.backtrack.nth_user_message = usize::MAX;
+-        self.backtrack.base_id = self.chat_widget.thread_id();
+-        if has_backtrack_target(&self.transcript_cells) {
+-            self.chat_widget.show_esc_backtrack_hint();
+-        }
+-    }
+-
+-    /// Open overlay and begin backtrack preview flow (first step + highlight).
+-    fn open_backtrack_preview(&mut self, tui: &mut tui::Tui) {
+-        if !has_backtrack_target(&self.transcript_cells) {
+-            self.reset_backtrack_state();
+-            self.chat_widget
+-                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
+-            tui.frame_requester().schedule_frame();
+-            return;
+-        }
+-
+-        self.open_transcript_overlay(tui);
+-        self.backtrack.overlay_preview_active = true;
+-        // Composer is hidden by overlay; clear its hint.
+-        self.chat_widget.clear_esc_backtrack_hint();
+-        self.step_backtrack_and_highlight(tui);
+-    }
+-
+     /// When overlay is already open, begin preview mode and select latest user message.
+     fn begin_overlay_backtrack_preview(&mut self, tui: &mut tui::Tui) {
+         if !has_backtrack_target(&self.transcript_cells) {
+@@ -408,15 +397,44 @@ impl App {
+         Ok(())
+     }
+ 
+-    /// Handle Enter in overlay backtrack preview: confirm selection and reset state.
++    /// Handle Enter in overlay preview: confirm selection and reset state.
++    ///
++    /// In backtrack mode this forks before the selected prompt and restores it
++    /// for editing; in `/rewind` mode it forks before the prompt and optionally
++    /// restores workspace files (mirroring the old `/rewind` message picker
++    /// actions).
+     fn overlay_confirm_backtrack(&mut self, tui: &mut tui::Tui) {
+         let nth_user_message = self.backtrack.nth_user_message;
+         let selection = self.backtrack_selection(nth_user_message);
++        let mode = self.backtrack.confirm_mode;
+         self.close_transcript_overlay(tui);
+-        if let Some(selection) = selection {
+-            self.apply_backtrack_selection(selection);
++        let Some(selection) = selection else {
+             tui.frame_requester().schedule_frame();
++            return;
++        };
++        match mode {
++            BacktrackConfirmMode::EditPrompt
++            | BacktrackConfirmMode::Rewind {
++                restore_files: /*restore_files*/ false,
++            } => self.apply_backtrack_selection(selection),
++            BacktrackConfirmMode::Rewind {
++                restore_files: /*restore_files*/ true,
++            } => {
++                // Snapshots are numbered from 1 (one per submitted user
++                // message, taken before its turn), so the snapshot for message
++                // `nth` (0-based transcript ordinal) is `nth + 1`.
++                let index = nth_user_message as u64 + 1;
++                let prompt_text = selection.prompt.text.clone();
++                let request = crate::app_event::RewindRestoreRequest {
++                    thread_id: selection.thread_id.to_string(),
++                    index,
++                    prompt: prompt_text,
++                };
++                // Preview the file changes and confirm before forking.
++                self.show_rewind_fork_confirmation(selection, request);
++            }
+         }
++        tui.frame_requester().schedule_frame();
+     }
+ 
+     /// Handle Esc in overlay backtrack preview: step selection if armed, else forward.
+@@ -443,26 +461,25 @@ impl App {
+         Ok(())
+     }
+ 
+-    /// Confirm a primed backtrack from the main view (no overlay visible).
+-    /// Computes the prompt state from the selected user message.
+-    pub(crate) fn confirm_backtrack_from_main(&mut self) -> Option<BacktrackSelection> {
+-        let selection = self.backtrack_selection(self.backtrack.nth_user_message);
+-        self.reset_backtrack_state();
+-        selection
+-    }
+-
+     /// Clear all backtrack-related state and composer hints.
+     pub(crate) fn reset_backtrack_state(&mut self) {
+         self.backtrack.primed = false;
+         self.backtrack.base_id = None;
+         self.backtrack.nth_user_message = usize::MAX;
+-        // In case a hint is somehow still visible (e.g., race with overlay open/close).
+-        self.chat_widget.clear_esc_backtrack_hint();
++        self.backtrack.confirm_mode = BacktrackConfirmMode::EditPrompt;
+     }
+ 
+     fn backtrack_selection(&self, nth_user_message: usize) -> Option<BacktrackSelection> {
+         let base_id = self.backtrack.base_id?;
+-        if self.chat_widget.thread_id() != Some(base_id) {
++        self.backtrack_selection_at(base_id, nth_user_message)
++    }
++
++    fn backtrack_selection_at(
++        &self,
++        thread_id: ThreadId,
++        nth_user_message: usize,
++    ) -> Option<BacktrackSelection> {
++        if self.chat_widget.thread_id() != Some(thread_id) {
+             return None;
+         }
+ 
+@@ -480,7 +497,7 @@ impl App {
+             .collect();
+ 
+         Some(BacktrackSelection {
+-            thread_id: base_id,
++            thread_id,
+             nth_user_message,
+             prompt: UserMessage {
+                 text: selected.message.clone(),
+@@ -491,6 +508,23 @@ impl App {
+             },
+         })
+     }
++
++    /// Lists rewindable user messages with their transcript ordinals, most
++    /// recent first. Tests use this to mirror what the `/rewind` transcript
++    /// picker offers (the picker itself highlights cells directly).
++    #[cfg(test)]
++    pub(crate) fn rewind_message_selections(&self) -> Vec<(usize, BacktrackSelection)> {
++        let count = user_count(&self.transcript_cells);
++        (0..count)
++            .rev()
++            .filter_map(|nth| {
++                self.chat_widget
++                    .thread_id()
++                    .and_then(|thread_id| self.backtrack_selection_at(thread_id, nth))
++                    .map(|selection| (nth, selection))
++            })
++            .collect()
++    }
+ }
+ 
+ /// Find the persisted turn that contains a selected transcript prompt.
+diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
+index 4e55cca..8a4a72c 100644
+--- a/codex-rs/tui/src/app_event.rs
++++ b/codex-rs/tui/src/app_event.rs
+@@ -184,6 +184,17 @@ pub(crate) enum KeymapCaptureMode {
+     Chord,
+ }
+ 
++/// A pending `/rewind` file-restore request attached to a conversation fork.
++#[derive(Debug, Clone)]
++pub(crate) struct RewindRestoreRequest {
++    /// Conversation (thread) whose snapshot chain holds the target snapshot.
++    pub(crate) thread_id: String,
++    /// Snapshot index expected from the transcript-ordinal mapping.
++    pub(crate) index: u64,
++    /// Selected prompt text, used to verify and locate the matching snapshot.
++    pub(crate) prompt: String,
++}
++
+ #[allow(clippy::large_enum_variant)]
+ #[derive(Debug)]
+ pub(crate) enum AppEvent {
+@@ -313,10 +324,40 @@ pub(crate) enum AppEvent {
+     },
+ 
+     /// Branch before a selected prompt and reopen it in the new thread's composer.
++    ///
++    /// `restore_files` optionally carries a `/rewind` file-restore request that
++    /// is executed only after the fork succeeds, so workspace files are never
++    /// rolled back when the conversation branch fails.
+     ForkSessionForPromptEdit {
+         thread_id: ThreadId,
+         nth_user_message: usize,
+         prompt: UserMessage,
++        restore_files: Option<RewindRestoreRequest>,
++    },
++
++    /// Open the `/rewind` scope picker (files and/or conversation rollback).
++    OpenRewindPicker,
++
++    /// Open the `/rewind` message picker. When `restore_files` is set, the
++    /// matching file snapshot is restored together with the conversation fork.
++    OpenRewindMessagePicker {
++        restore_files: bool,
++    },
++
++    /// Open the `/rewind` snapshot picker to restore workspace files only.
++    OpenRewindSnapshotPicker,
++
++    /// Show a confirmation with a dry-run preview before restoring the
++    /// workspace from a stored rewind snapshot.
++    RewindPreviewSnapshot {
++        thread_id: String,
++        index: u64,
++    },
++
++    /// Restore the workspace files from a stored rewind snapshot.
++    RewindRestoreSnapshot {
++        thread_id: String,
++        index: u64,
+     },
+ 
+     /// Request to exit the application.
+diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
+index bb1d3aa..16c9c4e 100644
+--- a/codex-rs/tui/src/chatwidget.rs
++++ b/codex-rs/tui/src/chatwidget.rs
+@@ -703,6 +703,9 @@ pub(crate) struct ChatWidget {
+     /// We require the second press to match this key so `Ctrl+C` followed by
+     /// `Ctrl+D` (or vice versa) doesn't quit accidentally.
+     quit_shortcut_key: Option<KeyBinding>,
++    /// When `Some`, the user has pressed Esc once while a reply is running and
++    /// a second press must occur before this deadline to stop the reply.
++    esc_interrupt_expires_at: Option<Instant>,
+     // Runtime metrics accumulated across delta snapshots for the active turn.
+     turn_runtime_metrics: RuntimeMetricsSummary,
+     last_rendered_width: std::cell::Cell<Option<usize>>,
+@@ -1676,9 +1679,15 @@ impl ChatWidget {
+         self.bottom_pane.composer_is_empty()
+     }
+ 
++    /// Whether a task (agent turn, review, or other cancellable work) is
++    /// currently running.
++    pub(crate) fn is_task_running(&self) -> bool {
++        self.bottom_pane.is_task_running()
++    }
++
+     #[cfg(test)]
+     pub(crate) fn is_task_running_for_test(&self) -> bool {
+-        self.bottom_pane.is_task_running()
++        self.is_task_running()
+     }
+ 
+     pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
+@@ -1693,7 +1702,7 @@ impl ChatWidget {
+ 
+     /// True when the UI is in the regular composer state with no running task,
+     /// no modal overlay (e.g. approvals or status indicator), and no composer popups.
+-    /// In this state Esc-Esc backtracking is enabled.
++    #[cfg(test)]
+     pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
+         self.bottom_pane.is_normal_backtrack_mode()
+     }
+@@ -1730,14 +1739,6 @@ impl ChatWidget {
+         self.bottom_pane.has_active_view()
+     }
+ 
+-    pub(crate) fn show_esc_backtrack_hint(&mut self) {
+-        self.bottom_pane.show_esc_backtrack_hint();
+-    }
+-
+-    pub(crate) fn clear_esc_backtrack_hint(&mut self) {
+-        self.bottom_pane.clear_esc_backtrack_hint();
+-    }
+-
+     fn refresh_skills_for_current_cwd(&mut self, force_reload: bool) {
+         self.submit_op(AppCommand::list_skills(
+             vec![self.config.cwd.to_path_buf()],
+diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
+index 830cd3e..60164dc 100644
+--- a/codex-rs/tui/src/chatwidget/input_submission.rs
++++ b/codex-rs/tui/src/chatwidget/input_submission.rs
+@@ -161,6 +161,15 @@ impl ChatWidget {
+             return (app_command.is_some(), app_command);
+         }
+ 
++        // Snapshot only committed main-thread turns: side-conversation
++        // messages and pending steer edits never enter the main transcript, so
++        // snapshotting them would shift the snapshot numbering the `/rewind`
++        // pickers rely on. Steers are snapshotted once when they are actually
++        // re-submitted after the interrupt.
++        if self.config.rewind_enabled && render_in_history && !self.active_side_conversation {
++            self.snapshot_workspace_before_turn(&text);
++        }
++
+         for image_url in &remote_image_urls {
+             items.push(UserInput::Image {
+                 url: image_url.clone(),
+@@ -453,4 +462,56 @@ impl ChatWidget {
+         ));
+         self.request_redraw();
+     }
++
++    /// Takes a `/rewind` file snapshot of the workspace before a user turn.
++    ///
++    /// The snapshot is taken synchronously so it always captures the state
++    /// before the turn's file writes begin. Failures never block submission,
++    /// but they are surfaced in the transcript so a silently broken rewind
++    /// chain cannot pass unnoticed.
++    pub(super) fn snapshot_workspace_before_turn(&mut self, text: &str) {
++        let Some(thread_id) = self.thread_id.as_ref().map(|id| id.to_string()) else {
++            tracing::warn!("failed to take rewind snapshot: no active thread");
++            return;
++        };
++        let codex_home = self.config.codex_home.clone();
++        let cwd = self.config.cwd.clone();
++        let respect_gitignore = self.config.rewind_respect_gitignore;
++        let max_snapshots = self.config.rewind_max_snapshots;
++        match crate::rewind::take_snapshot_with_skipped(
++            codex_home.as_path(),
++            cwd.as_path(),
++            &thread_id,
++            text,
++            respect_gitignore,
++            max_snapshots,
++        ) {
++            Ok((_snapshot, skipped)) => {
++                if !skipped.is_empty() {
++                    let shown = skipped
++                        .iter()
++                        .take(3)
++                        .map(|path| path.display().to_string())
++                        .collect::<Vec<_>>()
++                        .join(", ");
++                    let remaining = skipped.len().saturating_sub(3);
++                    let suffix = if remaining > 0 {
++                        format!(" (+{remaining} more)")
++                    } else {
++                        String::new()
++                    };
++                    self.add_to_history(history_cell::new_warning_event(format!(
++                        "Rewind snapshot skipped {} unreadable path(s): {shown}{suffix}. A later /rewind will leave them untouched.",
++                        skipped.len()
++                    )));
++                }
++            }
++            Err(err) => {
++                tracing::warn!(error = %err, "failed to take rewind snapshot");
++                self.add_to_history(history_cell::new_warning_event(format!(
++                    "Failed to take a rewind snapshot: {err}"
++                )));
++            }
++        }
++    }
+ }
+diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+index e0d19d8..7472035 100644
+--- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
++++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
+@@ -245,6 +245,9 @@ impl ChatWidget {
+                 self.app_event_tx
+                     .send(AppEvent::ForkCurrentSession { name: None });
+             }
++            SlashCommand::Rewind => {
++                self.app_event_tx.send(AppEvent::OpenRewindPicker);
++            }
+             SlashCommand::App => {
+                 let Some(thread_id) = self.thread_id else {
+                     self.add_error_message(
+@@ -1096,6 +1099,7 @@ impl ChatWidget {
+             | SlashCommand::Clear
+             | SlashCommand::Resume
+             | SlashCommand::Fork
++            | SlashCommand::Rewind
+             | SlashCommand::Init
+             | SlashCommand::Compact
+             | SlashCommand::Review
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
+new file mode 100644
+index 0000000..11c7aab
+--- /dev/null
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
+@@ -0,0 +1,14 @@
++---
++source: tui/src/chatwidget/tests/popups_and_settings.rs
++expression: popup
++---
++  Rewind
++  Choose what to roll back
++
++› 1. Files and conversation  Restore workspace files and fork the chat before
++                             a message
++  2. Conversation only       Fork the chat before a message without touching
++                             files
++  3. Files only              Restore workspace files from an earlier snapshot
++
++  Press enter to confirm or esc to go back
+diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+index 3edeacf..e0a71c0 100644
+--- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
++++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
+@@ -505,6 +505,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
+     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+     chat.thread_id = Some(ThreadId::new());
+ 
++    // Submitting takes a /rewind snapshot, so the workspace must exist for
++    // the snapshot to succeed without adding a warning cell.
++    std::fs::create_dir_all(test_project_path()).expect("create test workspace");
+     chat.bottom_pane
+         .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
+     chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
+diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+index 49fa1dd..d0e84d3 100644
+--- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
++++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
+@@ -1140,7 +1140,7 @@ fn interrupted_history(
+ }
+ 
+ #[tokio::test]
+-async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
++async fn output_free_double_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
+     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+     let prompt = "revise this prompt";
+     chat.thread_id = Some(ThreadId::new());
+@@ -1149,22 +1149,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
+     handle_turn_started(&mut chat, "turn-1");
+     chat.bottom_pane.ensure_status_indicator();
+ 
+-    let esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
+-    assert!(chat.bottom_pane.should_interrupt_running_task(esc));
+-    chat.handle_key_event(esc);
++    let _esc = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
++    // codEx: the first Esc arms the interrupt window; the second stops the reply.
++    chat.handle_main_esc_press();
++    assert!(chat.esc_interrupt_active());
++    chat.handle_main_esc_press();
++    next_interrupt_op(&mut op_rx);
+ 
+     let mut saw_prompt = false;
+-    loop {
+-        match rx.try_recv() {
+-            Ok(AppEvent::InsertHistoryCell(cell)) => {
+-                if let Some(cell) = cell.as_any().downcast_ref::<UserHistoryCell>() {
+-                    assert_eq!(cell.message, prompt);
+-                    saw_prompt = true;
+-                }
+-            }
+-            Ok(AppEvent::CodexOp(Op::Interrupt)) => break,
+-            Ok(_) => {}
+-            Err(error) => panic!("expected Esc interrupt command, got {error:?}"),
++    while let Ok(event) = rx.try_recv() {
++        if let AppEvent::InsertHistoryCell(cell) = event
++            && let Some(cell) = cell.as_any().downcast_ref::<UserHistoryCell>()
++        {
++            assert_eq!(cell.message, prompt);
++            saw_prompt = true;
+         }
+     }
+ 
+@@ -1180,6 +1178,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
+     let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+     let prompt = "revise this prompt";
+     chat.thread_id = Some(ThreadId::new());
++    // Submitting takes a /rewind snapshot, so the workspace must exist for
++    // the snapshot to succeed without surfacing a warning.
++    std::fs::create_dir_all(test_project_path()).expect("create test workspace");
+     chat.submit_user_message(UserMessage::from(prompt));
+     assert_matches!(next_submit_op(&mut op_rx), Op::UserTurn { .. });
+     handle_turn_started(&mut chat, "turn-1");
+@@ -1221,7 +1222,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
+     assert!(!chat.input_queue.submit_pending_steers_after_interrupt);
+     assert!(op_rx.try_recv().is_err());
+ 
+-    chat.handle_key_event(esc);
++    chat.handle_main_esc_press();
++    assert!(chat.esc_interrupt_active());
++    chat.handle_main_esc_press();
+ 
+     match op_rx.try_recv() {
+         Ok(Op::Interrupt) => {}
+diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
+index ff3b3fb..0e0cd3c 100644
+--- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
++++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
+@@ -1164,7 +1164,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
+     let encoded = "use [$figma](app://figma) now";
+     assert_eq!(next_add_to_history_event(&mut rx), encoded);
+ 
+-    chat.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
++    chat.handle_main_esc_press();
++    chat.handle_main_esc_press();
+     next_interrupt_op(&mut op_rx);
+     chat.on_interrupted_turn(TurnAbortReason::Interrupted);
+ 
+diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
+new file mode 100644
+index 0000000..9d09e1e
+--- /dev/null
++++ b/codex-rs/tui/src/rewind/actions.rs
+@@ -0,0 +1,376 @@
++//! `/rewind` UI actions: scope picker, message picker, snapshot picker, and
++//! file restoration. The file snapshot engine lives in [`super`].
++
++use crate::app::App;
++use crate::app_backtrack::BacktrackSelection;
++use crate::app_event::AppEvent;
++use crate::app_event::RewindRestoreRequest;
++use crate::bottom_pane::SelectionItem;
++use crate::bottom_pane::SelectionViewParams;
++use crate::bottom_pane::popup_consts::standard_popup_hint_line;
++use crate::rewind;
++use crate::tui;
++
++const REWIND_TITLE: &str = "Rewind";
++const NO_MESSAGES_TO_REWIND: &str = "No previous messages to rewind.";
++const NO_SNAPSHOTS_TO_REWIND: &str =
++    "No file snapshots yet. Snapshots are taken before each turn when /rewind is enabled.";
++
++impl App {
++    /// Shows the `/rewind` scope picker.
++    pub(crate) fn show_rewind_scope_picker(&mut self) {
++        self.chat_widget
++            .show_selection_view(rewind_scope_selection_params());
++    }
++
++    /// Opens the transcript overlay for conversation rollback, reusing the
++    /// original double-Esc backtrack picker instead of a custom list.
++    pub(crate) fn show_rewind_message_picker(&mut self, tui: &mut tui::Tui, restore_files: bool) {
++        if !self.begin_rewind_overlay_selection(tui, restore_files) {
++            self.chat_widget
++                .add_info_message(NO_MESSAGES_TO_REWIND.to_string(), /*hint*/ None);
++        }
++    }
++
++    /// Shows the snapshot picker for file-only rollback.
++    pub(crate) fn show_rewind_snapshot_picker(&mut self) {
++        let snapshots = rewind::list_workspace_snapshots(
++            self.config.codex_home.as_path(),
++            self.config.cwd.as_path(),
++        );
++        if snapshots.is_empty() {
++            self.chat_widget
++                .add_info_message(NO_SNAPSHOTS_TO_REWIND.to_string(), /*hint*/ None);
++            return;
++        }
++
++        let items = snapshots
++            .into_iter()
++            .map(|snapshot| SelectionItem {
++                name: format!("Turn {}", snapshot.index),
++                description: Some(snapshot_label(&snapshot)),
++                actions: vec![Box::new(move |tx| {
++                    tx.send(AppEvent::RewindPreviewSnapshot {
++                        thread_id: snapshot.thread_id.clone(),
++                        index: snapshot.index,
++                    });
++                })],
++                dismiss_on_select: true,
++                ..Default::default()
++            })
++            .collect();
++
++        self.chat_widget.show_selection_view(SelectionViewParams {
++            view_id: Some("rewind_snapshots"),
++            title: Some(REWIND_TITLE.to_string()),
++            subtitle: Some("Pick a snapshot to restore workspace files from".to_string()),
++            footer_hint: Some(standard_popup_hint_line()),
++            is_searchable: false,
++            items,
++            ..Default::default()
++        });
++    }
++
++    /// Shows a confirmation with a dry-run preview before restoring the
++    /// workspace from a stored snapshot. When nothing would change, the
++    /// restore is skipped without asking (mirrors Claude Code's rewind
++    /// fast path).
++    pub(crate) fn show_rewind_restore_confirmation(&mut self, thread_id: &str, index: u64) {
++        let codex_home = self.config.codex_home.as_path();
++        let cwd = self.config.cwd.as_path();
++        let preview = match rewind::preview_restore(codex_home, cwd, thread_id, index) {
++            Ok(preview) => preview,
++            Err(err) => {
++                self.chat_widget
++                    .add_error_message(format!("Failed to preview snapshot {index}: {err}"));
++                return;
++            }
++        };
++        if preview.restore_count == 0 && preview.delete_count == 0 {
++            self.chat_widget
++                .add_info_message(format!("Nothing to restore from snapshot {index}."), None);
++            return;
++        }
++
++        let label = self
++            .snapshot_label_for(thread_id, index)
++            .unwrap_or_else(|| format!("Turn {index}"));
++        let thread_id = thread_id.to_string();
++        let params = SelectionViewParams {
++            view_id: Some("rewind_confirm_restore"),
++            title: Some(format!("Restore snapshot {index}?")),
++            subtitle: Some(format!(
++                "Would restore {} file(s) and delete {} file(s).",
++                preview.restore_count, preview.delete_count
++            )),
++            footer_hint: Some(standard_popup_hint_line()),
++            is_searchable: false,
++            items: vec![
++                SelectionItem {
++                    name: "Restore".to_string(),
++                    description: Some(label),
++                    actions: vec![Box::new(move |tx| {
++                        tx.send(AppEvent::RewindRestoreSnapshot {
++                            thread_id: thread_id.clone(),
++                            index,
++                        });
++                    })],
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++                SelectionItem {
++                    name: "Cancel".to_string(),
++                    description: Some("Leave the workspace untouched".to_string()),
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++            ],
++            ..Default::default()
++        };
++        self.chat_widget.show_selection_view(params);
++    }
++
++    /// Shows a confirmation for a "Files and conversation" rewind: previews
++    /// the file changes and defers the fork to the confirm action. When no
++    /// matching snapshot exists, the conversation still rewinds without
++    /// touching files (mirrors Claude Code's behavior); when nothing would
++    /// change, the fork proceeds immediately.
++    pub(crate) fn show_rewind_fork_confirmation(
++        &mut self,
++        selection: BacktrackSelection,
++        request: RewindRestoreRequest,
++    ) {
++        let codex_home = self.config.codex_home.as_path();
++        let cwd = self.config.cwd.as_path();
++        let resolved = self.resolve_rewind_restore_target(&request);
++        let Some((restore_thread_id, snapshot_index)) = resolved else {
++            self.chat_widget.add_info_message(
++                "No matching file snapshot found for this message; rewinding the conversation without file changes."
++                    .to_string(),
++                /*hint*/ None,
++            );
++            self.apply_backtrack_selection(selection);
++            return;
++        };
++        let preview =
++            match rewind::preview_restore(codex_home, cwd, &restore_thread_id, snapshot_index) {
++                Ok(preview) => preview,
++                Err(err) => {
++                    self.chat_widget.add_error_message(format!(
++                        "Failed to preview snapshot {snapshot_index}: {err}"
++                    ));
++                    return;
++                }
++            };
++        if preview.restore_count == 0 && preview.delete_count == 0 {
++            self.apply_backtrack_selection(selection);
++            return;
++        }
++
++        let request_for_confirm = request.clone();
++        let fork_thread_id = selection.thread_id;
++        let fork_nth_user_message = selection.nth_user_message;
++        let fork_prompt = selection.prompt.clone();
++        let params = SelectionViewParams {
++            view_id: Some("rewind_confirm_fork"),
++            title: Some("Rewind before this message?".to_string()),
++            subtitle: Some(format!(
++                "Would restore {} file(s) and delete {} file(s) from snapshot {snapshot_index}.",
++                preview.restore_count, preview.delete_count
++            )),
++            footer_hint: Some(standard_popup_hint_line()),
++            is_searchable: false,
++            items: vec![
++                SelectionItem {
++                    name: "Rewind".to_string(),
++                    description: Some(
++                        "Fork the chat before the selected message and restore these files"
++                            .to_string(),
++                    ),
++                    actions: vec![Box::new(move |tx| {
++                        tx.send(AppEvent::ForkSessionForPromptEdit {
++                            thread_id: fork_thread_id,
++                            nth_user_message: fork_nth_user_message,
++                            prompt: fork_prompt.clone(),
++                            restore_files: Some(request_for_confirm.clone()),
++                        });
++                    })],
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++                SelectionItem {
++                    name: "Cancel".to_string(),
++                    description: Some("Keep the conversation and files as they are".to_string()),
++                    dismiss_on_select: true,
++                    ..Default::default()
++                },
++            ],
++            ..Default::default()
++        };
++        self.chat_widget.show_selection_view(params);
++    }
++
++    /// Restores workspace files from snapshot `index` in the given
++    /// conversation's chain.
++    pub(crate) fn rewind_restore_snapshot(&mut self, thread_id: &str, index: u64) {
++        // Like opencode's revert flow, refuse to touch the workspace while a
++        // turn is running: restoring mid-turn would race the agent's writes
++        // and interleave file states.
++        if self.chat_widget.is_task_running() {
++            self.chat_widget.add_error_message(
++                "Cannot restore files while a task is running. Wait for the turn to finish, then try again."
++                    .to_string(),
++            );
++            return;
++        }
++        match rewind::restore_snapshot(
++            self.config.codex_home.as_path(),
++            self.config.cwd.as_path(),
++            thread_id,
++            index,
++        ) {
++            Ok(restored) => {
++                self.chat_widget.add_info_message(
++                    format!("Restored {restored} file(s) from snapshot {index}."),
++                    /*hint*/ None,
++                );
++            }
++            Err(err) => {
++                self.chat_widget
++                    .add_error_message(format!("Failed to restore snapshot {index}: {err}"));
++            }
++        }
++    }
++
++    /// Restores workspace files for a conversation rewind.
++    ///
++    /// `index` is the snapshot index expected from the transcript-ordinal
++    /// mapping (`nth + 1`). The snapshot's recorded prompt is verified against
++    /// the selected message and used to locate the matching snapshot when
++    /// submissions and transcript cells drifted. When the conversation's own
++    /// chain has no match (e.g. the selected message was replayed into a
++    /// rewind fork), the workspace-wide store is consulted so the parent
++    /// conversation's snapshots still resolve. Files are left untouched when
++    /// no snapshot matches.
++    pub(crate) fn rewind_restore_files(&mut self, thread_id: String, index: u64, prompt: String) {
++        let request = RewindRestoreRequest {
++            thread_id,
++            index,
++            prompt,
++        };
++        let Some((restore_thread_id, snapshot_index)) =
++            self.resolve_rewind_restore_target(&request)
++        else {
++            self.chat_widget.add_error_message(
++                "No matching file snapshot found for this message; files were not restored."
++                    .to_string(),
++            );
++            return;
++        };
++        self.rewind_restore_snapshot(&restore_thread_id, snapshot_index);
++    }
++
++    /// Locates the snapshot to restore for a conversation rewind: first in
++    /// the conversation's own chain, then across the workspace (rewind forks
++    /// replay messages whose snapshots live in the parent conversation).
++    fn resolve_rewind_restore_target(
++        &self,
++        request: &RewindRestoreRequest,
++    ) -> Option<(String, u64)> {
++        let codex_home = self.config.codex_home.as_path();
++        let cwd = self.config.cwd.as_path();
++        let thread_snapshots = rewind::list_snapshots(codex_home, cwd, &request.thread_id);
++        match rewind::resolve_snapshot_for_message(
++            &thread_snapshots,
++            request.index,
++            &request.prompt,
++        ) {
++            Some(snapshot) => Some((snapshot.thread_id, snapshot.index)),
++            None => {
++                let workspace_snapshots = rewind::list_workspace_snapshots(codex_home, cwd);
++                rewind::resolve_workspace_snapshot_for_message(
++                    &workspace_snapshots,
++                    request.index,
++                    &request.prompt,
++                )
++            }
++        }
++    }
++
++    fn snapshot_label_for(&self, thread_id: &str, index: u64) -> Option<String> {
++        let codex_home = self.config.codex_home.as_path();
++        let cwd = self.config.cwd.as_path();
++        rewind::list_snapshots(codex_home, cwd, thread_id)
++            .into_iter()
++            .find(|snapshot| snapshot.index == index)
++            .or_else(|| {
++                rewind::list_workspace_snapshots(codex_home, cwd)
++                    .into_iter()
++                    .find(|snapshot| snapshot.thread_id == thread_id && snapshot.index == index)
++            })
++            .map(|snapshot| snapshot_label(&snapshot))
++    }
++}
++
++/// Builds the `/rewind` scope picker (files and/or conversation rollback).
++pub(crate) fn rewind_scope_selection_params() -> SelectionViewParams {
++    SelectionViewParams {
++        view_id: Some("rewind_scope"),
++        title: Some(REWIND_TITLE.to_string()),
++        subtitle: Some("Choose what to roll back".to_string()),
++        footer_hint: Some(standard_popup_hint_line()),
++        is_searchable: false,
++        items: vec![
++            SelectionItem {
++                name: "Files and conversation".to_string(),
++                description: Some(
++                    "Restore workspace files and fork the chat before a message".to_string(),
++                ),
++                actions: vec![Box::new(|tx| {
++                    tx.send(AppEvent::OpenRewindMessagePicker {
++                        restore_files: /*restore_files*/ true,
++                    });
++                })],
++                dismiss_on_select: true,
++                ..Default::default()
++            },
++            SelectionItem {
++                name: "Conversation only".to_string(),
++                description: Some(
++                    "Fork the chat before a message without touching files".to_string(),
++                ),
++                actions: vec![Box::new(|tx| {
++                    tx.send(AppEvent::OpenRewindMessagePicker {
++                        restore_files: /*restore_files*/ false,
++                    });
++                })],
++                dismiss_on_select: true,
++                ..Default::default()
++            },
++            SelectionItem {
++                name: "Files only".to_string(),
++                description: Some("Restore workspace files from an earlier snapshot".to_string()),
++                actions: vec![Box::new(|tx| {
++                    tx.send(AppEvent::OpenRewindSnapshotPicker);
++                })],
++                dismiss_on_select: true,
++                ..Default::default()
++            },
++        ],
++        ..Default::default()
++    }
++}
++
++fn snapshot_label(snapshot: &rewind::RewindSnapshotInfo) -> String {
++    let timestamp = chrono::DateTime::from_timestamp(snapshot.created_at, /*nsecs*/ 0)
++        .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
++        .unwrap_or_else(|| "unknown time".to_string());
++    let files = match snapshot.changed_file_count {
++        0 => "no file changes".to_string(),
++        1 => "1 file changed".to_string(),
++        count => format!("{count} files changed"),
++    };
++    let short = snapshot.thread_id.chars().take(8).collect::<String>();
++    let thread = format!(" [{short}]");
++    format!("{timestamp}{thread} — {} · {files}", snapshot.prompt)
++}
+diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
+new file mode 100644
+index 0000000..7b8c63d
+--- /dev/null
++++ b/codex-rs/tui/src/rewind/mod.rs
+@@ -0,0 +1,1319 @@
++//! File snapshots for `/rewind`.
++//!
++//! Before each user turn the TUI snapshots the workspace so the user can roll
++//! back file changes. Each conversation owns an independent snapshot chain
++//! under `~/.codex/snapshots/<workspace-hash>/threads/<conversation-id>/`; a
++//! snapshot directory holds a `manifest.json` and the captured files under
++//! `files/`. The walk excludes `.git` and, by default, respects `.gitignore`
++//! files.
++//!
++//! Storage is content-addressed like a lightweight object database (no git
++//! involved): every unique file content is stored once under
++//! `<workspace>/objects/<sha256>` and each snapshot's `files/` entries are
++//! hardlinks into that object store. Unchanged files are linked from the
++//! previous snapshot without re-reading them, so repeated turns are cheap and
++//! every snapshot is self-contained for restore. Each conversation keeps its
++//! most recent snapshots (configurable via `rewind_max_snapshots`), and
++//! objects no longer referenced by any retained manifest are
++//! garbage-collected. A best-effort per-workspace lock prevents concurrent
++//! codEx instances from colliding on snapshot indices.
++
++use std::collections::BTreeSet;
++use std::collections::HashMap;
++use std::collections::HashSet;
++use std::fs;
++use std::fs::OpenOptions;
++use std::io;
++use std::path::Component;
++use std::path::Path;
++use std::path::PathBuf;
++use std::time::UNIX_EPOCH;
++
++use ignore::WalkBuilder;
++use serde::Deserialize;
++use serde::Serialize;
++use sha2::Digest;
++use sha2::Sha256;
++
++/// Default maximum number of snapshots retained per conversation, matching
++/// the `rewind_max_snapshots` config default. Tests use this constant.
++#[cfg(test)]
++pub(crate) const DEFAULT_MAX_SNAPSHOTS: usize = 100;
++/// Current manifest format version.
++const MANIFEST_VERSION: u32 = 3;
++/// Older manifest versions that still deserialize: v2 predates the
++/// `respect_gitignore`, `skipped`, `prompt_hash`, and `path_bytes` fields.
++const LEGACY_MANIFEST_VERSION: u32 = 2;
++/// Prompt excerpt length stored in the manifest.
++const PROMPT_EXCERPT_CHARS: usize = 200;
++
++const MANIFEST_FILE_NAME: &str = "manifest.json";
++const FILES_DIR_NAME: &str = "files";
++const OBJECTS_DIR_NAME: &str = "objects";
++const THREADS_DIR_NAME: &str = "threads";
++const LOCK_DIR_NAME: &str = ".lock";
++const LOCK_PID_FILE: &str = "pid";
++const LOCK_STARTTIME_FILE: &str = "starttime";
++const TMP_FILE_PREFIX: &str = "tmp-";
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++pub(crate) struct SnapshotFileEntry {
++    /// Path relative to the workspace root, rendered as UTF-8 for the JSON
++    /// manifest. Names that are not valid UTF-8 round-trip through
++    /// `path_bytes` instead.
++    pub(crate) path: String,
++    /// Hex-encoded raw path bytes, present only when `path`'s lossy rendering
++    /// would not round-trip (non-UTF-8 names).
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub(crate) path_bytes: Option<String>,
++    pub(crate) size: u64,
++    pub(crate) mtime_ns: i128,
++    /// Object-store id (sha256 of the content); the snapshot's `files/` copy
++    /// is a hardlink to `objects/<id>`.
++    pub(crate) object: String,
++}
++
++/// A path that could not be captured at snapshot time (unreadable file, or a
++/// directory the walker could not descend into). Restore never deletes
++/// anything at or below such a path.
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++pub(crate) struct SnapshotSkippedPath {
++    pub(crate) path: String,
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub(crate) path_bytes: Option<String>,
++}
++
++#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
++pub(crate) struct SnapshotManifest {
++    pub(crate) version: u32,
++    pub(crate) created_at: i64,
++    /// Excerpt of the user message that triggered this snapshot.
++    pub(crate) prompt: String,
++    /// sha256 (hex) of the full trimmed prompt, for exact message matching.
++    /// Missing in legacy manifests, which fall back to excerpt matching.
++    #[serde(default, skip_serializing_if = "Option::is_none")]
++    pub(crate) prompt_hash: Option<String>,
++    pub(crate) files: Vec<SnapshotFileEntry>,
++    /// Paths skipped at snapshot time; restore leaves them untouched.
++    #[serde(default, skip_serializing_if = "Vec::is_empty")]
++    pub(crate) skipped: Vec<SnapshotSkippedPath>,
++    /// Whether the snapshot walk respected `.gitignore`. Restore and preview
++    /// use this snapshot-time value so a config change between snapshot and
++    /// restore cannot delete files that were invisible at snapshot time.
++    /// Defaults to `true` for legacy manifests.
++    #[serde(default = "default_true")]
++    pub(crate) respect_gitignore: bool,
++}
++
++/// Metadata about a stored snapshot, used by the `/rewind` pickers.
++#[derive(Debug, Clone, PartialEq, Eq)]
++pub(crate) struct RewindSnapshotInfo {
++    /// Conversation (thread) this snapshot belongs to.
++    pub(crate) thread_id: String,
++    pub(crate) index: u64,
++    pub(crate) created_at: i64,
++    pub(crate) prompt: String,
++    /// Full-prompt hash for exact message matching; `None` for legacy
++    /// snapshots that only carry the excerpt.
++    pub(crate) prompt_hash: Option<String>,
++    /// Number of file paths that differ from the previous snapshot (added,
++    /// removed, or modified), shown in the snapshot picker.
++    pub(crate) changed_file_count: usize,
++}
++
++/// Result of a dry-run restore preview.
++#[derive(Debug, Clone, Copy, PartialEq, Eq)]
++pub(crate) struct RestorePreview {
++    /// Files that would be copied back (missing or different from the
++    /// snapshot).
++    pub(crate) restore_count: usize,
++    /// Files that would be deleted (present now but absent from the snapshot).
++    pub(crate) delete_count: usize,
++}
++
++fn default_true() -> bool {
++    true
++}
++
++/// Root directory holding snapshots for a workspace.
++pub(crate) fn snapshots_root(codex_home: &Path, cwd: &Path) -> PathBuf {
++    codex_home.join("snapshots").join(workspace_hash(cwd))
++}
++
++fn workspace_hash(cwd: &Path) -> String {
++    let canonical = fs::canonicalize(cwd).unwrap_or_else(|_| cwd.to_path_buf());
++    let digest = Sha256::digest(canonical.to_string_lossy().as_bytes());
++    let mut hex = String::with_capacity(16);
++    for byte in digest.iter().take(8) {
++        hex.push_str(&format!("{byte:02x}"));
++    }
++    hex
++}
++
++/// Directory holding one conversation's snapshot chain.
++fn snapshot_chain_dir(root: &Path, thread_id: &str) -> PathBuf {
++    root.join(THREADS_DIR_NAME)
++        .join(sanitize_thread_id(thread_id))
++}
++
++/// Conversation ids come from thread UUIDs; keep only filesystem-safe
++/// characters so they can be used as directory names. Non-conforming ids are
++/// hex-encoded so distinct ids never collide on the same directory.
++fn sanitize_thread_id(thread_id: &str) -> String {
++    let sanitized: String = thread_id
++        .chars()
++        .map(|character| {
++            if character.is_ascii_alphanumeric() || matches!(character, '-' | '_') {
++                character
++            } else {
++                '_'
++            }
++        })
++        .collect();
++    if sanitized == thread_id {
++        sanitized
++    } else {
++        format!("hex_{}", hex_encode(thread_id.as_bytes()))
++    }
++}
++
++/// Takes a snapshot of `cwd` for a conversation before a user turn.
++///
++/// The snapshot directory is numbered with the next unused index in the
++/// conversation's chain. Changed files are stored once in the workspace
++/// object store and linked into the snapshot's `files/` directory; files
++/// unchanged since the previous snapshot are linked from the previous
++/// snapshot without being re-read. Returns the path of the new snapshot
++/// directory.
++#[cfg(test)]
++pub(crate) fn take_snapshot(
++    codex_home: &Path,
++    cwd: &Path,
++    thread_id: &str,
++    prompt: &str,
++    respect_gitignore: bool,
++    max_snapshots: usize,
++) -> io::Result<PathBuf> {
++    take_snapshot_with_skipped(
++        codex_home,
++        cwd,
++        thread_id,
++        prompt,
++        respect_gitignore,
++        max_snapshots,
++    )
++    .map(|(snapshot_dir, _skipped)| snapshot_dir)
++}
++
++/// Takes a snapshot and additionally reports which paths were skipped
++/// because they could not be read. Callers surface these to the user so a
++/// silently incomplete snapshot never passes unnoticed.
++pub(crate) fn take_snapshot_with_skipped(
++    codex_home: &Path,
++    cwd: &Path,
++    thread_id: &str,
++    prompt: &str,
++    respect_gitignore: bool,
++    max_snapshots: usize,
++) -> io::Result<(PathBuf, Vec<PathBuf>)> {
++    let root = snapshots_root(codex_home, cwd);
++    fs::create_dir_all(&root)?;
++    let _lock = WorkspaceLock::acquire(&root)?;
++    let chain_root = snapshot_chain_dir(&root, thread_id);
++    fs::create_dir_all(&chain_root)?;
++    let objects_dir = root.join(OBJECTS_DIR_NAME);
++    fs::create_dir_all(&objects_dir)?;
++
++    let index = next_snapshot_index(&chain_root)?;
++    let snapshot_dir = chain_root.join(format!("{index:06}"));
++    let files_dir = snapshot_dir.join(FILES_DIR_NAME);
++    fs::create_dir_all(&files_dir)?;
++
++    // The fast path reuses the newest earlier snapshot: this conversation's
++    // when one exists, otherwise the newest snapshot of any conversation in
++    // this workspace, so resumed/forked conversations do not re-hash files
++    // that are unchanged on disk.
++    let previous =
++        previous_snapshot(&chain_root, index).or_else(|| newest_workspace_snapshot(&root));
++    let previous_files = previous
++        .as_ref()
++        .map(|(_, manifest)| {
++            manifest
++                .files
++                .iter()
++                .map(|entry| {
++                    (
++                        entry_path(entry),
++                        (entry.size, entry.mtime_ns, entry.object.clone()),
++                    )
++                })
++                .collect::<HashMap<_, _>>()
++        })
++        .unwrap_or_default();
++
++    let mut skipped = Vec::new();
++    let mut skipped_paths = Vec::new();
++    // Walk and manifest writing happen inside a closure so a failure can
++    // clean up the partially written snapshot directory before returning.
++    // Orphaned objects from the failed walk are reclaimed by the next
++    // garbage-collection pass.
++    let snapshot_result = (|| -> io::Result<()> {
++        let mut entries = Vec::new();
++        let snapshot_root = root.clone();
++        for walk_entry in workspace_walker(cwd, respect_gitignore, Some(&snapshot_root)) {
++            let entry = match walk_entry {
++                Ok(entry) => entry,
++                Err(err) => {
++                    // A directory we could not enumerate hides unknown files,
++                    // so a partial snapshot could later delete them. Fail the
++                    // whole snapshot instead of recording an incomplete one.
++                    return Err(io::Error::other(err));
++                }
++            };
++            if !entry
++                .file_type()
++                .is_some_and(|file_type| file_type.is_file())
++            {
++                continue;
++            }
++            let path = entry.path();
++            let relative = path
++                .strip_prefix(cwd)
++                .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
++            if is_ignored_path(relative) {
++                continue;
++            }
++            // Unreadable or vanishing files are skipped instead of failing
++            // the whole snapshot; a later restore leaves them untouched.
++            let metadata = match entry.metadata() {
++                Ok(metadata) => metadata,
++                Err(_) => {
++                    record_skip(&mut skipped, &mut skipped_paths, relative);
++                    continue;
++                }
++            };
++            let size = metadata.len();
++            let mtime_ns = match mtime_nanos(&metadata) {
++                Ok(mtime) => mtime,
++                Err(_) => {
++                    record_skip(&mut skipped, &mut skipped_paths, relative);
++                    continue;
++                }
++            };
++            let dest = files_dir.join(relative);
++            if let Some(parent) = dest.parent() {
++                fs::create_dir_all(parent)?;
++            }
++
++            // Fast path: unchanged since the reference snapshot, so its
++            // physical copy (an object hardlink) can be reused without
++            // hashing the file. Same size and mtime are treated as unchanged.
++            if let Some((previous_size, previous_mtime, previous_object)) =
++                previous_files.get(relative)
++                && *previous_size == size
++                && *previous_mtime == mtime_ns
++                && let Some((previous_dir, _)) = &previous
++                && previous_dir.join(FILES_DIR_NAME).join(relative).is_file()
++            {
++                let previous_copy = previous_dir.join(FILES_DIR_NAME).join(relative);
++                link_or_copy(&previous_copy, &dest)?;
++                entries.push(SnapshotFileEntry {
++                    path: relative.to_string_lossy().into_owned(),
++                    path_bytes: raw_path_bytes(relative),
++                    size,
++                    mtime_ns,
++                    object: previous_object.clone(),
++                });
++                continue;
++            }
++
++            // Changed or new: store the content once in the object store and
++            // link it. Identical content from any earlier snapshot reuses the
++            // same object.
++            let object_id = match hash_file(path) {
++                Ok(object_id) => object_id,
++                Err(_) => {
++                    record_skip(&mut skipped, &mut skipped_paths, relative);
++                    continue;
++                }
++            };
++            let object_path = objects_dir.join(&object_id);
++            if !object_path.is_file() {
++                publish_object(path, &object_path)?;
++            }
++            link_or_copy(&object_path, &dest)?;
++            entries.push(SnapshotFileEntry {
++                path: relative.to_string_lossy().into_owned(),
++                path_bytes: raw_path_bytes(relative),
++                size,
++                mtime_ns,
++                object: object_id,
++            });
++        }
++        entries.sort_by(|a, b| a.path.cmp(&b.path));
++
++        let manifest = SnapshotManifest {
++            version: MANIFEST_VERSION,
++            created_at: now_unix_seconds(),
++            prompt: prompt_excerpt(prompt),
++            prompt_hash: Some(prompt_hash_hex(prompt)),
++            files: entries,
++            skipped,
++            respect_gitignore,
++        };
++        write_manifest(&snapshot_dir, &manifest)
++    })();
++    if let Err(err) = snapshot_result {
++        let _ = fs::remove_dir_all(&snapshot_dir);
++        return Err(err);
++    }
++    prune_all_chains(&root, max_snapshots)?;
++    Ok((snapshot_dir, skipped_paths))
++}
++
++/// Records an unreadable path in both the manifest list and the caller-facing
++/// list of skipped paths.
++fn record_skip(
++    skipped: &mut Vec<SnapshotSkippedPath>,
++    skipped_paths: &mut Vec<PathBuf>,
++    relative: &Path,
++) {
++    skipped.push(skipped_path(relative));
++    skipped_paths.push(relative.to_path_buf());
++}
++
++/// Lists one conversation's snapshot chain, oldest first.
++///
++/// Each entry reports how many file paths changed since the previous snapshot
++/// so the picker can summarize each turn's file impact.
++pub(crate) fn list_snapshots(
++    codex_home: &Path,
++    cwd: &Path,
++    thread_id: &str,
++) -> Vec<RewindSnapshotInfo> {
++    let root = snapshots_root(codex_home, cwd);
++    list_chain_snapshots(&snapshot_chain_dir(&root, thread_id), thread_id)
++}
++
++/// Lists every snapshot in the workspace across all conversation chains,
++/// oldest first by creation time. Used by the Files-only picker.
++pub(crate) fn list_workspace_snapshots(codex_home: &Path, cwd: &Path) -> Vec<RewindSnapshotInfo> {
++    let root = snapshots_root(codex_home, cwd);
++    let Ok(threads_dir) = fs::read_dir(root.join(THREADS_DIR_NAME)) else {
++        return Vec::new();
++    };
++    let mut snapshots = Vec::new();
++    for entry in threads_dir.flatten() {
++        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
++            continue;
++        };
++        if !entry.path().is_dir() {
++            continue;
++        }
++        snapshots.extend(list_chain_snapshots(&entry.path(), &name));
++    }
++    snapshots.sort_by_key(|snapshot| snapshot.created_at);
++    snapshots
++}
++
++fn list_chain_snapshots(chain_root: &Path, thread_id: &str) -> Vec<RewindSnapshotInfo> {
++    let Ok(read_dir) = fs::read_dir(chain_root) else {
++        return Vec::new();
++    };
++    let mut manifests = Vec::new();
++    for entry in read_dir.flatten() {
++        let Some(index) = entry
++            .file_name()
++            .to_str()
++            .and_then(|name| name.parse::<u64>().ok())
++        else {
++            continue;
++        };
++        // Skip directories without a usable manifest (e.g. interrupted
++        // snapshots that were never cleaned up).
++        let Some(manifest) = read_manifest(&entry.path()).ok().flatten() else {
++            continue;
++        };
++        manifests.push((index, manifest));
++    }
++    manifests.sort_by_key(|(index, _)| *index);
++
++    let mut snapshots = Vec::with_capacity(manifests.len());
++    let mut previous_files: Option<HashMap<PathBuf, (u64, i128)>> = None;
++    for (index, manifest) in manifests {
++        let files = manifest
++            .files
++            .iter()
++            .map(|entry| (entry_path(entry), (entry.size, entry.mtime_ns)))
++            .collect::<HashMap<_, _>>();
++        let changed_file_count = match &previous_files {
++            None => files.len(),
++            Some(previous) => {
++                let mut changed = files
++                    .iter()
++                    .filter(|(path, current)| previous.get(*path) != Some(current))
++                    .count();
++                changed += previous
++                    .keys()
++                    .filter(|path| !files.contains_key(*path))
++                    .count();
++                changed
++            }
++        };
++        previous_files = Some(files);
++        snapshots.push(RewindSnapshotInfo {
++            thread_id: thread_id.to_string(),
++            index,
++            created_at: manifest.created_at,
++            prompt: manifest.prompt,
++            prompt_hash: manifest.prompt_hash,
++            changed_file_count,
++        });
++    }
++    snapshots
++}
++
++/// Restores the workspace to the state captured in snapshot `index` of a
++/// conversation's chain.
++///
++/// Files recorded in the snapshot are copied back (overwriting current
++/// content) and files present in the workspace but absent from the snapshot
++/// are deleted. Returns the number of files restored. Content-addressed
++/// snapshots hold every file as an object hardlink, so restore is direct;
++/// when a physical copy is missing the restore fails with the paths listed
++/// instead of silently leaving the current content in place. Restored files
++/// get their original mtime back so the incremental fast path keeps working
++/// after a restore.
++///
++/// The whole restore is preflighted before anything is touched: missing
++/// snapshot content, unsafe recorded paths, a directory in the way, or a
++/// symbolic link above a target fail the restore up front. Per-file writes go
++/// through a temporary file and rename, so they never follow a symbolic link
++/// at the target path and can replace read-only files. The delete set is
++/// computed with the same rules as [`preview_restore`] (current `.gitignore`
++/// contents, snapshot-time respect setting) so the confirmation count always
++/// matches what this restore deletes.
++pub(crate) fn restore_snapshot(
++    codex_home: &Path,
++    cwd: &Path,
++    thread_id: &str,
++    index: u64,
++) -> io::Result<usize> {
++    let root = snapshots_root(codex_home, cwd);
++    let _lock = WorkspaceLock::acquire(&root)?;
++    let chain_root = snapshot_chain_dir(&root, thread_id);
++    let snapshot_dir = chain_root.join(format!("{index:06}"));
++    let manifest = read_manifest(&snapshot_dir)?.ok_or_else(|| {
++        io::Error::new(
++            io::ErrorKind::NotFound,
++            format!("snapshot {index} does not exist"),
++        )
++    })?;
++
++    // Preflight before any mutation.
++    let mut problems = Vec::new();
++    for entry in &manifest.files {
++        let relative = entry_path(entry);
++        if let Err(err) = check_restore_path(&relative) {
++            problems.push(format!("{}: {err}", entry.path));
++            continue;
++        }
++        let source = snapshot_dir.join(FILES_DIR_NAME).join(&relative);
++        if !source.is_file() {
++            problems.push(format!("{}: snapshot content is missing", entry.path));
++            continue;
++        }
++        let target = cwd.join(&relative);
++        if let Some(link) = symlinked_ancestor(cwd, &relative) {
++            problems.push(format!(
++                "{}: refuses to write through symbolic link {}",
++                entry.path,
++                link.display()
++            ));
++        } else if target.is_dir() {
++            problems.push(format!("{}: target is a directory", entry.path));
++        }
++    }
++    if !problems.is_empty() {
++        let mut message = format!("cannot restore snapshot {index}:");
++        for problem in problems.iter().take(5) {
++            message.push('\n');
++            message.push_str(problem);
++        }
++        if problems.len() > 5 {
++            message.push_str(&format!("\n...and {} more", problems.len() - 5));
++        }
++        return Err(io::Error::new(io::ErrorKind::InvalidInput, message));
++    }
++
++    // Capture the delete set before the copy phase (which rewrites
++    // `.gitignore`), so the rules match the confirmation preview exactly.
++    let delete_candidates = delete_candidate_paths(cwd, &root, &manifest);
++
++    let mut restored = 0;
++    for (sequence, entry) in manifest.files.iter().enumerate() {
++        let relative = entry_path(entry);
++        let source = snapshot_dir.join(FILES_DIR_NAME).join(&relative);
++        let target = cwd.join(&relative);
++        if let Some(parent) = target.parent() {
++            fs::create_dir_all(parent)?;
++        }
++        copy_over_atomic(&source, &target, sequence)?;
++        restore_mtime(&target, entry.mtime_ns);
++        restored += 1;
++    }
++
++    for candidate in delete_candidates {
++        match fs::remove_file(&candidate) {
++            Ok(()) => {}
++            Err(err) if err.kind() == io::ErrorKind::NotFound => {}
++            Err(err) => return Err(err),
++        }
++    }
++
++    Ok(restored)
++}
++
++/// Computes the workspace files a restore would delete: files present now
++/// that the snapshot neither recorded nor skipped, using the snapshot-time
++/// `.gitignore` setting against the current workspace's `.gitignore` rules.
++fn delete_candidate_paths(cwd: &Path, root: &Path, manifest: &SnapshotManifest) -> Vec<PathBuf> {
++    let manifest_paths = manifest
++        .files
++        .iter()
++        .map(|entry| entry_path(entry))
++        .collect::<BTreeSet<_>>();
++    let skipped_prefixes = manifest
++        .skipped
++        .iter()
++        .map(skipped_path_to_pathbuf)
++        .collect::<Vec<_>>();
++
++    let mut candidates = Vec::new();
++    for entry in workspace_walker(cwd, manifest.respect_gitignore, Some(root)) {
++        let Ok(entry) = entry else {
++            continue;
++        };
++        if !entry
++            .file_type()
++            .is_some_and(|file_type| file_type.is_file())
++        {
++            continue;
++        }
++        let Ok(relative) = entry.path().strip_prefix(cwd) else {
++            continue;
++        };
++        if is_ignored_path(relative) || manifest_paths.contains(relative) {
++            continue;
++        }
++        if skipped_prefixes
++            .iter()
++            .any(|prefix| relative.starts_with(prefix))
++        {
++            continue;
++        }
++        candidates.push(entry.path().to_path_buf());
++    }
++    candidates
++}
++
++/// Dry-run preview of restoring snapshot `index`: counts how many files would
++/// be copied back and how many would be deleted, without touching the
++/// workspace. Used to confirm a rewind before applying it. The delete count
++/// is computed with exactly the same rules as [`restore_snapshot`].
++pub(crate) fn preview_restore(
++    codex_home: &Path,
++    cwd: &Path,
++    thread_id: &str,
++    index: u64,
++) -> io::Result<RestorePreview> {
++    let root = snapshots_root(codex_home, cwd);
++    let chain_root = snapshot_chain_dir(&root, thread_id);
++    let snapshot_dir = chain_root.join(format!("{index:06}"));
++    let manifest = read_manifest(&snapshot_dir)?.ok_or_else(|| {
++        io::Error::new(
++            io::ErrorKind::NotFound,
++            format!("snapshot {index} does not exist"),
++        )
++    })?;
++
++    let mut restore_count = 0;
++    for entry in &manifest.files {
++        let target = cwd.join(entry_path(entry));
++        let differs = match fs::metadata(&target) {
++            Ok(metadata) => {
++                let same_size = metadata.len() == entry.size;
++                let same_mtime = mtime_nanos(&metadata)
++                    .map(|mtime| mtime == entry.mtime_ns)
++                    .unwrap_or(false);
++                !(same_size && same_mtime)
++            }
++            Err(_) => true,
++        };
++        if differs {
++            restore_count += 1;
++        }
++    }
++
++    let delete_count = delete_candidate_paths(cwd, &root, &manifest).len();
++    Ok(RestorePreview {
++        restore_count,
++        delete_count,
++    })
++}
++
++/// Copies `source` over `target` atomically: content is written to a fresh
++/// temporary file next to the target and renamed into place. The rename
++/// replaces a symbolic link at the target instead of writing through it, and
++/// replaces read-only files without an open-for-write on the target itself.
++fn copy_over_atomic(source: &Path, target: &Path, sequence: usize) -> io::Result<()> {
++    let target_dir = target.parent().ok_or_else(|| {
++        io::Error::new(
++            io::ErrorKind::InvalidInput,
++            "restore target has no parent directory",
++        )
++    })?;
++    let file_name = target
++        .file_name()
++        .and_then(|name| name.to_str())
++        .unwrap_or("rewind-file");
++    let tmp_path = target_dir.join(format!(
++        ".{file_name}.codEx-rewind-{}-{sequence}",
++        std::process::id()
++    ));
++    let result = (|| -> io::Result<()> {
++        let mut reader = fs::File::open(source)?;
++        let permissions = reader.metadata()?.permissions();
++        let mut writer = OpenOptions::new()
++            .write(true)
++            .create_new(true)
++            .open(&tmp_path)?;
++        io::copy(&mut reader, &mut writer)?;
++        drop(writer);
++        fs::set_permissions(&tmp_path, permissions)?;
++        fs::rename(&tmp_path, target)?;
++        Ok(())
++    })();
++    if result.is_err() {
++        let _ = fs::remove_file(&tmp_path);
++    }
++    result
++}
++
++fn workspace_walker(
++    cwd: &Path,
++    respect_gitignore: bool,
++    exclude_dir: Option<&Path>,
++) -> ignore::Walk {
++    let mut builder = WalkBuilder::new(cwd);
++    builder
++        .hidden(false)
++        .follow_links(false)
++        .git_ignore(respect_gitignore)
++        .git_exclude(false)
++        .git_global(false)
++        .require_git(false);
++    if let Some(exclude_dir) = exclude_dir {
++        let exclude = exclude_dir.to_path_buf();
++        builder.filter_entry(move |entry| {
++            let path = entry.path();
++            path == exclude || !path.starts_with(&exclude)
++        });
++    }
++    builder.build()
++}
++
++fn is_ignored_path(relative: &Path) -> bool {
++    relative.starts_with(".git")
++}
++
++fn next_snapshot_index(chain_root: &Path) -> io::Result<u64> {
++    let max_index = fs::read_dir(chain_root)?
++        .flatten()
++        .filter_map(|entry| {
++            entry
++                .file_name()
++                .to_str()
++                .and_then(|name| name.parse::<u64>().ok())
++        })
++        .max()
++        .unwrap_or(0);
++    Ok(max_index.saturating_add(1))
++}
++
++/// Returns the newest snapshot directory and manifest below `current_index`.
++fn previous_snapshot(chain_root: &Path, current_index: u64) -> Option<(PathBuf, SnapshotManifest)> {
++    let mut best: Option<(u64, PathBuf, SnapshotManifest)> = None;
++    for entry in fs::read_dir(chain_root).ok()?.flatten() {
++        let Some(index) = entry
++            .file_name()
++            .to_str()
++            .and_then(|name| name.parse::<u64>().ok())
++        else {
++            continue;
++        };
++        if index >= current_index {
++            continue;
++        }
++        let Some(manifest) = read_manifest(&entry.path()).ok().flatten() else {
++            continue;
++        };
++        if best
++            .as_ref()
++            .map_or(true, |(best_index, _, _)| index > *best_index)
++        {
++            best = Some((index, entry.path(), manifest));
++        }
++    }
++    best.map(|(_, directory, manifest)| (directory, manifest))
++}
++
++/// Returns the newest snapshot (by `created_at`) from any conversation chain
++/// in the workspace, used to seed the incremental fast path for conversations
++/// that have no earlier snapshot of their own.
++fn newest_workspace_snapshot(root: &Path) -> Option<(PathBuf, SnapshotManifest)> {
++    let threads_dir = root.join(THREADS_DIR_NAME);
++    let mut best: Option<(i64, PathBuf, SnapshotManifest)> = None;
++    for entry in fs::read_dir(&threads_dir).ok()?.flatten() {
++        if !entry.path().is_dir() {
++            continue;
++        }
++        let Some((directory, manifest)) = previous_snapshot(&entry.path(), u64::MAX) else {
++            continue;
++        };
++        if best
++            .as_ref()
++            .map_or(true, |(created_at, _, _)| manifest.created_at > *created_at)
++        {
++            best = Some((manifest.created_at, directory, manifest));
++        }
++    }
++    best.map(|(_, directory, manifest)| (directory, manifest))
++}
++
++fn read_manifest(snapshot_dir: &Path) -> io::Result<Option<SnapshotManifest>> {
++    let manifest_path = snapshot_dir.join(MANIFEST_FILE_NAME);
++    if !manifest_path.is_file() {
++        return Ok(None);
++    }
++    let contents = fs::read_to_string(&manifest_path)?;
++    let manifest: SnapshotManifest = serde_json::from_str(&contents)
++        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
++    if manifest.version != MANIFEST_VERSION && manifest.version != LEGACY_MANIFEST_VERSION {
++        return Err(io::Error::new(
++            io::ErrorKind::InvalidData,
++            format!("unsupported snapshot manifest version {}", manifest.version),
++        ));
++    }
++    Ok(Some(manifest))
++}
++
++fn write_manifest(snapshot_dir: &Path, manifest: &SnapshotManifest) -> io::Result<()> {
++    let contents = serde_json::to_string_pretty(manifest)
++        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
++    // Write through a temporary file and rename so a crash never leaves a
++    // truncated manifest behind.
++    let final_path = snapshot_dir.join(MANIFEST_FILE_NAME);
++    let tmp_path = snapshot_dir.join(format!("{MANIFEST_FILE_NAME}.tmp"));
++    match fs::write(&tmp_path, contents) {
++        Ok(()) => match fs::rename(&tmp_path, &final_path) {
++            Ok(()) => Ok(()),
++            Err(err) => {
++                let _ = fs::remove_file(&tmp_path);
++                Err(err)
++            }
++        },
++        Err(err) => {
++            let _ = fs::remove_file(&tmp_path);
++            Err(err)
++        }
++    }
++}
++
++/// Prunes a snapshot chain down to `max_snapshots` retained snapshots and
++/// removes interrupted snapshot directories (no manifest) that could never
++/// be restored.
++fn prune_chain(chain_root: &Path, max_snapshots: usize) -> io::Result<()> {
++    let mut valid = Vec::new();
++    let mut interrupted = Vec::new();
++    for entry in fs::read_dir(chain_root)?.flatten() {
++        let Some(index) = entry
++            .file_name()
++            .to_str()
++            .and_then(|name| name.parse::<u64>().ok())
++        else {
++            continue;
++        };
++        if !entry.path().is_dir() {
++            continue;
++        }
++        match read_manifest(&entry.path()) {
++            Ok(Some(_)) => valid.push(index),
++            Ok(None) => interrupted.push(index),
++            // A corrupt manifest may be repairable by hand; keep the
++            // directory rather than silently destroying its contents.
++            Err(_) => {}
++        }
++    }
++    valid.sort_unstable();
++    let overflow = valid.len().saturating_sub(max_snapshots);
++    for index in valid.into_iter().take(overflow) {
++        let dir = chain_root.join(format!("{index:06}"));
++        fs::remove_dir_all(&dir)?;
++    }
++    for index in interrupted {
++        let dir = chain_root.join(format!("{index:06}"));
++        fs::remove_dir_all(&dir)?;
++    }
++    Ok(())
++}
++
++/// Prunes every conversation chain, then garbage-collects objects no longer
++/// referenced by any retained manifest.
++fn prune_all_chains(root: &Path, max_snapshots: usize) -> io::Result<()> {
++    if let Ok(threads_dir) = fs::read_dir(root.join(THREADS_DIR_NAME)) {
++        for entry in threads_dir.flatten() {
++            if entry.path().is_dir() {
++                prune_chain(&entry.path(), max_snapshots)?;
++            }
++        }
++    }
++    garbage_collect_objects(root)
++}
++
++/// Removes object-store entries no longer referenced by any retained
++/// snapshot manifest, plus leftover temporary files from interrupted writes.
++fn garbage_collect_objects(root: &Path) -> io::Result<()> {
++    let objects_dir = root.join(OBJECTS_DIR_NAME);
++    let mut referenced = HashSet::new();
++    let mut collect_chain = |chain_root: &Path| -> io::Result<()> {
++        for entry in fs::read_dir(chain_root)?.flatten() {
++            let Some(_index) = entry
++                .file_name()
++                .to_str()
++                .and_then(|name| name.parse::<u64>().ok())
++            else {
++                continue;
++            };
++            let Ok(Some(manifest)) = read_manifest(&entry.path()) else {
++                continue;
++            };
++            for file in manifest.files {
++                referenced.insert(file.object);
++            }
++        }
++        Ok(())
++    };
++    if let Ok(threads_dir) = fs::read_dir(root.join(THREADS_DIR_NAME)) {
++        for entry in threads_dir.flatten() {
++            if entry.path().is_dir() {
++                collect_chain(&entry.path())?;
++            }
++        }
++    }
++
++    let Ok(read_dir) = fs::read_dir(&objects_dir) else {
++        return Ok(());
++    };
++    for entry in read_dir.flatten() {
++        let Ok(file_type) = entry.file_type() else {
++            continue;
++        };
++        if !file_type.is_file() {
++            continue;
++        }
++        let Some(name) = entry.file_name().to_str().map(str::to_owned) else {
++            continue;
++        };
++        if name.starts_with(TMP_FILE_PREFIX) || !referenced.contains(&name) {
++            let _ = fs::remove_file(entry.path());
++        }
++    }
++    Ok(())
++}
++
++/// Best-effort per-workspace lock guarding snapshot mutations.
++///
++/// Implemented as an exclusively created directory so concurrent codEx
++/// instances cannot collide on snapshot indices. The owner's PID and process
++/// start time are recorded; a lock whose PID no longer exists, or whose
++/// start time no longer matches (PID reuse), is treated as stale and taken
++/// over.
++struct WorkspaceLock {
++    directory: PathBuf,
++}
++
++impl WorkspaceLock {
++    fn acquire(root: &Path) -> io::Result<Self> {
++        fs::create_dir_all(root)?;
++        let directory = root.join(LOCK_DIR_NAME);
++        match fs::create_dir(&directory) {
++            Ok(()) => {
++                write_lock_identity(&directory)?;
++                return Ok(Self { directory });
++            }
++            Err(err) if err.kind() == io::ErrorKind::AlreadyExists => {}
++            Err(err) => return Err(err),
++        }
++        if lock_owner_alive(&directory) {
++            return Err(io::Error::new(
++                io::ErrorKind::WouldBlock,
++                "another codEx instance holds the rewind snapshot lock for this workspace",
++            ));
++        }
++        // The previous owner is gone; take the lock over.
++        fs::remove_dir_all(&directory)?;
++        fs::create_dir(&directory)?;
++        write_lock_identity(&directory)?;
++        Ok(Self { directory })
++    }
++}
++
++/// Records the owning PID and its process start time. A failed write leaves a
++/// lock that other instances would consider stale, so it must remove the lock
++/// directory and fail the acquisition instead.
++fn write_lock_identity(directory: &Path) -> io::Result<()> {
++    let pid = std::process::id();
++    if let Err(err) = fs::write(directory.join(LOCK_PID_FILE), pid.to_string()) {
++        let _ = fs::remove_dir_all(directory);
++        return Err(err);
++    }
++    if let Some(start_time) = process_start_time(pid) {
++        if let Err(err) = fs::write(directory.join(LOCK_STARTTIME_FILE), start_time.to_string()) {
++            let _ = fs::remove_dir_all(directory);
++            return Err(err);
++        }
++    }
++    Ok(())
++}
++
++fn lock_owner_alive(lock_directory: &Path) -> bool {
++    let Ok(pid_text) = fs::read_to_string(lock_directory.join(LOCK_PID_FILE)) else {
++        return false;
++    };
++    let Ok(pid) = pid_text.trim().parse::<u32>() else {
++        return false;
++    };
++    if pid == std::process::id() {
++        return true;
++    }
++    let proc_dir = Path::new("/proc").join(pid.to_string());
++    if !proc_dir.is_dir() {
++        return false;
++    }
++    // The PID still exists. If we recorded the owner's start time, require it
++    // to match so a recycled PID cannot keep a dead instance's lock alive.
++    let Ok(recorded_text) = fs::read_to_string(lock_directory.join(LOCK_STARTTIME_FILE)) else {
++        return true;
++    };
++    let Ok(recorded) = recorded_text.trim().parse::<u64>() else {
++        return true;
++    };
++    match process_start_time(pid) {
++        Some(current) => current == recorded,
++        // Cannot verify; assume alive rather than stealing a live lock.
++        None => true,
++    }
++}
++
++/// Reads the process start time (clock ticks since boot) from
++/// `/proc/<pid>/stat`; field 22 in the field list.
++fn process_start_time(pid: u32) -> Option<u64> {
++    let stat = fs::read_to_string(format!("/proc/{pid}/stat")).ok()?;
++    let fields_after_comm = stat.rsplit_once(')')?.1;
++    fields_after_comm
++        .split_whitespace()
++        .nth(19)
++        .and_then(|token| token.parse().ok())
++}
++
++impl Drop for WorkspaceLock {
++    fn drop(&mut self) {
++        let _ = fs::remove_dir_all(&self.directory);
++    }
++}
++
++/// Hardlinks `source` into `dest`, falling back to a copy on filesystems that
++/// do not support hardlinks.
++fn link_or_copy(source: &Path, dest: &Path) -> io::Result<()> {
++    match fs::hard_link(source, dest) {
++        Ok(()) => Ok(()),
++        Err(_) => fs::copy(source, dest).map(|_| ()),
++    }
++}
++
++/// Publishes a file into the object store atomically: it is written to a
++/// temporary name first and renamed into place, so readers never observe a
++/// partially written object.
++fn publish_object(source: &Path, object_path: &Path) -> io::Result<()> {
++    let objects_dir = object_path
++        .parent()
++        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "object path has no parent"))?;
++    let tmp_path = objects_dir.join(format!(
++        "{TMP_FILE_PREFIX}{}-{}",
++        std::process::id(),
++        object_path
++            .file_name()
++            .and_then(|name| name.to_str())
++            .unwrap_or_default()
++    ));
++    match fs::copy(source, &tmp_path) {
++        Ok(_) => match fs::rename(&tmp_path, object_path) {
++            Ok(()) => Ok(()),
++            Err(err) => {
++                let _ = fs::remove_file(&tmp_path);
++                Err(err)
++            }
++        },
++        Err(err) => {
++            let _ = fs::remove_file(&tmp_path);
++            Err(err)
++        }
++    }
++}
++
++/// Hashes a file's content (sha256) for the object store.
++fn hash_file(path: &Path) -> io::Result<String> {
++    let mut file = fs::File::open(path)?;
++    let mut hasher = Sha256::new();
++    io::copy(&mut file, &mut hasher)?;
++    Ok(hex_encode(&hasher.finalize()))
++}
++
++fn hex_encode(bytes: &[u8]) -> String {
++    let mut hex = String::with_capacity(bytes.len() * 2);
++    for byte in bytes {
++        hex.push_str(&format!("{byte:02x}"));
++    }
++    hex
++}
++
++fn hex_decode(hex: &str) -> Option<Vec<u8>> {
++    if hex.len() % 2 != 0 {
++        return None;
++    }
++    (0..hex.len())
++        .step_by(2)
++        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).ok())
++        .collect()
++}
++
++/// Hex-encodes a path's raw bytes when its lossy UTF-8 rendering would not
++/// round-trip, so non-UTF-8 file names survive the JSON manifest.
++fn raw_path_bytes(path: &Path) -> Option<String> {
++    #[cfg(unix)]
++    {
++        use std::os::unix::ffi::OsStrExt;
++        let raw = path.as_os_str().as_bytes();
++        if std::str::from_utf8(raw).is_err() {
++            return Some(hex_encode(raw));
++        }
++    }
++    None
++}
++
++fn skipped_path(path: &Path) -> SnapshotSkippedPath {
++    SnapshotSkippedPath {
++        path: path.to_string_lossy().into_owned(),
++        path_bytes: raw_path_bytes(path),
++    }
++}
++
++fn entry_path(entry: &SnapshotFileEntry) -> PathBuf {
++    path_from_bytes(&entry.path, entry.path_bytes.as_deref())
++}
++
++fn skipped_path_to_pathbuf(skipped: &SnapshotSkippedPath) -> PathBuf {
++    path_from_bytes(&skipped.path, skipped.path_bytes.as_deref())
++}
++
++fn path_from_bytes(fallback: &str, path_bytes: Option<&str>) -> PathBuf {
++    #[cfg(unix)]
++    {
++        use std::os::unix::ffi::OsStringExt;
++        if let Some(encoded) = path_bytes
++            && let Some(bytes) = hex_decode(encoded)
++        {
++            return PathBuf::from(std::ffi::OsString::from_vec(bytes));
++        }
++    }
++    #[cfg(not(unix))]
++    {
++        let _ = path_bytes;
++    }
++    PathBuf::from(fallback)
++}
++
++/// Rejects recorded paths that could escape the workspace (`..`, absolute
++/// paths) when a hand-edited or corrupted manifest is restored.
++fn check_restore_path(relative: &Path) -> io::Result<()> {
++    if relative.is_absolute()
++        || relative
++            .components()
++            .any(|component| !matches!(component, Component::Normal(_)))
++    {
++        return Err(io::Error::new(
++            io::ErrorKind::InvalidData,
++            format!("unsafe path recorded in snapshot: {}", relative.display()),
++        ));
++    }
++    Ok(())
++}
++
++/// Returns the first ancestor of `cwd.join(relative)` (excluding the final
++/// component) that is a symbolic link, if any. Restoring through such a link
++/// would write outside the workspace.
++fn symlinked_ancestor(base: &Path, relative: &Path) -> Option<PathBuf> {
++    let parent = relative.parent()?;
++    let mut current = base.to_path_buf();
++    for component in parent.components() {
++        current.push(component.as_os_str());
++        if fs::symlink_metadata(&current).is_ok_and(|metadata| metadata.file_type().is_symlink()) {
++            return Some(current);
++        }
++    }
++    None
++}
++
++/// Restores a file's modification time from the snapshot manifest so the
++/// size+mtime fast path still recognizes the file as unchanged after a
++/// restore. Best effort: read-only files may not be openable for writing.
++fn restore_mtime(target: &Path, mtime_ns: i128) {
++    let Some(time) = system_time_from_nanos(mtime_ns) else {
++        return;
++    };
++    if let Ok(file) = OpenOptions::new().write(true).open(target) {
++        let _ = file.set_modified(time);
++    }
++}
++
++fn system_time_from_nanos(mtime_ns: i128) -> Option<std::time::SystemTime> {
++    let seconds = mtime_ns.div_euclid(1_000_000_000);
++    let nanos = mtime_ns.rem_euclid(1_000_000_000);
++    u64::try_from(seconds)
++        .ok()
++        .map(|secs| UNIX_EPOCH + std::time::Duration::new(secs, nanos as u32))
++}
++
++fn mtime_nanos(metadata: &fs::Metadata) -> io::Result<i128> {
++    let modified = metadata.modified()?;
++    let duration = modified
++        .duration_since(UNIX_EPOCH)
++        .map_err(|err| io::Error::new(io::ErrorKind::InvalidData, err))?;
++    Ok(i128::from(duration.as_secs()) * 1_000_000_000 + i128::from(duration.subsec_nanos()))
++}
++
++fn now_unix_seconds() -> i64 {
++    std::time::SystemTime::now()
++        .duration_since(UNIX_EPOCH)
++        .map(|duration| duration.as_secs() as i64)
++        .unwrap_or_default()
++}
++
++pub(crate) fn prompt_excerpt(prompt: &str) -> String {
++    let trimmed = prompt.trim();
++    if trimmed.is_empty() {
++        return "(attachment)".to_string();
++    }
++    let mut excerpt = trimmed
++        .chars()
++        .take(PROMPT_EXCERPT_CHARS)
++        .collect::<String>();
++    excerpt.push_str(if trimmed.chars().count() > PROMPT_EXCERPT_CHARS {
++        "…"
++    } else {
++        ""
++    });
++    excerpt
++}
++
++fn prompt_hash_hex(prompt: &str) -> String {
++    let digest = Sha256::digest(prompt.trim().as_bytes());
++    hex_encode(&digest)
++}
++
++/// Whether a snapshot carries the given prompt: exact via the full-prompt
++/// hash when recorded, otherwise the legacy 200-character excerpt match.
++fn snapshot_prompt_matches(
++    snapshot: &RewindSnapshotInfo,
++    prompt: &str,
++    expected_hash: &str,
++) -> bool {
++    match &snapshot.prompt_hash {
++        Some(hash) => hash == expected_hash,
++        None => snapshot.prompt == prompt_excerpt(prompt),
++    }
++}
++
++/// Resolves the snapshot to restore for a conversation rewind.
++///
++/// Prefers the snapshot numbered `expected_index` (the transcript-ordinal
++/// mapping) when it also carries the selected prompt. When the ordinal
++/// alignment drifted (resumed threads restart ordinals while the snapshot
++/// chain continues, and rewind forks replay older messages without snapshots
++/// in the new chain), picks the newest snapshot carrying the selected
++/// prompt. Returns `None` when no snapshot matches the prompt.
++pub(crate) fn resolve_snapshot_for_message(
++    snapshots: &[RewindSnapshotInfo],
++    expected_index: u64,
++    prompt: &str,
++) -> Option<RewindSnapshotInfo> {
++    let expected_hash = prompt_hash_hex(prompt);
++    snapshots
++        .iter()
++        .find(|snapshot| {
++            snapshot.index == expected_index
++                && snapshot_prompt_matches(snapshot, prompt, &expected_hash)
++        })
++        .or_else(|| {
++            snapshots
++                .iter()
++                .filter(|snapshot| snapshot_prompt_matches(snapshot, prompt, &expected_hash))
++                .max_by_key(|snapshot| snapshot.index)
++        })
++        .cloned()
++}
++
++/// Resolves a snapshot across a whole workspace, used when a rewind fork's
++/// own chain has no match and the parent conversation's snapshots must be
++/// consulted. Snapshot indices are per-conversation, so a match is only
++/// returned when exactly one conversation carries the selected prompt;
++/// ambiguous matches decline to restore files rather than guessing.
++pub(crate) fn resolve_workspace_snapshot_for_message(
++    snapshots: &[RewindSnapshotInfo],
++    expected_index: u64,
++    prompt: &str,
++) -> Option<(String, u64)> {
++    let expected_hash = prompt_hash_hex(prompt);
++    let matching = snapshots
++        .iter()
++        .filter(|snapshot| snapshot_prompt_matches(snapshot, prompt, &expected_hash))
++        .collect::<Vec<_>>();
++    let threads = matching
++        .iter()
++        .map(|snapshot| snapshot.thread_id.as_str())
++        .collect::<BTreeSet<_>>();
++    if threads.len() != 1 {
++        return None;
++    }
++    let thread_id = threads.into_iter().next().expect("exactly one thread");
++    matching
++        .iter()
++        .filter(|snapshot| snapshot.thread_id == thread_id)
++        .find(|snapshot| snapshot.index == expected_index)
++        .or_else(|| {
++            matching
++                .iter()
++                .filter(|snapshot| snapshot.thread_id == thread_id)
++                .max_by_key(|snapshot| snapshot.index)
++        })
++        .map(|snapshot| (snapshot.thread_id.clone(), snapshot.index))
++}
++
++#[cfg(test)]
++#[path = "rewind_tests.rs"]
++mod tests;
++
++mod actions;
++#[cfg(test)]
++pub(crate) use actions::rewind_scope_selection_params;
+diff --git a/codex-rs/tui/src/rewind/rewind_tests.rs b/codex-rs/tui/src/rewind/rewind_tests.rs
+new file mode 100644
+index 0000000..ee11a41
+--- /dev/null
++++ b/codex-rs/tui/src/rewind/rewind_tests.rs
+@@ -0,0 +1,1191 @@
++use super::*;
++use pretty_assertions::assert_eq;
++use std::os::unix::fs::MetadataExt;
++
++const TEST_THREAD: &str = "11111111-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
++const OTHER_THREAD: &str = "22222222-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
++
++fn write_file(root: &Path, relative: &str, contents: &[u8]) -> PathBuf {
++    let path = root.join(relative);
++    fs::create_dir_all(path.parent().expect("parent")).expect("create parent");
++    fs::write(&path, contents).expect("write file");
++    path
++}
++
++fn take(codex_home: &Path, workspace: &Path, prompt: &str) -> PathBuf {
++    take_snapshot(
++        codex_home,
++        workspace,
++        TEST_THREAD,
++        prompt,
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot")
++}
++
++fn thread_root(codex_home: &Path, workspace: &Path, thread_id: &str) -> PathBuf {
++    snapshot_chain_dir(&snapshots_root(codex_home, workspace), thread_id)
++}
++
++#[test]
++fn take_snapshot_captures_files_and_manifest() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "src/main.rs", b"fn main() {}");
++    write_file(workspace.path(), ".git/HEAD", b"ref");
++    write_file(workspace.path(), ".gitignore", b"target/\n");
++
++    let snapshot = take(codex_home.path(), workspace.path(), "first message");
++
++    assert!(snapshot.join(MANIFEST_FILE_NAME).is_file());
++    assert!(snapshot.join("files/src/main.rs").is_file());
++    // .git and .gitignore itself are never captured.
++    assert!(!snapshot.join("files/.git/HEAD").exists());
++    let manifest = read_manifest(&snapshot)
++        .expect("read manifest")
++        .expect("manifest exists");
++    assert_eq!(manifest.version, MANIFEST_VERSION);
++    assert_eq!(manifest.prompt, "first message");
++    assert_eq!(manifest.prompt_hash, Some(prompt_hash_hex("first message")));
++    assert_eq!(manifest.respect_gitignore, true);
++    assert!(manifest.skipped.is_empty());
++    assert!(
++        manifest
++            .files
++            .iter()
++            .all(|entry| entry.path_bytes.is_none())
++    );
++    assert_eq!(
++        manifest
++            .files
++            .iter()
++            .map(|entry| entry.path.as_str())
++            .collect::<Vec<_>>(),
++        vec![".gitignore", "src/main.rs"]
++    );
++    assert!(
++        manifest.files.iter().all(|entry| entry.object.len() == 64),
++        "every entry should carry a sha256 object id"
++    );
++}
++
++#[test]
++fn take_snapshot_skips_gitignored_files_when_enabled() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "src/main.rs", b"fn main() {}");
++    write_file(workspace.path(), "target/debug/out", b"binary");
++    write_file(workspace.path(), ".gitignore", b"target/\n");
++
++    take(codex_home.path(), workspace.path(), "build");
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(snapshots.len(), 1);
++    let manifest = read_manifest(
++        &thread_root(codex_home.path(), workspace.path(), TEST_THREAD)
++            .join(format!("{:06}", snapshots[0].index)),
++    )
++    .expect("read manifest")
++    .expect("manifest exists");
++    assert_eq!(manifest.files.len(), 2); // src/main.rs + .gitignore
++}
++
++#[test]
++fn take_snapshot_includes_gitignored_files_when_disabled() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "target/debug/out", b"binary");
++    write_file(workspace.path(), ".gitignore", b"target/\n");
++
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "build",
++        /*respect_gitignore*/ false,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot");
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    let manifest = read_manifest(
++        &thread_root(codex_home.path(), workspace.path(), TEST_THREAD)
++            .join(format!("{:06}", snapshots[0].index)),
++    )
++    .expect("read manifest")
++    .expect("manifest exists");
++    assert_eq!(manifest.files.len(), 2);
++}
++
++#[test]
++fn snapshots_are_incremental_and_renumbered() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let main_rs = write_file(workspace.path(), "src/main.rs", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    fs::write(&main_rs, b"v2").expect("modify");
++    take(codex_home.path(), workspace.path(), "two");
++
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(
++        snapshots.iter().map(|info| info.index).collect::<Vec<_>>(),
++        vec![1, 2]
++    );
++    let root = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(
++        fs::read(root.join("000002/files/src/main.rs")).expect("read copy"),
++        b"v2"
++    );
++    assert_eq!(
++        fs::read(root.join("000001/files/src/main.rs")).expect("read copy"),
++        b"v1"
++    );
++    assert_eq!(snapshots[0].changed_file_count, 1);
++    assert_eq!(snapshots[1].changed_file_count, 1);
++}
++
++#[test]
++fn restore_rolls_back_changes_and_deletes_new_files() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "src/main.rs", b"v1");
++    take(codex_home.path(), workspace.path(), "before");
++
++    write_file(workspace.path(), "src/main.rs", b"v2");
++    write_file(workspace.path(), "new-file.txt", b"extra");
++    write_file(workspace.path(), "new-dir/nested.txt", b"nested");
++
++    let restored = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect("restore");
++    assert_eq!(restored, 1);
++    assert_eq!(
++        fs::read(workspace.path().join("src/main.rs")).expect("read"),
++        b"v1"
++    );
++    assert!(!workspace.path().join("new-file.txt").exists());
++    assert!(!workspace.path().join("new-dir/nested.txt").exists());
++}
++
++#[test]
++fn restore_older_snapshot_restores_deduplicated_files() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    // The unchanged file is deduplicated: snapshot two links the same object.
++    take(codex_home.path(), workspace.path(), "two");
++    fs::write(&file, b"v3").expect("modify");
++    take(codex_home.path(), workspace.path(), "three");
++
++    // Restoring the middle snapshot must recover the deduplicated content
++    // instead of silently leaving the current "v3" content in place.
++    let restored = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 2,
++    )
++    .expect("restore snapshot two");
++    assert_eq!(restored, 1);
++    assert_eq!(
++        fs::read(&file).expect("read notes.txt"),
++        b"v1",
++        "deduplicated file content should be restored from the object hardlink"
++    );
++}
++
++#[test]
++fn restore_fails_loudly_when_snapshot_content_is_missing() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    // Corrupt the snapshot by removing its physical copy.
++    let root = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    fs::remove_file(root.join("000001/files/notes.txt")).expect("remove copy");
++
++    let err = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect_err("restore should fail when a physical copy is missing");
++    assert!(
++        err.to_string().contains("snapshot content is missing"),
++        "error should list the missing paths: {err}"
++    );
++    assert!(
++        err.to_string().contains("notes.txt"),
++        "error should name the missing path: {err}"
++    );
++}
++
++#[test]
++fn list_snapshots_skips_directories_without_a_manifest() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "file.txt", b"data");
++    take(codex_home.path(), workspace.path(), "one");
++
++    // Simulate an interrupted snapshot that left a directory without a
++    // manifest behind.
++    let root = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    fs::create_dir_all(root.join("000099/files")).expect("create stray dir");
++
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(
++        snapshots.iter().map(|info| info.index).collect::<Vec<_>>(),
++        vec![1],
++        "manifest-less snapshot directories should not be listed"
++    );
++}
++
++#[test]
++fn snapshot_count_is_pruned_to_max() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "file.txt", b"data");
++    for index in 1..=DEFAULT_MAX_SNAPSHOTS + 3 {
++        take(
++            codex_home.path(),
++            workspace.path(),
++            &format!("message {index}"),
++        );
++    }
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(snapshots.len(), DEFAULT_MAX_SNAPSHOTS);
++    assert_eq!(snapshots[0].index, 4);
++}
++
++#[test]
++fn prompt_excerpt_truncates_long_messages() {
++    let long = "x".repeat(500);
++    let excerpt = prompt_excerpt(&long);
++    assert!(excerpt.len() < 250);
++    assert!(excerpt.ends_with('…'));
++    assert_eq!(prompt_excerpt("   "), "(attachment)");
++    assert_eq!(prompt_excerpt("hello"), "hello");
++}
++
++#[test]
++fn workspace_hash_is_stable() {
++    let dir = tempfile::tempdir().expect("temp dir");
++    let root = snapshots_root(Path::new("/tmp/codex-home"), dir.path());
++    let root_again = snapshots_root(Path::new("/tmp/codex-home"), dir.path());
++    assert_eq!(root, root_again);
++    assert!(root.starts_with("/tmp/codex-home/snapshots"));
++}
++
++#[test]
++fn take_snapshot_deduplicates_content_across_snapshots() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    fs::write(&file, b"v2").expect("modify");
++    take(codex_home.path(), workspace.path(), "two");
++    fs::write(&file, b"v1").expect("revert content");
++    take(codex_home.path(), workspace.path(), "three");
++
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    let object_files = fs::read_dir(root.join(OBJECTS_DIR_NAME))
++        .expect("objects dir")
++        .flatten()
++        .count();
++    assert_eq!(
++        object_files, 2,
++        "each distinct content should be stored exactly once"
++    );
++    // Snapshots one and three hold the same content and share one object.
++    let chain = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    let first = fs::metadata(chain.join("000001/files/notes.txt")).expect("snapshot one copy");
++    let third = fs::metadata(chain.join("000003/files/notes.txt")).expect("snapshot three copy");
++    assert_eq!(
++        first.ino(),
++        third.ino(),
++        "identical content should hardlink to the same object"
++    );
++    assert_ne!(
++        first.ino(),
++        fs::metadata(chain.join("000002/files/notes.txt"))
++            .expect("snapshot two copy")
++            .ino(),
++        "different content should use a different object"
++    );
++}
++
++#[test]
++fn prune_garbage_collects_unreferenced_objects() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let changing = write_file(workspace.path(), "changing.txt", b"c0");
++    let stable = write_file(workspace.path(), "stable.txt", b"stable");
++    for index in 1..=DEFAULT_MAX_SNAPSHOTS + 2 {
++        fs::write(&changing, format!("c{index}")).expect("write changing");
++        take(
++            codex_home.path(),
++            workspace.path(),
++            &format!("message {index}"),
++        );
++    }
++
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    // Retained snapshots reference the stable object plus the final
++    // DEFAULT_MAX_SNAPSHOTS changing contents; the first two changing
++    // contents were pruned and their objects garbage-collected.
++    let object_files = fs::read_dir(root.join(OBJECTS_DIR_NAME))
++        .expect("objects dir")
++        .flatten()
++        .count();
++    assert_eq!(object_files, DEFAULT_MAX_SNAPSHOTS + 1);
++    assert_eq!(fs::metadata(&stable).expect("stable file").len(), 6);
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(snapshots.len(), DEFAULT_MAX_SNAPSHOTS);
++}
++
++#[test]
++fn restore_preserves_mtime_so_incremental_dedup_stays_effective() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    fs::write(&file, b"v2").expect("modify");
++    take(codex_home.path(), workspace.path(), "two");
++
++    restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect("restore");
++
++    let root = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    let manifest = read_manifest(&root.join("000001"))
++        .expect("read manifest")
++        .expect("manifest exists");
++    let expected_mtime = system_time_from_nanos(manifest.files[0].mtime_ns).expect("mtime");
++    assert_eq!(
++        fs::metadata(&file)
++            .expect("metadata")
++            .modified()
++            .expect("modified"),
++        expected_mtime,
++        "restored files should get their original mtime back"
++    );
++
++    take(codex_home.path(), workspace.path(), "three");
++    let object_files =
++        fs::read_dir(snapshots_root(codex_home.path(), workspace.path()).join(OBJECTS_DIR_NAME))
++            .expect("objects dir")
++            .flatten()
++            .count();
++    assert_eq!(object_files, 2, "restore cycles must not duplicate content");
++}
++
++#[test]
++fn preview_restore_counts_restores_and_deletes() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    // Workspace drifts: the tracked file is modified and a new file appears.
++    fs::write(&file, b"v2").expect("modify");
++    write_file(workspace.path(), "extra.txt", b"extra");
++
++    let preview = preview_restore(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect("preview");
++    assert_eq!(
++        preview,
++        RestorePreview {
++            restore_count: 1,
++            delete_count: 1,
++        }
++    );
++    // The preview must not touch the workspace.
++    assert_eq!(fs::read(&file).expect("read"), b"v2");
++    assert!(workspace.path().join("extra.txt").exists());
++}
++
++#[test]
++fn preview_restore_reports_nothing_when_workspace_matches() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++
++    let preview = preview_restore(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect("preview");
++    assert_eq!(
++        preview,
++        RestorePreview {
++            restore_count: 0,
++            delete_count: 0,
++        }
++    );
++}
++
++#[test]
++fn preview_restore_fails_for_missing_snapshot() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let err = preview_restore(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect_err("preview of a missing snapshot should fail");
++    assert!(
++        err.to_string().contains("does not exist"),
++        "unexpected: {err}"
++    );
++}
++
++#[test]
++fn thread_snapshots_are_isolated_per_conversation() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"base");
++
++    // Two conversations in the same workspace each start their chain at 1.
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "a one",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot a1");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        OTHER_THREAD,
++        "b one",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot b1");
++    fs::write(&file, b"change").expect("modify");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "a two",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot a2");
++
++    let a = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(
++        a.iter().map(|snapshot| snapshot.index).collect::<Vec<_>>(),
++        vec![1, 2]
++    );
++    assert!(a.iter().all(|snapshot| snapshot.thread_id == TEST_THREAD));
++    let b = list_snapshots(codex_home.path(), workspace.path(), OTHER_THREAD);
++    assert_eq!(
++        b.iter().map(|snapshot| snapshot.index).collect::<Vec<_>>(),
++        vec![1]
++    );
++    assert!(b.iter().all(|snapshot| snapshot.thread_id == OTHER_THREAD));
++
++    // The workspace-wide list aggregates both conversation chains.
++    let all = list_workspace_snapshots(codex_home.path(), workspace.path());
++    assert_eq!(all.len(), 3);
++    assert!(all.iter().any(|snapshot| snapshot.thread_id == TEST_THREAD));
++    assert!(
++        all.iter()
++            .any(|snapshot| snapshot.thread_id == OTHER_THREAD)
++    );
++
++    // Restore resolves within the conversation's own chain.
++    fs::write(&file, b"after").expect("modify");
++    let restored = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        /*index*/ 1,
++    )
++    .expect("restore thread a snapshot 1");
++    assert_eq!(restored, 1);
++    assert_eq!(fs::read(&file).expect("read"), b"base");
++}
++
++#[test]
++fn thread_chains_prune_independently_and_gc_keeps_referenced_objects() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"base");
++    for index in 1..=DEFAULT_MAX_SNAPSHOTS + 5 {
++        fs::write(&file, format!("a{index}")).expect("modify");
++        take_snapshot(
++            codex_home.path(),
++            workspace.path(),
++            TEST_THREAD,
++            &format!("a {index}"),
++            /*respect_gitignore*/ true,
++            DEFAULT_MAX_SNAPSHOTS,
++        )
++        .expect("thread a snapshot");
++    }
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        OTHER_THREAD,
++        "b one",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("thread b snapshot");
++
++    // Thread A kept its own most recent DEFAULT_MAX_SNAPSHOTS; thread B is
++    // untouched.
++    let a = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(a.len(), DEFAULT_MAX_SNAPSHOTS);
++    assert_eq!(a[0].index, 6);
++    let b = list_snapshots(codex_home.path(), workspace.path(), OTHER_THREAD);
++    assert_eq!(b.len(), 1);
++    assert_eq!(b[0].index, 1);
++
++    // Objects referenced by either retained chain survive; the pruned
++    // contents a1..a5 are garbage-collected.
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    let object_files = fs::read_dir(root.join(OBJECTS_DIR_NAME))
++        .expect("objects dir")
++        .flatten()
++        .count();
++    assert_eq!(object_files, DEFAULT_MAX_SNAPSHOTS);
++}
++
++#[test]
++fn snapshot_lock_blocks_live_owner_and_takes_over_stale_lock() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "file.txt", b"data");
++    let root = snapshots_root(codex_home.path(), workspace.path());
++    fs::create_dir_all(&root).expect("snapshots root");
++    let lock_dir = root.join(LOCK_DIR_NAME);
++    fs::create_dir(&lock_dir).expect("create lock");
++
++    // A live owner blocks the snapshot.
++    fs::write(lock_dir.join(LOCK_PID_FILE), std::process::id().to_string())
++        .expect("write live pid");
++    let err = take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "blocked",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect_err("a live lock should block snapshotting");
++    assert!(err.to_string().contains("lock"), "unexpected error: {err}");
++
++    // A dead owner's lock is taken over and released afterwards.
++    fs::write(lock_dir.join(LOCK_PID_FILE), "999999999").expect("write dead pid");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "taken over",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("a stale lock should be taken over");
++    assert!(!lock_dir.exists(), "the lock should be released after use");
++}
++
++#[test]
++fn resolve_snapshot_for_message_prefers_exact_index_and_prompt() {
++    let snapshots = vec![
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 1,
++            created_at: 0,
++            prompt: "first".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 2,
++            created_at: 0,
++            prompt: "second".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++    ];
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "second").map(|s| s.index),
++        Some(2)
++    );
++}
++
++#[test]
++fn resolve_snapshot_for_message_falls_back_to_newest_prompt_match() {
++    let snapshots = vec![
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 1,
++            created_at: 0,
++            prompt: "first".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 2,
++            created_at: 0,
++            prompt: "(side question)".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 3,
++            created_at: 0,
++            prompt: "first".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++        RewindSnapshotInfo {
++            thread_id: TEST_THREAD.to_string(),
++            index: 5,
++            created_at: 0,
++            prompt: "first".to_string(),
++            prompt_hash: None,
++            changed_file_count: 1,
++        },
++    ];
++    // When ordinal alignment drifted (e.g. a resumed thread whose snapshot
++    // chain continues while transcript ordinals restart), the newest snapshot
++    // carrying the selected prompt wins over a numerically closer one.
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "first").map(|s| s.index),
++        Some(5)
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 4, "first").map(|s| s.index),
++        Some(5)
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "absent").map(|s| s.index),
++        None
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&[], /*expected_index*/ 1, "first").map(|s| s.index),
++        None
++    );
++}
++
++#[test]
++fn rewind_fork_chain_resolves_against_parent_snapshots() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "first question",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("a1");
++    fs::write(&file, b"v2").expect("modify");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "second question",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("a2");
++    fs::write(&file, b"v3").expect("modify");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "third question",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("a3");
++
++    // A /rewind fork starts a fresh conversation whose chain has no snapshots
++    // for the replayed messages. After the restored prompt is re-submitted,
++    // the new chain holds one snapshot.
++    let fork_thread = OTHER_THREAD;
++    fs::write(&file, b"v2b").expect("modify");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        fork_thread,
++        "second question",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("fork snapshot");
++
++    // Rewinding to a message that predates the fork: the fork chain has no
++    // match, and the workspace-wide store resolves to the parent snapshot.
++    let fork_chain = list_snapshots(codex_home.path(), workspace.path(), fork_thread);
++    assert_eq!(
++        resolve_snapshot_for_message(&fork_chain, /*expected_index*/ 1, "first question")
++            .map(|snapshot| (snapshot.thread_id, snapshot.index)),
++        None,
++        "the fork chain has no snapshot for the replayed first message"
++    );
++    let workspace_snapshots = list_workspace_snapshots(codex_home.path(), workspace.path());
++    let (resolved_thread, resolved_index) = resolve_workspace_snapshot_for_message(
++        &workspace_snapshots,
++        /*expected_index*/ 1,
++        "first question",
++    )
++    .expect("workspace fallback should resolve the parent snapshot");
++    assert_eq!(resolved_thread, TEST_THREAD);
++    assert_eq!(resolved_index, 1);
++    let restored = restore_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        &resolved_thread,
++        resolved_index,
++    )
++    .expect("restore parent snapshot");
++    assert_eq!(restored, 1);
++    assert_eq!(fs::read(&file).expect("read"), b"v1");
++
++    // Rewinding to the post-fork message resolves inside the fork chain.
++    let resolved =
++        resolve_snapshot_for_message(&fork_chain, /*expected_index*/ 1, "second question")
++            .expect("fork chain should resolve its own snapshot");
++    assert_eq!(resolved.thread_id, fork_thread);
++    assert_eq!(resolved.index, 1);
++}
++
++fn info(
++    thread_id: &str,
++    index: u64,
++    prompt: &str,
++    prompt_hash: Option<String>,
++) -> RewindSnapshotInfo {
++    RewindSnapshotInfo {
++        thread_id: thread_id.to_string(),
++        index,
++        created_at: 0,
++        prompt: prompt_excerpt(prompt),
++        prompt_hash,
++        changed_file_count: 0,
++    }
++}
++
++#[test]
++fn restore_replaces_target_symlink_without_writing_through_it() {
++    use std::os::unix::fs::symlink as unix_symlink;
++
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let outside = tempfile::tempdir().expect("outside dir");
++    let outside_file = outside.path().join("config.json");
++    fs::write(&outside_file, b"precious").expect("outside content");
++    write_file(workspace.path(), "config.json", b"v1");
++    take(codex_home.path(), workspace.path(), "before");
++
++    // The agent replaced the tracked file with a symlink to a file outside
++    // the workspace.
++    fs::remove_file(workspace.path().join("config.json")).expect("remove tracked file");
++    unix_symlink(&outside_file, workspace.path().join("config.json")).expect("create symlink");
++
++    let restored =
++        restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("restore");
++    assert_eq!(restored, 1);
++    let target = workspace.path().join("config.json");
++    assert!(
++        target
++            .symlink_metadata()
++            .expect("metadata")
++            .file_type()
++            .is_file(),
++        "the symlink must be replaced by a regular file"
++    );
++    assert!(
++        !target
++            .symlink_metadata()
++            .expect("metadata")
++            .file_type()
++            .is_symlink(),
++        "no symbolic link may remain at the target"
++    );
++    assert_eq!(fs::read(&target).expect("read"), b"v1");
++    assert_eq!(
++        fs::read(&outside_file).expect("outside read"),
++        b"precious",
++        "restore must never write through the symlink"
++    );
++}
++
++#[test]
++fn restore_refuses_symlinked_parent_directory() {
++    use std::os::unix::fs::symlink as unix_symlink;
++
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "sub/config.json", b"v1");
++    write_file(workspace.path(), "top.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "before");
++
++    // The agent replaced a directory with a symlink pointing outside the
++    // workspace, and edited an unrelated tracked file.
++    fs::remove_dir_all(workspace.path().join("sub")).expect("remove sub dir");
++    unix_symlink(
++        workspace.path().join("nowhere"),
++        workspace.path().join("sub"),
++    )
++    .expect("create dir symlink");
++    fs::write(workspace.path().join("top.txt"), b"v2").expect("modify top.txt");
++
++    let err = restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1)
++        .expect_err("restoring through a symlinked directory must fail");
++    assert!(
++        err.to_string().contains("symbolic link"),
++        "unexpected error: {err}"
++    );
++    // The preflight must fail before anything is modified.
++    assert_eq!(
++        fs::read(workspace.path().join("top.txt")).expect("read top.txt"),
++        b"v2",
++        "no file may be restored when the restore is refused up front"
++    );
++}
++
++#[test]
++fn restore_rejects_unsafe_paths_in_hand_edited_manifest() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "ok.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "before");
++
++    // Simulate a corrupted/hand-edited manifest that records a traversal path.
++    let manifest_path = thread_root(codex_home.path(), workspace.path(), TEST_THREAD)
++        .join("000001")
++        .join(MANIFEST_FILE_NAME);
++    let mut manifest: SnapshotManifest =
++        serde_json::from_str(&fs::read_to_string(&manifest_path).expect("read manifest"))
++            .expect("parse manifest");
++    manifest.files.push(SnapshotFileEntry {
++        path: "../evil.txt".to_string(),
++        path_bytes: None,
++        size: 3,
++        mtime_ns: 0,
++        object: "a".repeat(64),
++    });
++    fs::write(
++        &manifest_path,
++        serde_json::to_string(&manifest).expect("serialize manifest"),
++    )
++    .expect("write manifest");
++
++    let escaped_target = workspace.path().join("../evil.txt");
++    let err = restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1)
++        .expect_err("a traversal path must be rejected");
++    assert!(err.to_string().contains("unsafe path"), "unexpected: {err}");
++    assert!(
++        !escaped_target.exists(),
++        "restore must not write outside the workspace"
++    );
++}
++
++#[test]
++fn snapshot_roundtrips_non_utf8_filenames() {
++    use std::ffi::OsStr;
++    use std::ffi::OsString;
++    use std::os::unix::ffi::OsStrExt;
++    use std::os::unix::ffi::OsStringExt;
++
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let raw_name: &[u8] = b"bad-\xff-name.txt";
++    let file = workspace.path().join(OsStr::from_bytes(raw_name));
++    fs::write(&file, b"v1").expect("write non-utf8 file");
++    take(codex_home.path(), workspace.path(), "one");
++
++    let manifest_path = thread_root(codex_home.path(), workspace.path(), TEST_THREAD)
++        .join("000001")
++        .join(MANIFEST_FILE_NAME);
++    let manifest: SnapshotManifest =
++        serde_json::from_str(&fs::read_to_string(&manifest_path).expect("read manifest"))
++            .expect("parse manifest");
++    assert_eq!(manifest.files.len(), 1);
++    assert!(
++        manifest.files[0].path_bytes.is_some(),
++        "a non-UTF-8 name must record its raw bytes"
++    );
++
++    fs::write(&file, b"v2").expect("modify");
++    let restored =
++        restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("restore");
++    assert_eq!(restored, 1);
++    assert_eq!(fs::read(&file).expect("read"), b"v1");
++
++    let entries = fs::read_dir(workspace.path())
++        .expect("read workspace")
++        .flatten()
++        .map(|entry| entry.file_name())
++        .collect::<Vec<_>>();
++    assert_eq!(
++        entries,
++        vec![OsString::from_vec(raw_name.to_vec())],
++        "restore must not create a replacement-character sibling"
++    );
++}
++
++#[test]
++fn restore_deletes_per_snapshot_time_gitignore_setting() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "tracked.txt", b"v1");
++    write_file(workspace.path(), ".gitignore", b"*.dat\n");
++    write_file(workspace.path(), "ignored.dat", b"at-snapshot");
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "gitignore disabled at snapshot time",
++        /*respect_gitignore*/ false,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot");
++
++    // A new ignored file appears after the snapshot. The stored setting
++    // (false) governs the delete walk, not the current default config.
++    write_file(workspace.path(), "new-ignored.dat", b"extra");
++    let preview =
++        preview_restore(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("preview");
++    assert_eq!(preview.delete_count, 1);
++    restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("restore");
++    assert!(!workspace.path().join("new-ignored.dat").exists());
++}
++
++#[test]
++fn preview_and_restore_agree_when_gitignore_was_edited() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), ".gitignore", b"");
++    write_file(workspace.path(), "tracked.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "before");
++
++    // The agent edits .gitignore to ignore a file it then creates.
++    fs::write(workspace.path().join(".gitignore"), b"secret.env\n").expect("edit gitignore");
++    write_file(workspace.path(), "secret.env", b"secret");
++
++    let preview =
++        preview_restore(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("preview");
++    assert_eq!(
++        preview.delete_count, 0,
++        "the current .gitignore hides secret.env from the delete walk"
++    );
++    restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("restore");
++    assert!(
++        workspace.path().join("secret.env").exists(),
++        "restore must delete exactly what the preview counted"
++    );
++    assert_eq!(
++        fs::read(workspace.path().join(".gitignore")).expect("read gitignore"),
++        b"",
++        "the snapshot .gitignore is restored"
++    );
++}
++
++#[test]
++fn unreadable_file_is_skipped_and_left_alone_on_restore() {
++    use std::os::unix::fs::PermissionsExt;
++
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let tracked = write_file(workspace.path(), "tracked.txt", b"v1");
++    let secret = write_file(workspace.path(), "secret.txt", b"hidden");
++    let mut perms = fs::metadata(&secret).expect("metadata").permissions();
++    perms.set_mode(0o000);
++    fs::set_permissions(&secret, perms).expect("chmod 000");
++
++    let (_snapshot, skipped) = take_snapshot_with_skipped(
++        codex_home.path(),
++        workspace.path(),
++        TEST_THREAD,
++        "one",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot");
++    assert_eq!(skipped, vec![PathBuf::from("secret.txt")]);
++
++    fs::write(&tracked, b"v2").expect("modify tracked");
++    let restored =
++        restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1).expect("restore");
++    assert_eq!(restored, 1);
++    assert_eq!(fs::read(&tracked).expect("read tracked"), b"v1");
++    assert!(
++        workspace.path().join("secret.txt").exists(),
++        "skipped files must not be deleted by a restore"
++    );
++
++    // Restore permissions so the tempdir cleanup can remove the file.
++    let mut perms = fs::metadata(&secret).expect("metadata").permissions();
++    perms.set_mode(0o600);
++    fs::set_permissions(&secret, perms).expect("chmod 600");
++}
++
++#[test]
++fn interrupted_snapshot_directories_are_pruned() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    write_file(workspace.path(), "file.txt", b"data");
++    take(codex_home.path(), workspace.path(), "one");
++
++    let chain = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    fs::create_dir_all(chain.join("000002/files")).expect("simulate interrupted snapshot");
++    take(codex_home.path(), workspace.path(), "two");
++
++    assert!(
++        !chain.join("000002").exists(),
++        "interrupted snapshot directories are removed during pruning"
++    );
++    let snapshots = list_snapshots(codex_home.path(), workspace.path(), TEST_THREAD);
++    assert_eq!(
++        snapshots.iter().map(|info| info.index).collect::<Vec<_>>(),
++        vec![1, 3]
++    );
++}
++
++#[test]
++fn resolve_workspace_snapshot_for_message_declines_ambiguous_threads() {
++    let shared = info(
++        TEST_THREAD,
++        3,
++        "continue",
++        Some(prompt_hash_hex("continue")),
++    );
++    let other = info(
++        OTHER_THREAD,
++        3,
++        "continue",
++        Some(prompt_hash_hex("continue")),
++    );
++    assert_eq!(
++        resolve_workspace_snapshot_for_message(&[shared, other], 3, "continue"),
++        None,
++        "two conversations carrying the same prompt must not resolve"
++    );
++
++    let single = vec![
++        info(
++            TEST_THREAD,
++            1,
++            "continue",
++            Some(prompt_hash_hex("continue")),
++        ),
++        info(
++            TEST_THREAD,
++            3,
++            "continue",
++            Some(prompt_hash_hex("continue")),
++        ),
++    ];
++    assert_eq!(
++        resolve_workspace_snapshot_for_message(&single, 3, "continue"),
++        Some((TEST_THREAD.to_string(), 3)),
++        "a single matching conversation resolves by index"
++    );
++}
++
++#[test]
++fn resolve_snapshot_for_message_uses_full_prompt_hash() {
++    let shared_prefix = "x".repeat(300);
++    let prompt_a = format!("{shared_prefix} END-A");
++    let prompt_b = format!("{shared_prefix} END-B");
++    let snapshots = vec![
++        info(TEST_THREAD, 1, &prompt_a, Some(prompt_hash_hex(&prompt_a))),
++        info(TEST_THREAD, 2, &prompt_b, Some(prompt_hash_hex(&prompt_b))),
++    ];
++    // The 200-character excerpts are identical, so only the full-prompt hash
++    // can tell the two snapshots apart.
++    assert_eq!(prompt_excerpt(&prompt_a), prompt_excerpt(&prompt_b));
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, 2, &prompt_b).map(|info| info.index),
++        Some(2)
++    );
++}
++
++#[test]
++fn first_snapshot_seeding_captures_changed_content() {
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "thread a");
++    fs::write(&file, b"v2").expect("modify");
++
++    // A fresh conversation seeds its fast path from thread A's snapshot but
++    // must still capture the changed content, not link the stale object.
++    take_snapshot(
++        codex_home.path(),
++        workspace.path(),
++        OTHER_THREAD,
++        "thread b",
++        /*respect_gitignore*/ true,
++        DEFAULT_MAX_SNAPSHOTS,
++    )
++    .expect("snapshot b");
++
++    let chain_a = thread_root(codex_home.path(), workspace.path(), TEST_THREAD);
++    let chain_b = thread_root(codex_home.path(), workspace.path(), OTHER_THREAD);
++    let manifest_a = read_manifest(&chain_a.join("000001"))
++        .expect("read manifest")
++        .expect("manifest a");
++    let manifest_b = read_manifest(&chain_b.join("000001"))
++        .expect("read manifest")
++        .expect("manifest b");
++    assert_ne!(
++        manifest_a.files[0].object, manifest_b.files[0].object,
++        "changed content must not reuse the seeded object"
++    );
++    assert_eq!(
++        fs::read(chain_b.join("000001/files/notes.txt")).expect("read copy"),
++        b"v2"
++    );
++}
++
++#[test]
++fn restore_replaces_read_only_targets() {
++    use std::os::unix::fs::PermissionsExt;
++
++    let codex_home = tempfile::tempdir().expect("codex home");
++    let workspace = tempfile::tempdir().expect("workspace");
++    let file = write_file(workspace.path(), "notes.txt", b"v1");
++    take(codex_home.path(), workspace.path(), "one");
++    fs::write(&file, b"v2").expect("modify");
++    let mut perms = fs::metadata(&file).expect("metadata").permissions();
++    perms.set_mode(0o444);
++    fs::set_permissions(&file, perms).expect("chmod 444");
++
++    restore_snapshot(codex_home.path(), workspace.path(), TEST_THREAD, 1)
++        .expect("restore over a read-only target");
++    assert_eq!(fs::read(&file).expect("read"), b"v1");
++}
+diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
+index 07cb2c1..2004690 100644
+--- a/codex-rs/tui/src/slash_command.rs
++++ b/codex-rs/tui/src/slash_command.rs
+@@ -35,6 +35,7 @@ pub enum SlashCommand {
+     Delete,
+     Resume,
+     Fork,
++    Rewind,
+     App,
+     Init,
+     Compact,
+@@ -93,6 +94,7 @@ impl SlashCommand {
+             SlashCommand::Delete => "permanently delete this session and exit",
+             SlashCommand::Clear => "clear the terminal and start a new chat",
+             SlashCommand::Fork => "fork the current chat",
++            SlashCommand::Rewind => "roll back conversation or file changes",
+             SlashCommand::App => "continue this session in the Desktop app",
+             SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
+             SlashCommand::Copy => "copy last response as markdown",
+@@ -194,6 +196,7 @@ impl SlashCommand {
+             | SlashCommand::Archive
+             | SlashCommand::Delete
+             | SlashCommand::Fork
++            | SlashCommand::Rewind
+             | SlashCommand::Init
+             | SlashCommand::Compact
+             | SlashCommand::Keymap
+-- 
+2.55.0
+

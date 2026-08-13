@@ -26,6 +26,11 @@ jobs:
           echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
+      - name: Validate patch-module layout
+        run: |
+          bash scripts/check-patch-modules.sh --patches patches
+          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
+
       - name: Verify codex-tui does not import codex-core directly
         run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
 

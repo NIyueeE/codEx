@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Regenerates patches/ as a modular series (one patch per commit) from a
-# bootstrapped tree's commit history.
+# Regenerates patches/ as a modular series (one patch per feature module)
+# from a bootstrapped tree's commit history.
+#
+# The tree history must be exactly the module sequence declared in
+# scripts/patch-modules.conf: one commit per module, in order, with the
+# matching subjects and file ownership. This script refuses to export a
+# tree (or keep an export) that violates the manifest.
 #
 # Preferred usage (inside the bootstrapped tree after resolving conflicts or
 # after a successful update):
@@ -8,6 +13,7 @@
 #
 # Alternative (full fork checkout whose git history contains the base tag):
 #   bash scripts/gen-patches.sh
+#
 # Reads BASE_TAG from the repository root. The slim patch-queue repo has no
 # upstream history and no codex-rs/ workspace, so this script refuses to run
 # there; use it from a bootstrapped tree instead.
@@ -15,6 +21,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
 repo_root="$(cd "${script_dir}/.." && pwd)"
+checker="${script_dir}/check-patch-modules.sh"
 
 if [[ $# -ge 1 ]]; then
   # Form used inside a bootstrapped tree.
@@ -53,6 +60,13 @@ if ! git -C "${worktree}" merge-base --is-ancestor "${base_tag}" HEAD 2>/dev/nul
   exit 1
 fi
 
+# The tree history must be exactly the module sequence declared in
+# scripts/patch-modules.conf. Refuse to export a drifted tree.
+if ! bash "${checker}" --tree "${worktree}"; then
+  echo "The tree does not match the patch-module manifest; refusing to export." >&2
+  exit 1
+fi
+
 # Guard against wiping anything broader than the patch directory itself.
 if [[ -z "${output_dir}" || "${output_dir}" == "/" ]]; then
   echo "Refusing to use output directory '${output_dir}'" >&2
@@ -80,6 +94,12 @@ git -C "${worktree}" format-patch "${base_tag}"..HEAD --output-directory "${outp
 patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
 if [[ "${patch_count}" -ne "${commit_count}" ]]; then
   echo "Expected ${commit_count} patch(es) but wrote ${patch_count}; review before committing." >&2
+  exit 1
+fi
+
+# The export must satisfy the manifest too (subjects and file ownership).
+if ! bash "${checker}" --patches "${output_dir}"; then
+  echo "The exported patches do not match the patch-module manifest; refusing to keep them." >&2
   exit 1
 fi
 

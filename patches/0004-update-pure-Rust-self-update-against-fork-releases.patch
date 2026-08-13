@@ -1,21 +1,12 @@
-From 2029ab225dc4a00fc61862328bba9c484f24858d Mon Sep 17 00:00:00 2001
-From: codEx Fork Bot <codex-fork-bot@localhost>
-Date: Tue, 11 Aug 2026 01:19:41 +0800
+From dcfcc91af1f78c564ba315392d247f3c14b0a8d6 Mon Sep 17 00:00:00 2001
+From: Won Park <won@openai.com>
+Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
 
-codex update no longer shells out to curl | sh, npm, or brew. It maps
-the host architecture to the fork release target, downloads
-codex-<target>.tar.gz plus its sha256 from the fork GitHub releases,
-verifies the checksum before touching anything, and atomically replaces
-the running binary and bundled bwrap resource. Non-standalone installs
-get a clear message pointing at the fork releases. The fork identity
-lives in codex-utils-cli (FORK_REPO / latest_release_url) so update
-checks, doctor, and notices all point at the fork instead of openai/codex.
-The WSL path normalization shim is dropped with the old shell-out path.
 ---
  codex-rs/cli/Cargo.toml                       |   3 +
  codex-rs/cli/src/doctor/updates.rs            |  53 +--
- codex-rs/cli/src/main.rs                      |  65 +---
+ codex-rs/cli/src/main.rs                      |  90 ++---
  codex-rs/cli/src/self_update.rs               | 345 ++++++++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 ---
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
@@ -30,7 +21,7 @@ The WSL path normalization shim is dropped with the old shell-out path.
  codex-rs/tui/src/updates.rs                   |  52 +--
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 17 files changed, 469 insertions(+), 338 deletions(-)
+ 17 files changed, 492 insertions(+), 340 deletions(-)
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
@@ -180,7 +171,7 @@ index b13de06..87634fc 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 4c88718..597448e 100644
+index 4c88718..e36e8fa 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -55,9 +55,8 @@ mod plugin_cmd;
@@ -194,7 +185,27 @@ index 4c88718..597448e 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -161,7 +160,7 @@ enum Subcommand {
+@@ -88,13 +87,17 @@ use codex_protocol::protocol::AskForApproval;
+ use codex_protocol::user_input::UserInput;
+ use codex_terminal_detection::TerminalName;
+ 
+-/// Codex CLI
++/// codEx CLI
+ ///
+ /// If no subcommand is specified, options will be forwarded to the interactive CLI.
+ #[derive(Debug, Parser)]
+ #[clap(
+     author,
+-    version,
++    name = "codEx",
++    version = concat!(
++        env!("CARGO_PKG_VERSION"),
++        " (codEx fork, https://github.com/NIyueeE/codEx)"
++    ),
+     // If a sub‑command is given, ignore requirements of the default args.
+     subcommand_negates_reqs = true,
+     // The executable is sometimes invoked via a platform‑specific name like
+@@ -161,7 +164,7 @@ enum Subcommand {
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
@@ -203,7 +214,7 @@ index 4c88718..597448e 100644
      Update,
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
-@@ -752,7 +751,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
+@@ -752,7 +755,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -212,7 +223,7 @@ index 4c88718..597448e 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -771,55 +770,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -771,55 +774,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -276,7 +287,7 @@ index 4c88718..597448e 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -831,10 +800,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -831,10 +804,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -289,7 +300,7 @@ index 4c88718..597448e 100644
      }
  }
  
-@@ -1025,7 +994,7 @@ async fn cli_main(
+@@ -1025,7 +998,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -298,7 +309,7 @@ index 4c88718..597448e 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1310,7 +1279,7 @@ async fn cli_main(
+@@ -1310,7 +1283,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -307,7 +318,7 @@ index 4c88718..597448e 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1377,7 +1346,7 @@ async fn cli_main(
+@@ -1377,7 +1350,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -316,7 +327,7 @@ index 4c88718..597448e 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1449,7 +1418,7 @@ async fn cli_main(
+@@ -1449,7 +1422,7 @@ async fn cli_main(
                  root_remote_auth_token_env.as_deref(),
                  "update",
              )?;
@@ -325,6 +336,30 @@ index 4c88718..597448e 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
+@@ -3282,6 +3255,23 @@ mod tests {
+         assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
+     }
+ 
++    #[test]
++    fn version_string_identifies_codex_fork() {
++        let command = MultitoolCli::command();
++        let version = command.get_version().expect("version");
++        assert_eq!(
++            version,
++            concat!(
++                env!("CARGO_PKG_VERSION"),
++                " (codEx fork, https://github.com/NIyueeE/codEx)"
++            )
++        );
++        assert!(
++            command.get_about().unwrap().to_string().contains("codEx"),
++            "about should mention codEx"
++        );
++    }
++
+     #[test]
+     fn archive_merges_scoped_tui_flags() {
+         let (target, interactive, remote) = finalize_archive_from_args(
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
 index 0000000..721f8a1
@@ -821,7 +856,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..834b366 100644
+index ad0fc4b..fa543cb 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -832,7 +867,7 @@ index ad0fc4b..834b366 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ OpenAI Codex (v0.147.0)          │
++│ >_ codEx (v0.147.0)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │

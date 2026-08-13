@@ -36,35 +36,21 @@ repos:
                 print(f"{path}: non-ASCII characters: {[hex(ord(c)) for c in bad]}")
                 sys.exit(1)
 
-      - id: patch-queue-check
-        name: Patch queue sanity check
-        description: Validates patches/ numbering, naming, and BASE_TAG
-        entry: python3
+      - id: patch-module-check
+        name: Patch module layout check
+        description: Validates the module patch queue against scripts/patch-modules.conf
+        entry: bash
         language: system
-        files: ^(patches/.*\.patch|BASE_TAG)$
+        files: ^(patches/.*\.patch|BASE_TAG|scripts/patch-modules\.conf|scripts/check-patch-modules\.sh|scripts/gen-patches\.sh|scripts/update\.sh)$
+        pass_filenames: false
         args:
           - -c
           - |
-            import pathlib, re, sys
-            patches = sorted(pathlib.Path("patches").glob("*.patch"))
-            if not patches:
-                print("no patches found under patches/")
-                sys.exit(1)
-            for i, p in enumerate(patches, 1):
-                if not p.name.startswith(f"{i:04d}-"):
-                    print(f"patch numbering gap or bad name: {p.name} (expected {i:04d}-...)")
-                    sys.exit(1)
-                if not re.fullmatch(r"[0-9]{4}-[a-zA-Z0-9-]+\.patch", p.name):
-                    print(f"patch name must match NNNN-lowercase-hyphen.patch: {p.name}")
-                    sys.exit(1)
-                if p.stat().st_size == 0:
-                    print(f"patch is empty: {p.name}")
-                    sys.exit(1)
-            base = pathlib.Path("BASE_TAG")
-            if not base.is_file() or not base.read_text().strip():
-                print("BASE_TAG is missing or empty")
-                sys.exit(1)
-            print(f"patch queue OK: {len(patches)} patches, base {base.read_text().strip()}")
+            tree_args=()
+            if [[ -d tree ]]; then
+              tree_args=(--tree tree)
+            fi
+            bash scripts/check-patch-modules.sh "${tree_args[@]}" --patches patches
 
       - id: cargo-fmt
         name: cargo fmt --check (bootstrapped tree)

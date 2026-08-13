@@ -191,15 +191,29 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 ### Patch-queue 模型
 
 本仓库刻意**不**复制上游代码,不同于携带完整代码树并定期合并上游的经典
-fork。它只保存增量:
+fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个提交一个补丁)
+组织:
 
 | 组成部分 | 用途 |
 | --- | --- |
 | `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.147.0`) |
-| `patches/` | 包含所有分支改动的 `git format-patch` 补丁系列 |
+| `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
+| `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
+| `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
 | `scripts/bootstrap.sh` | 浅克隆 `openai/codex@BASE_TAG` 并 `git am` 应用补丁 |
 | `scripts/update.sh` | 升级到新的上游 tag(应用补丁、与 CI 相同的检查、重新生成) |
-| `scripts/gen-patches.sh` | 在 bootstrap 树内将 `patches/` 重新生成为模块化系列(每个提交一个补丁) |
+| `scripts/gen-patches.sh` | 从代码树历史重新生成 `patches/`;拒绝导出违反清单的布局 |
+
+七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
+`input`(双击 Esc 中断)、`updates`(纯 Rust 自更新)、`privacy`(启动无网络
+请求)、`distribution`(仅 Linux 的 CI/release)与 `identity`(品牌标识)。
+分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
+(gen-patches)、升级(update.sh)、CI(repo-checks)和本地提交(pre-commit)
+四处强制校验这一划分。
+
+工作流:**新增特性** = 在 `patch-modules.conf` 中加一节并在 bootstrap 树里
+建对应提交;**修改已有特性** = 将改动 rebase/折叠进该模块的提交。直接手改
+`patches/` 会被检查器拒绝。
 
 `bootstrap.sh` + `git am` 会生成完整、可构建的 codEx 代码树;CI 和 release
 工作流在构建前正是这么做的。参见下面的

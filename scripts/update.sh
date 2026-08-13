@@ -10,8 +10,9 @@
 #   3. If a patch conflicts, stop and let you resolve it manually
 #      (`git am --continue` / `git am --abort`), then run
 #      `bash scripts/gen-patches.sh <new-upstream-tag>` to regenerate.
-#   4. Build + run the same checks as CI (build, fmt, nextest) from the
-#      codex-rs workspace root.
+#   4. Verify the applied queue still matches the patch-module manifest,
+#      then build + run the same checks as CI (build, fmt, nextest) from
+#      the codex-rs workspace root.
 #   5. Regenerate patches/, update BASE_TAG, and print release instructions.
 set -euo pipefail
 
@@ -50,6 +51,14 @@ if ! git am --3way "${repo_root}"/patches/*.patch; then
   echo "  bash ${repo_root}/scripts/gen-patches.sh ${upstream_tag}" >&2
   echo "Or abort with: git am --abort" >&2
   echo "=============================================================" >&2
+  exit 1
+fi
+
+# A manual conflict resolution may have changed subjects or file ownership;
+# verify the applied queue still matches the patch-module manifest before
+# spending time on the build.
+if ! bash "${script_dir}/check-patch-modules.sh" --tree "${work_dir}"; then
+  echo "The applied patch queue does not match the patch-module manifest." >&2
   exit 1
 fi
 

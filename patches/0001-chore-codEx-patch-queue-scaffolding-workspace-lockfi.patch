@@ -1,0 +1,2261 @@
+From 3d162f4687723103ccf6772e4aa038034e2f6e2f Mon Sep 17 00:00:00 2001
+From: Won Park <won@openai.com>
+Date: Fri, 14 Aug 2026 01:13:00 +0800
+Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
+
+---
+ .codespellignore                              |   1 +
+ .gitignore                                    |   4 +
+ BASE_TAG                                      |   1 +
+ README.md                                     | 330 +++++++++++++++---
+ codex-rs/Cargo.lock                           | 274 ++++++++-------
+ .../tui/src/app/tests/safety_buffering.rs     |   5 +-
+ scripts/bootstrap.sh                          |  30 ++
+ scripts/check-patch-modules.sh                | 184 ++++++++++
+ scripts/gen-patches.sh                        | 107 ++++++
+ scripts/patch-modules.conf                    | 146 ++++++++
+ scripts/update.sh                             | 101 ++++++
+ 11 files changed, 993 insertions(+), 190 deletions(-)
+ create mode 100644 BASE_TAG
+ create mode 100644 scripts/bootstrap.sh
+ create mode 100644 scripts/check-patch-modules.sh
+ create mode 100644 scripts/gen-patches.sh
+ create mode 100644 scripts/patch-modules.conf
+ create mode 100644 scripts/update.sh
+
+diff --git a/.codespellignore b/.codespellignore
+index 4f3c8c3..73e21a5 100644
+--- a/.codespellignore
++++ b/.codespellignore
+@@ -1,5 +1,6 @@
+ iTerm
+ iTerm2
++codEx
+ numer
+ psuedo
+ SOM
+diff --git a/.gitignore b/.gitignore
+index dbcd863..24522f8 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -94,3 +94,7 @@ CHANGELOG.ignore.md
+ # Python bytecode files
+ __pycache__/
+ *.pyc
++
++# Generated fork patch queue (see scripts/gen-patches.sh). The slim patch-queue
++# repository tracks these files; the full tree derives them from git history.
++/patches/*.patch
+diff --git a/BASE_TAG b/BASE_TAG
+new file mode 100644
+index 0000000..21475d8
+--- /dev/null
++++ b/BASE_TAG
+@@ -0,0 +1 @@
++rust-v0.147.0
+diff --git a/README.md b/README.md
+index 06b02fc..dc3cd13 100644
+--- a/README.md
++++ b/README.md
+@@ -1,81 +1,303 @@
+-<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
+-<p align="center">
+-  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
+-</p>
+-</br>
+-If you want Codex in your code editor (VS Code, Cursor, Windsurf), <a href="https://developers.openai.com/codex/ide">install in your IDE.</a>
+-</br>If you want the desktop app experience, run <code>codex app</code> or visit <a href="https://chatgpt.com/codex?app-landing-page=true">the Codex App page</a>.
+-</br>If you are looking for the <em>cloud-based agent</em> from OpenAI, <strong>Codex Web</strong>, go to <a href="https://chatgpt.com/codex">chatgpt.com/codex</a>.</p>
++# codEx
+ 
+----
++codEx is a community fork of [openai/codex](https://github.com/openai/codex)
++that keeps the CLI happy-path for standalone Linux users: fewer moving parts,
++no phone-home update checks, and a built-in `codex update` that downloads
++verified binaries from this fork's releases.
+ 
+-## Quickstart
++This repository follows a **patch-queue model**: instead of vendoring the
++upstream tree, it stores only the fork's changes as a `git format-patch`
++series plus the scripts that rebuild a full codex tree from an upstream tag.
++The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
++patch queue applies to (currently `rust-v0.147.0`).
+ 
+-### Installing and running Codex CLI
++## Installing from a release
+ 
+-Run the following on Mac or Linux to install Codex CLI:
++Standalone Linux users can install or update codEx with the installer:
+ 
+-```shell
+-curl -fsSL https://chatgpt.com/codex/install.sh | sh
++```sh
++curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+ ```
+ 
+-Run the following on Windows to install Codex CLI:
++The installer resolves the latest fork release, downloads
++`codex-<target>.tar.gz` plus its published sha256 checksum, verifies the
++checksum before touching anything, and installs into the standalone layout
++under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
++bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
++afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
+ 
+-```shell
+-powershell -ExecutionPolicy ByPass -c "irm https://chatgpt.com/codex/install.ps1 | iex"
+-```
++Environment overrides:
+ 
+-The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
++- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
++- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
++- `CODEX_HOME` - codex home (default: `~/.codex`)
+ 
+-```shell
+-curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false sh
+-```
++## What changes versus upstream
+ 
+-```powershell
+-$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
+-```
++codEx keeps the upstream `codex` binary name and configuration format, so it
++drops into existing workflows, but changes the surrounding experience:
+ 
+-Codex CLI can also be installed via the following package managers:
++- **Rollback**: `/rewind` undoes conversation turns and/or workspace file
++  changes without git.
++- **Input**: Esc no longer interrupts by accident; a double press stops a
++  running reply.
++- **Updates**: `codex update` is a pure-Rust downloader with checksum
++  verification; no `curl | sh`, npm, or brew.
++- **Privacy**: no update checks or announcement fetches on startup by default.
++- **Distribution**: Linux-only standalone archives (`codex` + `bwrap`), no
++  macOS/Windows/app-server bundles.
++- **Identity**: the CLI and TUI brand themselves as codEx, and
++  `codex --version` points at this fork's repository.
+ 
+-```shell
+-# Install using npm
+-npm install -g @openai/codex
+-```
++Details below.
++
++### `/rewind` - roll back conversation and workspace files
++
++The headline feature. `/rewind` lets you undo a conversation turn and/or the
++file changes a turn made, without needing git.
++
++**Usage**: type `/rewind`, then choose a scope:
++
++1. **Files and conversation** - pick a past message in the transcript; the chat
++   forks before that message (a new thread with the conversation truncated
++   there, prompt restored into the composer) and the workspace files are
++   restored to the snapshot taken right before that message. A confirmation
++   shows how many files would be restored and deleted before anything is
++   applied; if no matching snapshot exists, the conversation still rewinds
++   without touching files.
++2. **Conversation only** - pick a past message in the transcript and fork the
++   chat before it; files are left untouched.
++3. **Files only** - pick a numbered snapshot; a confirmation shows how many
++   files would be restored and deleted before the workspace is touched.
++
++Both conversation scopes reuse the transcript picker (the same full-history
++view the old double-Esc backtrack used): the newest user message starts
++highlighted, **Esc** or **Left** steps to older messages, **Right** steps
++newer, and **Enter** confirms the rewind.
+ 
+-```shell
+-# Install using Homebrew
+-brew install --cask codex
++**How snapshots work** (pure files, no git involved):
++
++- Before each main-thread user turn is submitted, the TUI snapshots the
++  workspace into `~/.codex/snapshots/<workspace-hash>/threads/<conversation>/<turn>/`
++  (or `$CODEX_HOME/snapshots/...`). Each conversation owns an independent
++  snapshot chain, so conversations never evict each other's snapshots and the
++  numbering always matches the picker's transcript ordinals.
++  Side-conversation messages and pending steer edits don't create snapshots.
++  Each snapshot contains a `manifest.json` (relative path, size, mtime, object
++  id for every file, plus a prompt excerpt, a full-prompt hash for exact
++  message matching, the snapshot-time `.gitignore` setting, and raw path
++  bytes for non-UTF-8 file names) and the file contents under `files/`.
++- Storage is a small **content-addressed store** (no git involved): each
++  unique file content is saved once under `objects/` and every snapshot's
++  `files/` entries are hardlinks into it. Unchanged files are linked from the
++  previous snapshot without being re-read, and identical content from any
++  earlier turn is never stored twice. A conversation's first snapshot also
++  seeds from the newest snapshot of any conversation in the same workspace,
++  so resumed and forked conversations stay cheap.
++- The walk skips `.git` and, by default, respects `.gitignore` files.
++- The most recent **100 snapshots per conversation** are kept by default
++  (configurable via `rewind_max_snapshots`); older ones are pruned per
++  conversation and their unreferenced objects are garbage-collected, and
++  interrupted (manifest-less) snapshot directories are cleaned up.
++- Unreadable files are skipped instead of failing the whole snapshot; the
++  skipped paths are recorded in the manifest, surfaced in the transcript, and
++  left untouched by a later restore. A snapshot that fails outright is also
++  shown in the transcript rather than only logged.
++- Restore copies snapshot files back over the workspace and deletes files that
++  were created after the snapshot. The delete set uses the snapshot-time
++  `.gitignore` setting against the current workspace's `.gitignore` rules, so
++  the confirmation preview and the actual restore always agree. Restored
++  files keep their original mtime so later snapshots stay cheap.
++- Restore is preflighted before anything is touched: a missing physical copy,
++  a directory in the way, an unsafe recorded path, or a symbolic link above a
++  target aborts the restore without modifying anything. A symbolic link at a
++  target path is replaced by the restored regular file (never written
++  through), and read-only targets are replaced atomically via a temporary
++  file and rename.
++- The **Files only** picker lists snapshots from all conversations (each
++  labeled with a short conversation id and its per-turn change count), and
++  file restore is refused while a task is running. Every restore is preceded
++  by a dry-run preview that reports the files that would be restored and
++  deleted (and is skipped entirely when nothing would change). When a
++  conversation rewind has to search other conversations for the matching
++  snapshot, ambiguous matches (the same prompt in more than one conversation)
++  decline to restore files rather than guessing.
++
++**Configuration** (`config.toml` under the codEx data directory):
++
++| Field | Default | Description |
++| --- | --- | --- |
++| `rewind_enabled` | `true` | Master switch for `/rewind`. When `false`, the command is disabled and no snapshots are taken. |
++| `rewind_respect_gitignore` | `true` | When `true`, snapshots skip `.gitignore`-matched files (and always skip `.git`); set to `false` to snapshot every file. |
++| `rewind_max_snapshots` | `100` | How many file snapshots are retained per conversation (`1`-`10000`). Older snapshots are pruned. |
++
++Example:
++
++```toml
++rewind_enabled = true            # master switch
++rewind_respect_gitignore = true  # respect .gitignore when snapshotting
++rewind_max_snapshots = 200       # keep 200 snapshots per conversation
+ ```
+ 
+-Then simply run `codex` to get started.
++**Limitations**:
++
++- Snapshot capture is best effort: a failed capture is surfaced in the
++  transcript and the turn continues, so a conversation rewind may have no
++  matching file state.
++- Snapshots treat a file as unchanged when its size and modification time
++  match the previous snapshot; content changes that preserve both (for
++  example `touch -r`) are not detected. The snapshot is taken synchronously
++  before the turn starts so it always reflects the state before the turn's
++  file writes.
++- Restore overwrites the current contents of affected files and deletes files
++  that were created after the snapshot; edits made after the snapshot are not
++  preserved.
++- Shell commands can change databases, services, network resources, git
++  state, or files outside the active directory; rewind does not reverse those
++  side effects, and other processes can edit the workspace between capture
++  and restore.
++- Snapshots contain the full contents of captured files (excluding
++  `.gitignore`-matched paths by default) and are stored under the codEx data
++  directory; treat them like source code, not as secret-free metadata.
++- Rewind is a convenience for revising recent work, not a replacement for git
++  commits or backups.
++
++### Esc: single press does nothing, double press stops the reply
++
++- A single **Esc** in the main UI/composer is a **no-op** - it no longer
++  interrupts a turn or arms any backtrack mode.
++- While a reply is running, the **first Esc** shows a footer hint
++  ("esc again to stop reply") and arms a **400 ms** window; a **second Esc**
++  inside that window interrupts the turn (pending steers are submitted first,
++  like the old behavior).
++- Existing Esc behavior is preserved everywhere it matters: modals, popups, the
++  `?` shortcut overlay, history search, bash-mode prompts, vim-insert mode, and
++  the request-user-input panel all still use Esc as before.
++- The `chat.interrupt_turn` keybinding is **unbound by default** (you can bind
++  it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
++  previous message" backtrack was removed from the main UI; `/rewind` now
++  reuses its transcript picker for message selection.
+ 
+-<details>
+-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
++### `codex update`: pure-Rust self-update
+ 
+-Each GitHub Release contains many executables, but in practice, you likely want one of these:
++- `codex update` no longer shells out to `curl | sh`, npm, or brew. It is a
++  self-contained Rust implementation:
++  1. Maps the host architecture to the fork's release target
++     (`x86_64-unknown-linux-musl`).
++  2. Downloads `codex-<target>.tar.gz` and its `.sha256` asset from this
++     fork's latest GitHub release.
++  3. Verifies the sha256 checksum **before** touching anything.
++  4. Extracts, then atomically replaces the running `codex` binary and the
++     bundled `bwrap` resource (`codex-resources/bwrap`), keeping a `.old`
++     backup during the swap.
++- Because the archive is built by the fork's release workflow, the new
++  binary's embedded bwrap digest always matches the new bwrap it ships with.
++- Non-standalone installs (npm/brew/... ) get a clear message pointing at the
++  fork releases for manual download.
+ 
+-- macOS
+-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
+-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
+-- Linux
+-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
+-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
++### No update chatter, no announcements
+ 
+-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
++- `check_for_update_on_startup` now defaults to **`false`**: the TUI does not
++  phone home on startup. Set it to `true` in `config.toml` to opt in.
++- The startup **announcement fetch** (remote `announcement_tip.toml`) was
++  removed entirely; only the local random tooltips remain.
++- Update banners/notices, when enabled, point at this fork's releases and tell
++  you to run `codex update`.
+ 
+-</details>
++### Branding
+ 
+-### Using Codex with your ChatGPT plan
++- `codex --version` prints
++  `codEx 0.147.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
++  bar shows `codEx <version>`.
++- The TUI welcome screen, session header, and status header display `codEx`;
++  tips reference `codEx` as well.
++- The version number itself **matches the upstream base tag** (e.g. `0.147.0`),
++  so version parsing stays plain semver and fork release tags stay clean.
+ 
+-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
++### Release & CI (Linux + CLI only)
+ 
+-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
++- **Release matrix**: `x86_64-unknown-linux-musl` only (upstream ships
++  macOS/Windows/ARM64/app-server bundles; this fork does not). Each release
++  publishes exactly two assets:
++  - `codex-x86_64-unknown-linux-musl.tar.gz` (contains `codex` + `bwrap`)
++  - `codex-x86_64-unknown-linux-musl.tar.gz.sha256`
++- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners:
++  `cargo build --release --bin codex`, `cargo fmt --check`,
++  `codex-tui` full test suite, `codex-core` unit tests, codespell, repo-checks.
++  The sandbox-dependent core integration suite (`suite::*`) needs
++  sandbox-capable runners and is excluded from hosted CI, mirroring upstream's
++  own self-hosted-runner setup.
++- The workflows are bootstrap-aware: they work both in a full checkout and in
++  this slim repo (bootstrap first, then build/test/release inside `tree/`).
++
++### Patch-queue model
++
++This repo deliberately does **not** vendor upstream code, unlike a classic
++fork that carries the full tree and periodically merges upstream. Instead it
++stores only the delta, organized as **one patch per feature module** (not one
++per commit):
++
++| Piece | Purpose |
++| --- | --- |
++| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
++| `patches/` | one `git format-patch` per feature module, in fixed order |
++| `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
++| `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
++| `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
++| `scripts/update.sh` | upgrade to a new upstream tag (apply, resolve conflicts, regen) |
++| `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
++
++The seven modules are `infra` (patch-queue tooling, lockfile, README),
++`rollback` (`/rewind`), `input` (double-Esc interrupt), `updates` (pure-Rust
++self-update), `privacy` (no startup network chatter), `distribution`
++(Linux-only CI/release), and `identity` (branding). Every file changed by the
++fork is owned by exactly one module; `check-patch-modules.sh` enforces the
++partition at export time (gen-patches), during upgrades (update.sh), in CI
++(repo-checks), and locally (pre-commit).
++
++Workflow: a **new feature** adds a section to `patch-modules.conf` and a
++matching commit in the bootstrapped tree; a **change to an existing feature**
++is rebased/folded into that module's commit. Hand-editing `patches/` is
++rejected by the checker.
++
++`bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
++and release workflows do exactly that before building. See
++[Building](#building-from-this-repository) and
++[Upgrading](#upgrading-to-a-new-upstream-tag) below.
++
++## Building from this repository
++
++The slim repository has no `codex-rs/` checked in, so build from a
++bootstrapped tree:
++
++```sh
++bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
++cd tree
++cargo build --release --bin codex
++```
++
++If you happen to have a full-tree checkout (with `codex-rs/` present), build
++directly:
++
++```sh
++cd codex-rs
++cargo build --release --bin codex
++```
++
++## Upgrading to a new upstream tag
++
++```sh
++bash scripts/update.sh rust-v0.148.0
++```
+ 
+-## Docs
++`update.sh` clones the new tag, applies the patch queue with `git am --3way`,
++builds and tests, then regenerates `patches/` and updates `BASE_TAG`. If a
++patch conflicts, resolve it in `update-work/` (`git am --continue`), then
++regenerate with `bash scripts/gen-patches.sh rust-v0.148.0`. The patch queue
++never changes version numbers; fork releases keep the upstream semver and are
++tagged `rust-v<version>` (for example `rust-v0.148.0`), and the release
++workflow publishes `codex-<target>.tar.gz` + sha256 checksums.
+ 
+-- [**Codex Documentation**](https://developers.openai.com/codex)
+-- [**Contributing**](./docs/contributing.md)
+-- [**Installing & building**](./docs/install.md)
+-- [**Open source fund**](./docs/open-source-fund.md)
++## License
+ 
+-This repository is licensed under the [Apache-2.0 License](LICENSE).
++The fork retains the upstream license (Apache-2.0). See `LICENSE`.
+diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
+index 70880f3..acd5917 100644
+--- a/codex-rs/Cargo.lock
++++ b/codex-rs/Cargo.lock
+@@ -394,7 +394,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
+ 
+ [[package]]
+ name = "app_test_support"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1876,7 +1876,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-core",
+@@ -1888,7 +1888,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-graph-store"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-state",
+@@ -1903,7 +1903,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-agent-identity"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -1923,7 +1923,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-analytics"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-app-server-protocol",
+  "codex-git-utils",
+@@ -1944,7 +1944,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ansi-escape"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "ansi-to-tui",
+  "ratatui",
+@@ -1953,7 +1953,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-api"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "assert_matches",
+@@ -1988,7 +1988,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2086,7 +2086,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-app-server",
+  "codex-app-server-protocol",
+@@ -2113,7 +2113,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-daemon"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol",
+@@ -2134,7 +2134,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-app-server-protocol-noop-macros",
+@@ -2165,11 +2165,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-protocol-noop-macros"
+-version = "0.0.0"
++version = "0.147.0"
+ 
+ [[package]]
+ name = "codex-app-server-test-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2191,7 +2191,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-app-server-transport"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2233,7 +2233,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-apply-patch"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2253,7 +2253,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-arg0"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-apply-patch",
+@@ -2273,7 +2273,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-async-utils"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+  "tokio",
+@@ -2282,7 +2282,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-aws-auth"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "aws-config",
+  "aws-credential-types",
+@@ -2297,7 +2297,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-api",
+@@ -2317,7 +2317,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-backend-openapi-models"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "serde",
+  "serde_json",
+@@ -2326,7 +2326,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-bwrap"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "cc",
+  "libc",
+@@ -2335,7 +2335,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-chatgpt"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -2357,7 +2357,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cli"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -2412,6 +2412,7 @@ dependencies = [
+  "codex-utils-path",
+  "codex-windows-sandbox",
+  "crossterm",
++ "flate2",
+  "futures",
+  "http 1.4.0",
+  "insta",
+@@ -2423,9 +2424,11 @@ dependencies = [
+  "regex-lite",
+  "serde",
+  "serde_json",
++ "sha2 0.10.9",
+  "sqlx",
+  "supports-color 3.0.2",
+  "sys-locale",
++ "tar",
+  "tempfile",
+  "tokio",
+  "tokio-tungstenite",
+@@ -2443,7 +2446,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-http-client",
+  "eventsource-stream",
+@@ -2455,7 +2458,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-config"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "chrono",
+@@ -2480,7 +2483,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2513,7 +2516,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2528,7 +2531,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-cloud-tasks-mock-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "chrono",
+  "codex-cloud-tasks-client",
+@@ -2537,7 +2540,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-http-client",
+@@ -2554,7 +2557,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-host"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -2578,7 +2581,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-protocol"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "pretty_assertions",
+@@ -2590,7 +2593,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-code-mode-runtime"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-code-mode-protocol",
+  "codex-protocol",
+@@ -2606,11 +2609,11 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-collaboration-mode-templates"
+-version = "0.0.0"
++version = "0.147.0"
+ 
+ [[package]]
+ name = "codex-config"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -2658,7 +2661,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2680,7 +2683,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-connectors-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-connectors",
+  "codex-core-plugins",
+@@ -2693,7 +2696,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-context-fragments"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -2701,7 +2704,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -2830,7 +2833,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-api"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-analytics",
+  "codex-app-server-protocol",
+@@ -2852,7 +2855,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-plugins"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -2906,7 +2909,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-core-skills"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-analytics",
+@@ -2937,7 +2940,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -2983,7 +2986,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3037,7 +3040,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-protocol"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-file-system",
+@@ -3052,7 +3055,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-exec-server-test-support"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-exec-server",
+  "codex-http-client",
+@@ -3060,7 +3063,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-execpolicy"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3078,7 +3081,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-experimental-api-macros"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "proc-macro2",
+  "quote",
+@@ -3087,7 +3090,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-api"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-config",
+  "codex-context-fragments",
+@@ -3103,7 +3106,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-extension-items"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "pretty_assertions",
+@@ -3115,7 +3118,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-external-agent-migration"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "chrono",
+  "codex-analytics",
+@@ -3144,7 +3147,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-features"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-otel",
+  "codex-protocol",
+@@ -3157,7 +3160,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-feedback"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-login",
+@@ -3171,7 +3174,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-search"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3187,7 +3190,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-system"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "bytes",
+  "codex-protocol",
+@@ -3199,7 +3202,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-file-watcher"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "notify",
+  "pretty_assertions",
+@@ -3210,7 +3213,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-attribution"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-backend-client",
+  "codex-extension-api",
+@@ -3223,7 +3226,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-git-utils"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3249,7 +3252,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-goal-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3272,7 +3275,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-guardian"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -3281,7 +3284,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-home"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-extension-api",
+  "codex-utils-absolute-path",
+@@ -3292,7 +3295,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-hooks"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3315,7 +3318,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-http-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "bytes",
+  "codex-utils-cargo-bin",
+@@ -3346,7 +3349,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-image-generation-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3373,7 +3376,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-install-context"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "codex-utils-home-dir",
+@@ -3383,7 +3386,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-keyring-store"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "keyring",
+  "tracing",
+@@ -3391,7 +3394,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-linux-sandbox"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "clap",
+  "codex-core",
+@@ -3416,7 +3419,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-lmstudio"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-core",
+  "codex-http-client",
+@@ -3430,7 +3433,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-login"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3472,7 +3475,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "arc-swap",
+@@ -3509,7 +3512,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-config",
+  "codex-connectors",
+@@ -3535,7 +3538,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-mcp-server"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -3575,7 +3578,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-core",
+  "codex-extension-api",
+@@ -3596,7 +3599,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-read"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -3606,7 +3609,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-memories-write"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3643,7 +3646,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-message-history"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-config",
+  "memchr",
+@@ -3657,7 +3660,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-agent-identity",
+  "codex-api",
+@@ -3680,7 +3683,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-model-provider-info"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-api",
+  "codex-protocol",
+@@ -3696,7 +3699,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-models-manager"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "chrono",
+  "codex-collaboration-mode-templates",
+@@ -3716,7 +3719,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-network-proxy"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -3754,7 +3757,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-ollama"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "assert_matches",
+  "async-stream",
+@@ -3774,7 +3777,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-otel"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "chrono",
+  "codex-api",
+@@ -3805,7 +3808,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-plugin"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-config",
+  "codex-protocol",
+@@ -3818,7 +3821,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-process-hardening"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "libc",
+  "pretty_assertions",
+@@ -3826,7 +3829,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-prompts"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-context-fragments",
+@@ -3840,7 +3843,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-protocol"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chardetng",
+@@ -3882,7 +3885,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-response-debug-context"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-api",
+@@ -3893,7 +3896,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-responses-api-proxy"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -3910,7 +3913,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rmcp-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "axum",
+@@ -3953,7 +3956,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -3979,7 +3982,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-rollout-trace"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-code-mode",
+@@ -3995,7 +3998,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-sandboxing"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-network-proxy",
+@@ -4019,7 +4022,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-secrets"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "age",
+  "anyhow",
+@@ -4040,7 +4043,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-command"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4061,7 +4064,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-shell-escalation"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4081,7 +4084,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-shell-command",
+@@ -4098,7 +4101,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-skills-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-config",
+  "codex-core-skills",
+@@ -4134,7 +4137,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-state"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "chrono",
+@@ -4157,7 +4160,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-stdio-to-uds"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-uds",
+@@ -4169,7 +4172,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-terminal-detection"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+  "tracing",
+@@ -4177,7 +4180,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-test-binary-support"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-arg0",
+  "tempfile",
+@@ -4185,7 +4188,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-manager-sample"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "clap",
+@@ -4196,7 +4199,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-thread-store"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "chrono",
+  "codex-app-server-protocol",
+@@ -4225,7 +4228,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tools"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "bitflags 2.13.1",
+  "codex-code-mode",
+@@ -4251,7 +4254,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-tui"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "app_test_support",
+@@ -4314,6 +4317,7 @@ dependencies = [
+  "dunce",
+  "futures",
+  "http 1.4.0",
++ "ignore",
+  "image",
+  "insta",
+  "itertools 0.14.0",
+@@ -4363,7 +4367,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-uds"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "async-io",
+  "pretty_assertions",
+@@ -4375,7 +4379,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-absolute-path"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "dirs",
+  "dunce",
+@@ -4389,14 +4393,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-approval-presets"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-audio"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-protocol",
+@@ -4410,7 +4414,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cache"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "lru 0.16.3",
+  "sha1 0.10.6",
+@@ -4419,7 +4423,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cargo-bin"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "assert_cmd",
+  "runfiles",
+@@ -4428,7 +4432,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-cli"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "clap",
+  "codex-protocol",
+@@ -4440,15 +4444,15 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-elapsed"
+-version = "0.0.0"
++version = "0.147.0"
+ 
+ [[package]]
+ name = "codex-utils-fuzzy-match"
+-version = "0.0.0"
++version = "0.147.0"
+ 
+ [[package]]
+ name = "codex-utils-home-dir"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dirs",
+@@ -4458,7 +4462,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-image"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-cache",
+@@ -4471,7 +4475,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-json-to-toml"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+  "serde_json",
+@@ -4480,7 +4484,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-oss"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-core",
+  "codex-lmstudio",
+@@ -4490,7 +4494,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-output-truncation"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-string",
+@@ -4499,7 +4503,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-utils-absolute-path",
+  "dunce",
+@@ -4509,7 +4513,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-path-uri"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "base64 0.22.1",
+  "codex-utils-absolute-path",
+@@ -4525,7 +4529,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-plugins"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-exec-server",
+  "codex-exec-server-protocol",
+@@ -4539,7 +4543,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-pty"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "filedescriptor",
+@@ -4555,7 +4559,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-readiness"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "assert_matches",
+  "thiserror 2.0.18",
+@@ -4565,14 +4569,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-rustls-provider"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "rustls",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-sandbox-summary"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-protocol",
+  "codex-utils-absolute-path",
+@@ -4581,7 +4585,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-sleep-inhibitor"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "core-foundation 0.9.4",
+  "libc",
+@@ -4591,14 +4595,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-stream-parser"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-utils-string"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+  "regex-lite",
+@@ -4608,14 +4612,14 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-utils-template"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+ ]
+ 
+ [[package]]
+ name = "codex-v8-poc"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "pretty_assertions",
+  "v8",
+@@ -4623,7 +4627,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-web-search-extension"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-api",
+  "codex-core",
+@@ -4644,7 +4648,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-websocket-client"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "codex-http-client",
+  "codex-utils-rustls-provider",
+@@ -4660,7 +4664,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "codex-windows-sandbox"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "base64 0.22.1",
+@@ -4911,7 +4915,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "core_test_support"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "assert_cmd",
+@@ -9120,7 +9124,7 @@ dependencies = [
+ 
+ [[package]]
+ name = "mcp_test_support"
+-version = "0.0.0"
++version = "0.147.0"
+ dependencies = [
+  "anyhow",
+  "codex-login",
+diff --git a/codex-rs/tui/src/app/tests/safety_buffering.rs b/codex-rs/tui/src/app/tests/safety_buffering.rs
+index 42fc6bc..566c70b 100644
+--- a/codex-rs/tui/src/app/tests/safety_buffering.rs
++++ b/codex-rs/tui/src/app/tests/safety_buffering.rs
+@@ -747,7 +747,10 @@ goals = true
+     let expected_source_tokens = if committed_steer.is_some() { 150 } else { 50 };
+     assert_eq!(source_goal.objective, RETRY_GOAL);
+     assert_eq!(source_goal.tokens_used, expected_source_tokens);
+-    assert_eq!(source_goal.time_used_seconds, 12);
++    assert!(
++        source_goal.time_used_seconds >= 12,
++        "the goal keeps its 12s baseline plus the retry turn's real elapsed time"
++    );
+     assert_eq!(retry_goal.objective, RETRY_GOAL);
+     assert!(retry_goal.tokens_used >= expected_source_tokens);
+     assert!(retry_goal.time_used_seconds >= 12);
+diff --git a/scripts/bootstrap.sh b/scripts/bootstrap.sh
+new file mode 100644
+index 0000000..3b0c218
+--- /dev/null
++++ b/scripts/bootstrap.sh
+@@ -0,0 +1,30 @@
++#!/usr/bin/env bash
++# Bootstraps a buildable codex tree from the upstream `openai/codex` tag
++# pinned in BASE_TAG, then applies the fork patch queue with `git am --3way`.
++#
++# Usage: bash scripts/bootstrap.sh [output-dir]
++#   output-dir defaults to "tree".
++set -euo pipefail
++
++repo="${FORK_UPSTREAM_REPO:-openai/codex}"
++script_dir="$(cd "$(dirname "$0")" && pwd)"
++repo_root="$(cd "${script_dir}/.." && pwd)"
++patches_dir="${repo_root}/patches"
++base_tag="$(cat "${repo_root}/BASE_TAG")"
++output_dir="${1:-tree}"
++
++if [[ -d "${output_dir}/codex-rs" ]]; then
++  echo "A bootstrapped tree already exists at ${output_dir}/codex-rs; leaving it alone."
++  exit 0
++fi
++
++echo "Cloning https://github.com/${repo}.git at ${base_tag} ..."
++git clone --depth 1 --branch "${base_tag}" "https://github.com/${repo}.git" "${output_dir}"
++
++echo "Applying fork patches ..."
++cd "${output_dir}"
++git config user.name "codEx Fork Bot"
++git config user.email "codex-fork-bot@localhost"
++git am --3way "${patches_dir}"/*.patch
++
++echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"
+diff --git a/scripts/check-patch-modules.sh b/scripts/check-patch-modules.sh
+new file mode 100644
+index 0000000..57e68aa
+--- /dev/null
++++ b/scripts/check-patch-modules.sh
+@@ -0,0 +1,184 @@
++#!/usr/bin/env bash
++# Validates that the fork's patch queue matches the module manifest at
++# scripts/patch-modules.conf.
++#
++#   check-patch-modules.sh --tree DIR      validate a bootstrapped tree
++#   check-patch-modules.sh --patches DIR   validate an exported patches/ dir
++#   check-patch-modules.sh --tree DIR --patches DIR
++#
++# Tree checks: exactly one commit per manifest module, in order, with the
++# exact subjects, and every fork-delta file owned by exactly one module.
++# Patch checks: one patch per module, matching subjects, file ownership.
++set -euo pipefail
++
++script_dir="$(cd "$(dirname "$0")" && pwd)"
++manifest_path="${script_dir}/patch-modules.conf"
++
++fail=0
++note() { printf 'check-patch-modules: %s\n' "$*" >&2; }
++
++order=()
++declare -A subjects=()
++declare -A patterns=()
++
++# $1 file, $2 slug -> 0 when the file matches the module's patterns.
++module_matches() {
++    local file="$1" slug="$2" line
++    while IFS= read -r line; do
++        [[ -n "$line" ]] || continue
++        case "$file" in ($line) return 0 ;; esac
++    done <<< "${patterns[$slug]}"
++    return 1
++}
++
++check_tree() { # $1 tree dir
++    local tree="$1" base count i commit slug subject file matches
++    if [[ ! -f "${tree}/BASE_TAG" ]]; then
++        note "--tree ${tree}: BASE_TAG missing"
++        fail=1
++        return
++    fi
++    base="$(cat "${tree}/BASE_TAG")"
++    if ! git -C "$tree" rev-parse --verify --quiet "${base}^{commit}" >/dev/null; then
++        note "--tree ${tree}: base tag '${base}' does not resolve"
++        fail=1
++        return
++    fi
++    count="$(git -C "$tree" rev-list --count "${base}..HEAD")"
++    if [[ "$count" -ne "${#order[@]}" ]]; then
++        note "--tree: expected ${#order[@]} commits above ${base}, found ${count}"
++        fail=1
++    fi
++    i=0
++    while IFS= read -r commit; do
++        slug="${order[$i]}"
++        subject="$(git -C "$tree" log -1 --format=%s "$commit")"
++        if [[ "$subject" != "${subjects[$slug]}" ]]; then
++            note "--tree: commit ${commit} subject '${subject}' != expected '${subjects[$slug]}'"
++            fail=1
++        fi
++        while IFS= read -r file; do
++            [[ -n "$file" ]] || continue
++            if ! module_matches "$file" "$slug"; then
++                note "--tree: ${slug} commit touches a file it does not own: ${file}"
++                fail=1
++            fi
++        done < <(git -C "$tree" show --no-renames --format= --name-only "$commit")
++        i=$((i + 1))
++    done < <(git -C "$tree" rev-list --reverse "${base}..HEAD")
++
++    while IFS= read -r file; do
++        [[ -n "$file" ]] || continue
++        matches=0
++        for slug in "${order[@]}"; do
++            if module_matches "$file" "$slug"; then
++                matches=$((matches + 1))
++            fi
++        done
++        if [[ "$matches" -eq 0 ]]; then
++            note "--tree: fork-delta file owned by no module: ${file}"
++            fail=1
++        elif [[ "$matches" -gt 1 ]]; then
++            note "--tree: fork-delta file owned by ${matches} modules: ${file}"
++            fail=1
++        fi
++    done < <(git -C "$tree" diff --no-renames --name-only "${base}..HEAD")
++}
++
++check_patches() { # $1 patches dir
++    local dir="$1" i num slug subject file
++    local -a patch_files=()
++    while IFS= read -r patch; do
++        [[ -n "$patch" ]] && patch_files+=("$patch")
++    done < <(find "$dir" -maxdepth 1 -name '*.patch' -type f 2>/dev/null | sort)
++    if [[ "${#patch_files[@]}" -ne "${#order[@]}" ]]; then
++        note "--patches: expected ${#order[@]} patches, found ${#patch_files[@]}"
++        fail=1
++    fi
++    i=0
++    for patch in "${patch_files[@]}"; do
++        slug="${order[$i]}"
++        num="$(printf '%04d' $((i + 1)))"
++        local name=""
++        name="$(basename "$patch")"
++        if [[ "$name" != "${num}-"* || "$name" != *.patch ]]; then
++            note "--patches: bad patch name '${name}' (expected ${num}-...)"
++            fail=1
++        fi
++        if [[ ! -s "$patch" ]]; then
++            note "--patches: empty patch: ${patch}"
++            fail=1
++        fi
++        subject="$(sed -n 's/^Subject: //p' "$patch" | head -1)"
++        if [[ "$subject" != "${subjects[$slug]}" ]]; then
++            note "--patches: ${patch} subject '${subject}' != expected '${subjects[$slug]}'"
++            fail=1
++        fi
++        while IFS= read -r file; do
++            [[ -n "$file" ]] || continue
++            if ! module_matches "$file" "$slug"; then
++                note "--patches: ${patch} touches a file not owned by ${slug}: ${file}"
++                fail=1
++            fi
++        done < <(sed -n 's|^diff --git a/\([^ ]*\) b/\([^ ]*\)$|\1\n\2|p' "$patch" | sort -u)
++        i=$((i + 1))
++    done
++}
++
++tree_arg=""
++patches_arg=""
++while [[ $# -gt 0 ]]; do
++    case "$1" in
++        --tree) tree_arg="$2"; shift 2 ;;
++        --patches) patches_arg="$2"; shift 2 ;;
++        *) note "unknown argument: $1"; exit 2 ;;
++    esac
++done
++if [[ -z "$tree_arg" && -z "$patches_arg" ]]; then
++    note "give --tree DIR and/or --patches DIR"
++    exit 2
++fi
++
++# Parse the manifest.
++current=""
++while IFS= read -r line || [[ -n "$line" ]]; do
++    line="${line%%#*}"
++    [[ -z "${line// }" ]] && continue
++    if [[ "$line" == \[*\] ]]; then
++        current="${line#[}"
++        current="${current%]}"
++        order+=("$current")
++        subjects["$current"]=""
++        patterns["$current"]=""
++    elif [[ "$line" == subject:* ]]; then
++        [[ -n "$current" ]] || { note "subject line before module section in ${manifest_path}"; exit 1; }
++        subjects["$current"]="${line#subject: }"
++    else
++        [[ -n "$current" ]] || { note "file pattern before module section in ${manifest_path}: ${line}"; exit 1; }
++        patterns["$current"]+="${line}"$'\n'
++    fi
++done < "$manifest_path"
++
++if [[ "${#order[@]}" -eq 0 ]]; then
++    note "no modules parsed from ${manifest_path}"
++    exit 1
++fi
++for slug in "${order[@]}"; do
++    [[ -n "${subjects[$slug]}" ]] || { note "module ${slug} has no subject"; exit 1; }
++    [[ -n "${patterns[$slug]}" ]] || { note "module ${slug} has no file patterns"; exit 1; }
++done
++
++if [[ -n "$tree_arg" ]]; then
++    [[ -d "$tree_arg" ]] || { note "--tree ${tree_arg} does not exist"; exit 1; }
++    check_tree "$tree_arg"
++fi
++if [[ -n "$patches_arg" ]]; then
++    [[ -d "$patches_arg" ]] || { note "--patches ${patches_arg} does not exist"; exit 1; }
++    check_patches "$patches_arg"
++fi
++
++if [[ "$fail" -ne 0 ]]; then
++    note "patch module layout violated"
++    exit 1
++fi
++printf 'patch modules OK: %d modules\n' "${#order[@]}"
+diff --git a/scripts/gen-patches.sh b/scripts/gen-patches.sh
+new file mode 100644
+index 0000000..f49b884
+--- /dev/null
++++ b/scripts/gen-patches.sh
+@@ -0,0 +1,107 @@
++#!/usr/bin/env bash
++# Regenerates patches/ as a modular series (one patch per feature module)
++# from a bootstrapped tree's commit history.
++#
++# The tree history must be exactly the module sequence declared in
++# scripts/patch-modules.conf: one commit per module, in order, with the
++# matching subjects and file ownership. This script refuses to export a
++# tree (or keep an export) that violates the manifest.
++#
++# Preferred usage (inside the bootstrapped tree after resolving conflicts or
++# after a successful update):
++#   bash ../scripts/gen-patches.sh <base-tag> [patch-output-dir]
++#
++# Alternative (full fork checkout whose git history contains the base tag):
++#   bash scripts/gen-patches.sh
++#
++# Reads BASE_TAG from the repository root. The slim patch-queue repo has no
++# upstream history and no codex-rs/ workspace, so this script refuses to run
++# there; use it from a bootstrapped tree instead.
++set -euo pipefail
++
++script_dir="$(cd "$(dirname "$0")" && pwd)"
++repo_root="$(cd "${script_dir}/.." && pwd)"
++checker="${script_dir}/check-patch-modules.sh"
++
++if [[ $# -ge 1 ]]; then
++  # Form used inside a bootstrapped tree.
++  base_tag="$1"
++  output_dir="${2:-${repo_root}/patches}"
++  worktree="$(pwd)"
++else
++  # Form used in the full fork checkout.
++  base_tag="$(cat "${repo_root}/BASE_TAG" 2>/dev/null || true)"
++  output_dir="${repo_root}/patches"
++  worktree="${repo_root}"
++  if [[ -z "${base_tag}" ]]; then
++    echo "BASE_TAG is missing or empty in ${repo_root}" >&2
++    exit 1
++  fi
++fi
++
++# The Rust workspace must be present: this is a bootstrapped tree (tree/,
++# update-work/) or a full fork checkout. The slim patch-queue repo cannot
++# regenerate the queue because its history has no upstream base commit.
++if [[ ! -d "${worktree}/codex-rs" ]]; then
++  echo "No codex-rs/ workspace found under ${worktree}." >&2
++  echo "Run this script from a bootstrapped tree (tree/ or update-work/), e.g.:" >&2
++  echo "  bash ${repo_root}/scripts/gen-patches.sh <base-tag>" >&2
++  exit 1
++fi
++
++if ! git -C "${worktree}" rev-parse --verify --quiet "${base_tag}^{commit}" >/dev/null; then
++  echo "Base tag '${base_tag}' does not resolve in ${worktree}." >&2
++  echo "Pass the upstream tag applied to this tree, e.g. rust-v0.148.0." >&2
++  exit 1
++fi
++
++if ! git -C "${worktree}" merge-base --is-ancestor "${base_tag}" HEAD 2>/dev/null; then
++  echo "Base tag '${base_tag}' is not an ancestor of HEAD in ${worktree}." >&2
++  exit 1
++fi
++
++# The tree history must be exactly the module sequence declared in
++# scripts/patch-modules.conf. Refuse to export a drifted tree.
++if ! bash "${checker}" --tree "${worktree}"; then
++  echo "The tree does not match the patch-module manifest; refusing to export." >&2
++  exit 1
++fi
++
++# Guard against wiping anything broader than the patch directory itself.
++if [[ -z "${output_dir}" || "${output_dir}" == "/" ]]; then
++  echo "Refusing to use output directory '${output_dir}'" >&2
++  exit 1
++fi
++output_dir="$(mkdir -p "${output_dir}" && cd "${output_dir}" && pwd)"
++if [[ "${output_dir}" == "${repo_root}" ]]; then
++  echo "Refusing to use output directory '${output_dir}'" >&2
++  exit 1
++fi
++case "${worktree}/" in
++  "${output_dir}/"*) echo "Output directory ${output_dir} contains the worktree; refusing." >&2; exit 1 ;;
++esac
++
++commit_count="$(git -C "${worktree}" rev-list --count "${base_tag}..HEAD")"
++if [[ "${commit_count}" -eq 0 ]]; then
++  echo "No commits between ${base_tag} and HEAD; nothing to export." >&2
++  exit 1
++fi
++
++rm -rf "${output_dir}"
++mkdir -p "${output_dir}"
++git -C "${worktree}" format-patch "${base_tag}"..HEAD --output-directory "${output_dir}" --keep-subject
++
++patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
++if [[ "${patch_count}" -ne "${commit_count}" ]]; then
++  echo "Expected ${commit_count} patch(es) but wrote ${patch_count}; review before committing." >&2
++  exit 1
++fi
++
++# The export must satisfy the manifest too (subjects and file ownership).
++if ! bash "${checker}" --patches "${output_dir}"; then
++  echo "The exported patches do not match the patch-module manifest; refusing to keep them." >&2
++  exit 1
++fi
++
++echo "✅ Wrote ${patch_count} patch(es) to ${output_dir} (base ${base_tag}):"
++find "${output_dir}" -name '*.patch' | sort
+diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
+new file mode 100644
+index 0000000..5e7e393
+--- /dev/null
++++ b/scripts/patch-modules.conf
+@@ -0,0 +1,146 @@
++# codEx patch-module manifest.
++#
++# The fork's delta to upstream is organized as exactly one patch per module,
++# applied in the order below. Each section names the module, the exact
++# commit/patch subject, and the files the module owns (paths relative to the
++# tree root, one bash case-pattern per line; `*` matches any characters,
++# including `/`). Every file changed by the fork must match exactly one
++# module - the ownership partition is machine-checked.
++#
++# Workflow rules:
++#   - New feature: append a section here and create the matching commit in
++#     the bootstrapped tree, then run scripts/gen-patches.sh.
++#   - Change to an existing feature: rebase/--fixup the change into that
++#     module's commit, then regenerate. Move a file between sections only
++#     when its ownership actually changes.
++#   - Never hand-edit patches/; scripts/check-patch-modules.sh rejects any
++#     tree or export that violates this manifest.
++
++[infra]
++subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
++.codespellignore
++.gitignore
++BASE_TAG
++codex-rs/Cargo.lock
++README.md
++scripts/*
++codex-rs/tui/src/app/tests/safety_buffering.rs
++
++[rollback]
++subject: rewind: add /rewind conversation and workspace rollback
++codex-rs/config/*
++codex-rs/core/config.schema.json
++codex-rs/core/src/config/*
++codex-rs/thread-manager-sample/*
++codex-rs/tui/Cargo.toml
++codex-rs/tui/src/slash_command.rs
++codex-rs/tui/src/rewind/*
++codex-rs/tui/src/app/event_dispatch.rs
++codex-rs/tui/src/app/session_lifecycle.rs
++codex-rs/tui/src/app/tests.rs
++codex-rs/tui/src/app/tests/turn_submission.rs
++codex-rs/tui/src/app_backtrack.rs
++codex-rs/tui/src/app_event.rs
++codex-rs/tui/src/chatwidget.rs
++codex-rs/tui/src/chatwidget/input_submission.rs
++codex-rs/tui/src/chatwidget/slash_dispatch.rs
++codex-rs/tui/src/chatwidget/tests/app_server.rs
++codex-rs/tui/src/chatwidget/tests/composer_submission.rs
++codex-rs/tui/src/chatwidget/tests/slash_commands.rs
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
++
++[input]
++subject: input: single Esc is a no-op, double Esc interrupts
++codex-rs/tui/src/app/input.rs
++codex-rs/tui/src/bottom_pane/*
++codex-rs/tui/src/keymap.rs
++codex-rs/tui/src/keymap_setup.rs
++codex-rs/tui/src/lib.rs
++codex-rs/tui/src/status_indicator_widget.rs
++codex-rs/tui/src/status/snapshots/*
++codex-rs/tui/src/snapshots/codex_tui__app__tests__side_backtrack_rejection_reports_unavailable_message.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
++codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
++codex-rs/tui/src/chatwidget/interaction.rs
++codex-rs/tui/src/chatwidget/settings.rs
++codex-rs/tui/src/chatwidget/turn_runtime.rs
++codex-rs/tui/src/chatwidget/constructor.rs
++codex-rs/tui/src/chatwidget/status_surfaces.rs
++codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
++codex-rs/tui/src/chatwidget/tests/review_mode.rs
++codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__app_server_guardian_review_denied_renders_denied_request.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__app_server_guardian_review_timed_out_renders_timed_out_request.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__chatwidget_exec_and_status_layout_vt100_snapshot.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__chatwidget_tall.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__compact_queues_user_messages_snapshot.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__esc_interrupt_goal_paused_footer.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_approved_request_permissions_renders_request_summary.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_denied_exec_renders_warning_and_denied_request.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_goal_continuation_drops_stale_reviews.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_parallel_reviews_render_aggregate_status.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_timed_out_exec_renders_warning_and_timed_out_request.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__image_generation_begin_restores_working_status.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__mcp_startup_header_booting.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__preamble_keeps_working_status.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_delta_restores_recreated_status_indicator.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__review_queues_user_messages_snapshot.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_side_requests_forked_side_question_while_task_running.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__status_widget_active.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_begin_restores_working_status.snap
++codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__unified_exec_wait_status_renders_command_in_single_details_row.snap
++
++[updates]
++subject: update: pure-Rust self-update against fork releases
++codex-rs/cli/Cargo.toml
++codex-rs/cli/src/main.rs
++codex-rs/cli/src/self_update.rs
++codex-rs/cli/src/wsl_paths.rs
++codex-rs/cli/src/doctor/updates.rs
++codex-rs/utils/cli/src/fork.rs
++codex-rs/utils/cli/src/lib.rs
++codex-rs/tui/src/update_action.rs
++codex-rs/tui/src/update_prompt.rs
++codex-rs/tui/src/update_versions.rs
++codex-rs/tui/src/updates.rs
++codex-rs/tui/src/history_cell/notices.rs
++codex-rs/tui/src/history_cell/tests.rs
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
++
++[privacy]
++subject: config: disable update checks and announcement fetches by default
++announcement_tip.toml
++codex-rs/tui/src/npm_registry.rs
++codex-rs/tui/src/tooltips.rs
++
++[distribution]
++subject: ci: Linux-only cargo CI, fork release workflow, and installer
++.github/*
++install.sh
++patches/*
++
++[identity]
++subject: branding: codEx name and version output
++codex-rs/cli/tests/sandbox_cloud_config.rs
++codex-rs/exec/src/event_processor_with_human_output.rs
++codex-rs/login/src/device_code_auth.rs
++codex-rs/login/src/device_code_auth_tests.rs
++codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
++codex-rs/tui/src/history_cell/session.rs
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
++codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
++codex-rs/tui/src/onboarding/welcome.rs
++codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
++codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
++codex-rs/tui/src/status/card.rs
++codex-rs/tui/tests/suite/focus_palette.rs
+diff --git a/scripts/update.sh b/scripts/update.sh
+new file mode 100644
+index 0000000..0ae53a6
+--- /dev/null
++++ b/scripts/update.sh
+@@ -0,0 +1,101 @@
++#!/usr/bin/env bash
++# Upgrades the fork to a new upstream tag.
++#
++# Usage: bash scripts/update.sh <new-upstream-tag>
++#   e.g. bash scripts/update.sh rust-v0.148.0
++#
++# Flow:
++#   1. Shallow-clone the new upstream tag.
++#   2. Apply the existing patch queue with `git am --3way`.
++#   3. If a patch conflicts, stop and let you resolve it manually
++#      (`git am --continue` / `git am --abort`), then run
++#      `bash scripts/gen-patches.sh <new-upstream-tag>` to regenerate.
++#   4. Verify the applied queue still matches the patch-module manifest,
++#      then build + run the same checks as CI (build, fmt, nextest) from
++#      the codex-rs workspace root.
++#   5. Regenerate patches/, update BASE_TAG, and print release instructions.
++set -euo pipefail
++
++if [[ $# -ne 1 ]]; then
++  echo "Usage: bash scripts/update.sh <new-upstream-tag>" >&2
++  exit 1
++fi
++
++new_tag="$1"
++version="${new_tag#rust-v}"
++if [[ ! "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
++  echo "Invalid upstream tag '${new_tag}'; expected e.g. rust-v0.148.0" >&2
++  exit 1
++fi
++upstream_tag="rust-v${version}"
++
++repo="${FORK_UPSTREAM_REPO:-openai/codex}"
++script_dir="$(cd "$(dirname "$0")" && pwd)"
++repo_root="$(cd "${script_dir}/.." && pwd)"
++work_dir="${repo_root}/update-work"
++code_dir="${work_dir}/codex-rs"
++
++rm -rf "${work_dir}"
++echo "Cloning https://github.com/${repo}.git at ${upstream_tag} ..."
++git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" "${work_dir}"
++cd "${work_dir}"
++git config user.name "codEx Fork Bot"
++git config user.email "codex-fork-bot@localhost"
++
++echo "Applying fork patches ..."
++if ! git am --3way "${repo_root}"/patches/*.patch; then
++  echo "=============================================================" >&2
++  echo "Conflict while applying patches against ${upstream_tag}." >&2
++  echo "Resolve conflicts in ${work_dir}, then run:" >&2
++  echo "  git am --continue" >&2
++  echo "  bash ${repo_root}/scripts/gen-patches.sh ${upstream_tag}" >&2
++  echo "Or abort with: git am --abort" >&2
++  echo "=============================================================" >&2
++  exit 1
++fi
++
++# A manual conflict resolution may have changed subjects or file ownership;
++# verify the applied queue still matches the patch-module manifest before
++# spending time on the build.
++if ! bash "${script_dir}/check-patch-modules.sh" --tree "${work_dir}"; then
++  echo "The applied patch queue does not match the patch-module manifest." >&2
++  exit 1
++fi
++
++if [[ ! -d "${code_dir}" ]]; then
++  echo "Rust workspace not found at ${code_dir}; upstream layout may have changed." >&2
++  exit 1
++fi
++
++cd "${code_dir}"
++echo "Building ..."
++cargo build --release --bin codex
++
++echo "Checking formatting ..."
++cargo fmt --check
++
++if ! command -v cargo-nextest >/dev/null 2>&1; then
++  echo "cargo-nextest not found; installing it (same as CI) ..."
++  cargo install --locked cargo-nextest
++fi
++
++echo "Running codex-tui tests ..."
++RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
++
++echo "Running codex-core tests ..."
++# The full core integration suite (sandbox/approvals scenarios) needs
++# sandbox-capable runners; CI excludes suite::* tests, so do the same here.
++RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
++  -p codex-core -E 'not test(suite)'
++
++cd "${work_dir}"
++echo "Regenerating patches ..."
++bash "${repo_root}/scripts/gen-patches.sh" "${upstream_tag}" "${repo_root}/patches"
++echo "${upstream_tag}" > "${repo_root}/BASE_TAG"
++
++echo "✅ Upgrade to ${upstream_tag} complete."
++echo "Next steps:"
++echo "  1. Commit the new BASE_TAG and patches/."
++echo "  2. Tag the fork release: git tag ${upstream_tag}"
++echo "     (the rust-v prefix is required; the release workflow triggers on rust-v* / v*)"
++echo "  3. Push the tag; the release workflow publishes codex-<target>.tar.gz + checksums."
+-- 
+2.55.0
+

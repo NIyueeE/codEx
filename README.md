@@ -234,15 +234,31 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 
 This repo deliberately does **not** vendor upstream code, unlike a classic
 fork that carries the full tree and periodically merges upstream. Instead it
-stores only the delta:
+stores only the delta, organized as **one patch per feature module** (not one
+per commit):
 
 | Piece | Purpose |
 | --- | --- |
 | `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
-| `patches/` | `git format-patch` series with every fork change |
+| `patches/` | one `git format-patch` per feature module, in fixed order |
+| `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
+| `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
 | `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
 | `scripts/update.sh` | upgrade to a new upstream tag (apply, CI-equivalent checks, regen) |
-| `scripts/gen-patches.sh` | regenerate `patches/` as a modular series (one patch per commit) from inside a bootstrapped tree |
+| `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
+
+The seven modules are `infra` (patch-queue tooling, lockfile, README),
+`rollback` (`/rewind`), `input` (double-Esc interrupt), `updates` (pure-Rust
+self-update), `privacy` (no startup network chatter), `distribution`
+(Linux-only CI/release), and `identity` (branding). Every file changed by the
+fork is owned by exactly one module; `check-patch-modules.sh` enforces the
+partition at export time (gen-patches), during upgrades (update.sh), in CI
+(repo-checks), and locally (pre-commit).
+
+Workflow: a **new feature** adds a section to `patch-modules.conf` and a
+matching commit in the bootstrapped tree; a **change to an existing feature**
+is rebased/folded into that module's commit. Hand-editing `patches/` is
+rejected by the checker.
 
 `bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 and release workflows do exactly that before building. See

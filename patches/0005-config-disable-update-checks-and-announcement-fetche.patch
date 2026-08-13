@@ -1,23 +1,13 @@
-From efa2fbc8eb9642545b2b447a305849453327d7a4 Mon Sep 17 00:00:00 2001
-From: codEx Fork Bot <codex-fork-bot@localhost>
-Date: Tue, 11 Aug 2026 01:19:52 +0800
-Subject: config: disable update chatter and remove announcement fetch
+From ac648fd733a20c025d825c1fe424523960626ff6 Mon Sep 17 00:00:00 2001
+From: Won Park <won@openai.com>
+Date: Fri, 14 Aug 2026 01:13:00 +0800
+Subject: config: disable update checks and announcement fetches by default
 
-check_for_update_on_startup now defaults to false so the TUI does not
-phone home on startup; the startup announcement fetch
-(announcement_tip.toml) and its prewarm are removed entirely, and the
-npm-based update detection module is dropped. Update prompts, when
-enabled, point at the fork releases instead of openai/codex.
 ---
- announcement_tip.toml                    |  17 -
- codex-rs/config/src/config_toml.rs       |   4 +-
- codex-rs/core/config.schema.json         |   2 +-
- codex-rs/core/src/config/config_tests.rs |   1 +
- codex-rs/core/src/config/mod.rs          |   6 +-
- codex-rs/tui/src/lib.rs                  |   4 -
- codex-rs/tui/src/npm_registry.rs         | 130 --------
- codex-rs/tui/src/tooltips.rs             | 406 -----------------------
- 8 files changed, 7 insertions(+), 563 deletions(-)
+ announcement_tip.toml            |  17 --
+ codex-rs/tui/src/npm_registry.rs | 130 ----------
+ codex-rs/tui/src/tooltips.rs     | 408 +------------------------------
+ 3 files changed, 1 insertion(+), 554 deletions(-)
  delete mode 100644 announcement_tip.toml
  delete mode 100644 codex-rs/tui/src/npm_registry.rs
 
@@ -44,92 +34,6 @@ index 79c0dae..0000000
 -# Matches 0.x.y versions from 0.0.y through 0.119.y; excludes 0.120.0 and newer.
 -version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
 -to_date = "2026-05-08"
-diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 580c1dd..6fce616 100644
---- a/codex-rs/config/src/config_toml.rs
-+++ b/codex-rs/config/src/config_toml.rs
-@@ -468,8 +468,8 @@ pub struct ConfigToml {
-     pub project_root_markers: Option<Vec<String>>,
- 
-     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
--    /// Set to `false` only if your Codex updates are centrally managed.
--    /// Defaults to `true`.
-+    /// The codEx fork disables the network check by default; set to `true` to opt in.
-+    /// Defaults to `false`.
-     pub check_for_update_on_startup: Option<bool>,
- 
-     /// When `true`, enables the `/rewind` command and takes a file snapshot of
-diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 9b0336e..7bd126f 100644
---- a/codex-rs/core/config.schema.json
-+++ b/codex-rs/core/config.schema.json
-@@ -4966,7 +4966,7 @@
-       "type": "string"
-     },
-     "check_for_update_on_startup": {
--      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. Set to `false` only if your Codex updates are centrally managed. Defaults to `true`.",
-+      "description": "When `true`, checks for Codex updates on startup and surfaces update prompts. The codEx fork disables the network check by default; set to `true` to opt in. Defaults to `false`.",
-       "type": "boolean"
-     },
-     "cli_auth_credentials_store": {
-diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index ecbb182..64625c7 100644
---- a/codex-rs/core/src/config/config_tests.rs
-+++ b/codex-rs/core/src/config/config_tests.rs
-@@ -540,6 +540,7 @@ async fn rewind_defaults_on_and_respects_gitignore() -> std::io::Result<()> {
-         .await?;
-     assert!(config.rewind_enabled);
-     assert!(config.rewind_respect_gitignore);
-+    assert!(!config.check_for_update_on_startup);
-     Ok(())
- }
- 
-diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index bea7ed9..ccaa3ad 100644
---- a/codex-rs/core/src/config/mod.rs
-+++ b/codex-rs/core/src/config/mod.rs
-@@ -1088,8 +1088,8 @@ pub struct Config {
-     pub notices: Notice,
- 
-     /// When `true`, checks for Codex updates on startup and surfaces update prompts.
--    /// Set to `false` only if your Codex updates are centrally managed.
--    /// Defaults to `true`.
-+    /// The codEx fork disables the network check by default; set to `true` to opt in.
-+    /// Defaults to `false`.
-     pub check_for_update_on_startup: bool,
- 
-     /// When `true`, enables the `/rewind` command and takes a file snapshot of
-@@ -3956,7 +3956,7 @@ impl Config {
- 
-         let review_model = override_review_model.or(cfg.review_model);
- 
--        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(true);
-+        let check_for_update_on_startup = cfg.check_for_update_on_startup.unwrap_or(false);
-         let rewind_enabled = cfg.rewind_enabled.unwrap_or(true);
-         let rewind_respect_gitignore = cfg.rewind_respect_gitignore.unwrap_or(true);
-         let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
-diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 1908777..ee32498 100644
---- a/codex-rs/tui/src/lib.rs
-+++ b/codex-rs/tui/src/lib.rs
-@@ -151,8 +151,6 @@ mod motion;
- mod multi_agents;
- mod named_session_lookup;
- mod notifications;
--#[cfg(any(not(debug_assertions), test))]
--mod npm_registry;
- pub(crate) mod onboarding;
- mod oss_selection;
- mod pager_overlay;
-@@ -1293,8 +1291,6 @@ async fn run_ratatui_app(
-     let uses_remote_workspace = app_server_target.uses_remote_workspace();
-     color_eyre::install()?;
- 
--    tooltips::announcement::prewarm(initial_config.http_client_factory());
--
-     // Forward panic reports through tracing so they appear in the UI status
-     // line, but do not swallow the default/color-eyre panic handler.
-     // Chain to the previous hook so users still get a rich panic report
 diff --git a/codex-rs/tui/src/npm_registry.rs b/codex-rs/tui/src/npm_registry.rs
 deleted file mode 100644
 index 61ff242..0000000
@@ -267,7 +171,7 @@ index 61ff242..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 79e74f5..26e090d 100644
+index 79e74f5..0ba6e96 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
 @@ -3,9 +3,6 @@ use codex_protocol::account::PlanType;
@@ -279,6 +183,15 @@ index 79e74f5..26e090d 100644
 -
  const IS_MACOS: bool = cfg!(target_os = "macos");
  const IS_WINDOWS: bool = cfg!(target_os = "windows");
+ 
+@@ -13,7 +10,7 @@ const APP_TOOLTIP: &str = "Try the **Desktop app**. Run 'codex app' or visit htt
+ const FAST_TOOLTIP: &str =
+     "*New* Use **/fast** to enable our fastest inference with increased plan usage.";
+ const OTHER_TOOLTIP: &str = "*New* Build faster with the **Desktop app**. Run 'codex app' or visit https://chatgpt.com/codex?app-landing-page=true";
+-const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with Codex.";
++const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with codEx.";
+ const FREE_GO_TOOLTIP: &str =
+     "*New* For a limited time, Codex is included in your plan for free – let’s build together.";
  
 @@ -52,10 +49,6 @@ fn experimental_tooltips() -> Vec<&'static str> {
  pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<String> {

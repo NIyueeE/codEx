@@ -7,10 +7,12 @@ from `BASE_TAG` and applies `patches/` via `git am`.
 
 ## Project Structure & Module Organization
 
-- `patches/` — the fork's entire change set as a `git format-patch` series,
-  named `NNNN-lowercase-hyphen.patch` and numbered from `0001`
+- `patches/` — one `git format-patch` per feature module, applied in order:
+  `infra`, `rollback`, `input`, `updates`, `privacy`, `distribution`,
+  `identity` (see `scripts/patch-modules.conf`)
 - `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.147.0`)
-- `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`
+- `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
+  `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
   `codespell.yml`, `rust-release.yml`)
 - `README.md` / `README.zh.md` — English/Chinese docs
@@ -32,19 +34,25 @@ cargo fmt --check                   # rustfmt check
   `git am --3way`, runs the CI-equivalent checks (build, fmt, nextest) from
   `codex-rs/`, then regenerates `patches/` and `BASE_TAG`
 - `bash scripts/gen-patches.sh <base-tag> [output-dir]` — regenerate `patches/`
-  as a modular one-patch-per-commit series; run it from inside a bootstrapped
-  tree (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
-  It refuses to run in the slim repo, whose history has no upstream base commit
+  as one patch per feature module; run it from inside a bootstrapped tree
+  (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
+  It refuses to run in the slim repo (no upstream history), and refuses to
+  export any tree or patch set that violates `patch-modules.conf`
+- `bash scripts/check-patch-modules.sh --tree DIR [--patches DIR]` — validate
+  the module manifest against a tree and/or an exported patches/ dir
 - `pre-commit install` — local hooks (codespell, README ASCII check,
-  patch-queue sanity check, `cargo fmt --check`)
+  patch-module layout check, `cargo fmt --check`)
 
 ## Coding Style & Naming Conventions
 
 - Rust: standard `rustfmt`; keep `cargo fmt --check` clean
-- Patches: sequential `NNNN-` prefixes, alphanumeric hyphenated names (never
-  empty; underscores are rejected by the sanity check). `format-patch` derives
-  names from commit subjects and truncates long ones, so keep subjects
-  concise. Patch content never changes version numbers
+- Patches: exactly one commit per module in `scripts/patch-modules.conf`;
+  every fork-delta file belongs to exactly one module (the ownership
+  partition is enforced by `check-patch-modules.sh`). To add a feature,
+  append a manifest section and the matching tree commit; to change an
+  existing feature, rebase/`--fixup` into that module's commit. Never
+  hand-edit `patches/`. Sequential `NNNN-` prefixes, subject-derived names;
+  patch content never changes version numbers
 - `README.md` must be ASCII-only (U+2728 allowed), enforced by CI
   (`asciicheck`); update `README.zh.md` alongside it
 - Keep codespell clean (`.codespellignore` for pre-commit, `.codespellrc` for

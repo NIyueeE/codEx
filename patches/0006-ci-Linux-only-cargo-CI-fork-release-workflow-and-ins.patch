@@ -1,14 +1,8 @@
-From 91a80839b41b9f50a96db14f4b5b054fca3921e0 Mon Sep 17 00:00:00 2001
-From: codEx Fork Bot <codex-fork-bot@localhost>
-Date: Tue, 11 Aug 2026 01:16:54 +0800
-Subject: ci: trim to Linux-only cargo CI and fork release workflow
+From 2ac40ad3648eaf5bb4a1315c1660da5c26fe6bf2 Mon Sep 17 00:00:00 2001
+From: Won Park <won@openai.com>
+Date: Fri, 14 Aug 2026 01:13:01 +0800
+Subject: ci: Linux-only cargo CI, fork release workflow, and installer
 
-Removes the bazel/v8/python/sdk release machinery and Windows/macOS
-support so the fork builds the CLI with plain Cargo on Linux only.
-blocking-ci now covers build, fmt, codex-tui tests, core unit tests,
-codespell, and repo checks; the release workflow publishes
-codex-<target>.tar.gz + sha256 assets and replaces an existing release
-when a tag is re-pushed.
 ---
  .github/scripts/install-musl-build-tools.sh   |   12 +-
  .github/workflows/bazel.yml                   |  559 ------
@@ -20,7 +14,7 @@ when a tag is re-pushed.
  .github/workflows/python-runtime-release.yml  |  100 -
  .github/workflows/python-sdk-release.yml      |  232 ---
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   88 +-
+ .github/workflows/repo-checks.yml             |   95 +-
  .../rust-ci-full-nextest-platform.yml         |  450 -----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  268 ---
@@ -32,6 +26,7 @@ when a tag is re-pushed.
  .github/workflows/rusty-v8-release.yml        |  476 -----
  .github/workflows/sdk.yml                     |  168 --
  .github/workflows/v8-canary.yml               |  447 -----
+ install.sh                                    |  197 ++
  patches/BUILD.bazel                           |   21 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
@@ -52,7 +47,7 @@ when a tag is re-pushed.
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 42 files changed, 247 insertions(+), 7879 deletions(-)
+ 43 files changed, 451 insertions(+), 7879 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -71,6 +66,7 @@ when a tag is re-pushed.
  delete mode 100644 .github/workflows/rusty-v8-release.yml
  delete mode 100644 .github/workflows/sdk.yml
  delete mode 100644 .github/workflows/v8-canary.yml
+ create mode 100755 install.sh
  delete mode 100644 patches/BUILD.bazel
  delete mode 100644 patches/abseil_windows_gnullvm_thread_identity.patch
  delete mode 100644 patches/bzip2_windows_stack_args.patch
@@ -1524,7 +1520,7 @@ index 96a0768..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 6c82ebc..e893eb6 100644
+index 6c82ebc..f89f6cc 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -6,9 +6,7 @@ on:
@@ -1538,33 +1534,22 @@ index 6c82ebc..e893eb6 100644
      steps:
        - name: Checkout repository
          uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-@@ -16,80 +14,32 @@ jobs:
+@@ -16,80 +14,39 @@ jobs:
            ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
            persist-credentials: false
  
 -      - uses: ./.github/actions/setup-ci
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        with:
-+          components: rustfmt
- 
+-
 -      - name: Verify codex-rs Cargo manifests inherit workspace settings
 -        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
- 
-       - name: Verify codex-tui does not import codex-core directly
+-
+-      - name: Verify codex-tui does not import codex-core directly
 -        run: python3 .github/scripts/verify_tui_core_boundary.py
 -
 -      - name: Verify Bazel clippy flags match Cargo workspace lints
 -        run: python3 .github/scripts/verify_bazel_clippy_lints.py
-+        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
- 
-       - name: Test Codex package builder
+-
+-      - name: Test Codex package builder
 -        run: python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 -
 -      - name: Test standalone installer
@@ -1575,9 +1560,11 @@ index 6c82ebc..e893eb6 100644
 -
 -      - name: Setup pnpm
 -        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
--        with:
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+         with:
 -          run_install: false
--
++          components: rustfmt
+ 
 -      - name: Setup Node.js
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
 -        with:
@@ -1585,12 +1572,20 @@ index 6c82ebc..e893eb6 100644
 -
 -      - name: Install dependencies
 -        run: pnpm install --frozen-lockfile
--
++      - name: Bootstrap tree if needed
++        run: |
++          if [[ ! -d codex-rs ]]; then
++            bash scripts/bootstrap.sh
++          fi
++          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+ 
 -      - name: Stage npm package
 -        id: stage_npm_package
 -        env:
 -          GH_TOKEN: ${{ github.token }}
--        run: |
++      - name: Validate patch-module layout
+         run: |
 -          set -euo pipefail
 -          # Use a recent successful rust-release run that published the full
 -          # cross-platform native payload required by the npm package layout.
@@ -1606,25 +1601,33 @@ index 6c82ebc..e893eb6 100644
 -            --output-dir "$OUTPUT_DIR"
 -          PACK_OUTPUT="${OUTPUT_DIR}/codex-npm-${CODEX_VERSION}.tgz"
 -          echo "pack_output=$PACK_OUTPUT" >> "$GITHUB_OUTPUT"
--
++          if [[ -d patches && -f patches/0001-*.patch ]]; then
++            bash scripts/check-patch-modules.sh --patches patches
++          fi
++          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
+ 
 -      - name: Upload staged npm package artifact
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
 -          name: codex-npm-staging
 -          path: ${{ steps.stage_npm_package.outputs.pack_output }}
-+        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
++      - name: Verify codex-tui does not import codex-core directly
++        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
  
-       - name: Ensure root README.md contains only ASCII and certain Unicode code points
+-      - name: Ensure root README.md contains only ASCII and certain Unicode code points
 -        run: ./scripts/asciicheck.py README.md
 -      - name: Check root README ToC
 -        run: python3 scripts/readme_toc.py README.md
--
++      - name: Test Codex package builder
++        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
+ 
 -      - name: Install uv
 -        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 -        with:
 -          version: "0.11.3"
 -      - name: Check formatting (run `just fmt` to fix)
 -        run: just fmt-check
++      - name: Ensure root README.md contains only ASCII and certain Unicode code points
 +        if: hashFiles('README.md') != ''
 +        run: python3 "${TREE_DIR}/scripts/asciicheck.py" README.md
  
@@ -6631,6 +6634,209 @@ index 97610cd..0000000
 -      - name: Check for a clean worktree
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
+diff --git a/install.sh b/install.sh
+new file mode 100755
+index 0000000..c56fcf3
+--- /dev/null
++++ b/install.sh
+@@ -0,0 +1,197 @@
++#!/bin/sh
++#
++# codEx standalone installer
++#
++# Downloads the latest codEx fork release from GitHub, verifies its sha256
++# checksum, and installs it into the standalone layout that `codex update`
++# recognizes:
++#
++#   $CODEX_HOME/packages/standalone/releases/<version>-<target>/
++#     codex
++#     codex-resources/bwrap
++#
++# A `codex` symlink is placed in $CODEX_INSTALL_DIR (default ~/.local/bin).
++#
++# Usage:
++#   curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
++#
++# Environment:
++#   CODEX_RELEASE            version to install (default: latest)
++#   CODEX_INSTALL_DIR        directory for the codex symlink (default: ~/.local/bin)
++#   CODEX_HOME               codex home (default: ~/.codex)
++#   CODEX_RELEASES_BASE_URL  base URL for release assets (testing/mirrors)
++
++set -eu
++
++FORK_REPO="NIyueeE/codEx"
++DEFAULT_RELEASES_BASE_URL="https://github.com/${FORK_REPO}/releases/download"
++RELEASES_BASE_URL="${CODEX_RELEASES_BASE_URL:-$DEFAULT_RELEASES_BASE_URL}"
++API_BASE_URL="${CODEX_API_BASE_URL:-https://api.github.com/repos/${FORK_REPO}}"
++
++CODEX_INSTALL_DIR="${CODEX_INSTALL_DIR:-$HOME/.local/bin}"
++CODEX_HOME_DIR="${CODEX_HOME:-$HOME/.codex}"
++STANDALONE_ROOT="$CODEX_HOME_DIR/packages/standalone"
++RELEASES_DIR="$STANDALONE_ROOT/releases"
++CURRENT_LINK="$STANDALONE_ROOT/current"
++LOCK_DIR="$STANDALONE_ROOT/install.lock"
++
++step() { printf '==> %s\n' "$1"; }
++warn() { printf 'WARNING: %s\n' "$1" >&2; }
++die() { printf 'ERROR: %s\n' "$1" >&2; exit 1; }
++
++cleanup() {
++  [ -n "${tmp_dir:-}" ] && rm -rf "$tmp_dir"
++  rmdir "$LOCK_DIR" 2>/dev/null || true
++}
++
++require_command() {
++  command -v "$1" >/dev/null 2>&1 || die "required command '$1' was not found"
++}
++
++normalize_version() {
++  case "$1" in
++    "" | latest)
++      printf 'latest\n'
++      ;;
++    rust-v*)
++      printf '%s\n' "${1#rust-v}"
++      ;;
++    v*)
++      printf '%s\n' "${1#v}"
++      ;;
++    *)
++      printf '%s\n' "$1"
++      ;;
++  esac
++}
++
++detect_target() {
++  os="$(uname -s)"
++  arch="$(uname -m)"
++  case "$os-$arch" in
++    Linux-x86_64)
++      printf 'x86_64-unknown-linux-musl\n'
++      ;;
++    Linux-aarch64 | Linux-arm64)
++      printf 'aarch64-unknown-linux-musl\n'
++      ;;
++    *)
++      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 and aarch64 binaries only"
++      ;;
++  esac
++}
++
++resolve_latest_tag() {
++  curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
++    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
++    head -1
++}
++
++file_sha256() {
++  if command -v sha256sum >/dev/null 2>&1; then
++    sha256sum "$1" | awk '{print $1}'
++  elif command -v shasum >/dev/null 2>&1; then
++    shasum -a 256 "$1" | awk '{print $1}'
++  elif command -v openssl >/dev/null 2>&1; then
++    openssl dgst -sha256 "$1" | sed 's/^.*= //'
++  else
++    die "sha256sum, shasum, or openssl is required to verify the codEx download"
++  fi
++}
++
++acquire_lock() {
++  mkdir -p "$STANDALONE_ROOT"
++  if ! mkdir "$LOCK_DIR" 2>/dev/null; then
++    die "another codEx install is in progress (lock: $LOCK_DIR); if this is stale, remove it and retry"
++  fi
++}
++
++install() {
++  require_command curl
++  require_command tar
++  require_command uname
++
++  target="$(detect_target)"
++  version="$(normalize_version "${CODEX_RELEASE:-latest}")"
++
++  step "Resolving codEx release..."
++  if [ "$version" = "latest" ]; then
++    tag="$(resolve_latest_tag)"
++    [ -n "$tag" ] || die "failed to resolve the latest codEx release from $API_BASE_URL"
++    version="${tag#rust-v}"
++  else
++    tag="rust-v$version"
++  fi
++  step "Installing codEx $version ($target) from $FORK_REPO"
++
++  acquire_lock
++  trap cleanup EXIT INT TERM
++  tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/codex-install.XXXXXX")"
++
++  asset="codex-$target.tar.gz"
++  archive_url="$RELEASES_BASE_URL/$tag/$asset"
++  checksum_url="$archive_url.sha256"
++  archive_path="$tmp_dir/$asset"
++  checksum_path="$tmp_dir/$asset.sha256"
++
++  step "Downloading $asset..."
++  curl -fL --retry 3 --connect-timeout 10 -o "$archive_path" "$archive_url" ||
++    die "failed to download $archive_url"
++  curl -fL --retry 3 --connect-timeout 10 -o "$checksum_path" "$checksum_url" ||
++    die "failed to download checksum $checksum_url"
++
++  step "Verifying sha256 checksum..."
++  actual="$(file_sha256 "$archive_path")"
++  expected="$(awk '{print $1}' "$checksum_path")"
++  [ -n "$expected" ] || die "checksum file $checksum_path is empty or malformed"
++  [ "$actual" = "$expected" ] ||
++    die "checksum mismatch for $asset (expected $expected, got $actual); refusing to install"
++
++  release_dir="$RELEASES_DIR/$version-$target"
++  staging_dir="$RELEASES_DIR/.staging.$version-$target.$$"
++
++  step "Installing to $release_dir..."
++  rm -rf "$staging_dir"
++  mkdir -p "$staging_dir/codex-resources" "$RELEASES_DIR"
++  tar -xzf "$archive_path" -C "$staging_dir"
++  [ -f "$staging_dir/codex" ] || die "release archive does not contain a codex binary"
++  [ -f "$staging_dir/bwrap" ] || die "release archive does not contain bwrap"
++  mv "$staging_dir/bwrap" "$staging_dir/codex-resources/bwrap"
++  chmod +x "$staging_dir/codex" "$staging_dir/codex-resources/bwrap"
++
++  # Atomically replace a previous install of the same version.
++  if [ -e "$release_dir" ]; then
++    rm -rf "$release_dir"
++  fi
++  mv "$staging_dir" "$release_dir"
++
++  # Point $STANDALONE_ROOT/current at the new release. Replace the symlink
++  # atomically so a concurrent reader never sees a half-updated link.
++  mkdir -p "$STANDALONE_ROOT"
++  tmp_link="$STANDALONE_ROOT/.current.$$"
++  ln -s "$release_dir" "$tmp_link"
++  mv -Tf "$tmp_link" "$CURRENT_LINK" 2>/dev/null ||
++    { rm -f "$CURRENT_LINK"; mv "$tmp_link" "$CURRENT_LINK"; }
++
++  step "Linking codex into $CODEX_INSTALL_DIR..."
++  mkdir -p "$CODEX_INSTALL_DIR"
++  ln -sfn "$CURRENT_LINK/codex" "$CODEX_INSTALL_DIR/codex"
++
++  bin_path="$CODEX_INSTALL_DIR/codex"
++  step "Verifying installation..."
++  version_output="$("$bin_path" --version 2>&1)" ||
++    die "installed binary at $bin_path failed to run: $version_output"
++  printf '%s\n' "$version_output"
++
++  case ":$PATH:" in
++    *":$CODEX_INSTALL_DIR:"*) ;;
++    *)
++      warn "$CODEX_INSTALL_DIR is not on your PATH; add it, for example:"
++      printf '  export PATH="%s:$PATH"\n' "$CODEX_INSTALL_DIR"
++      ;;
++  esac
++
++  printf '\n🎉 codEx %s installed. Run `codex update` to upgrade in the future.\n' "$version"
++}
++
++install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
 index 81bc6d4..0000000
