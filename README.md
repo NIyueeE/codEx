@@ -84,27 +84,44 @@ newer, and **Enter** confirms the rewind.
   numbering always matches the picker's transcript ordinals.
   Side-conversation messages and pending steer edits don't create snapshots.
   Each snapshot contains a `manifest.json` (relative path, size, mtime, object
-  id for every file, plus a prompt excerpt) and the file contents under
-  `files/`.
+  id for every file, plus a prompt excerpt, a full-prompt hash for exact
+  message matching, the snapshot-time `.gitignore` setting, and raw path
+  bytes for non-UTF-8 file names) and the file contents under `files/`.
 - Storage is a small **content-addressed store** (no git involved): each
   unique file content is saved once under `objects/` and every snapshot's
   `files/` entries are hardlinks into it. Unchanged files are linked from the
   previous snapshot without being re-read, and identical content from any
-  earlier turn is never stored twice.
+  earlier turn is never stored twice. A conversation's first snapshot also
+  seeds from the newest snapshot of any conversation in the same workspace,
+  so resumed and forked conversations stay cheap.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
 - The most recent **100 snapshots per conversation** are kept by default
   (configurable via `rewind_max_snapshots`); older ones are pruned per
-  conversation and their unreferenced objects are garbage-collected.
+  conversation and their unreferenced objects are garbage-collected, and
+  interrupted (manifest-less) snapshot directories are cleaned up.
+- Unreadable files are skipped instead of failing the whole snapshot; the
+  skipped paths are recorded in the manifest, surfaced in the transcript, and
+  left untouched by a later restore. A snapshot that fails outright is also
+  shown in the transcript rather than only logged.
 - Restore copies snapshot files back over the workspace and deletes files that
-  were created after the snapshot (gitignored paths are left alone). Restored
-  files keep their original mtime so later snapshots stay cheap. If a
-  snapshot's physical copy is missing, the restore fails with the missing
-  paths listed instead of silently keeping current content.
+  were created after the snapshot. The delete set uses the snapshot-time
+  `.gitignore` setting against the current workspace's `.gitignore` rules, so
+  the confirmation preview and the actual restore always agree. Restored
+  files keep their original mtime so later snapshots stay cheap.
+- Restore is preflighted before anything is touched: a missing physical copy,
+  a directory in the way, an unsafe recorded path, or a symbolic link above a
+  target aborts the restore without modifying anything. A symbolic link at a
+  target path is replaced by the restored regular file (never written
+  through), and read-only targets are replaced atomically via a temporary
+  file and rename.
 - The **Files only** picker lists snapshots from all conversations (each
   labeled with a short conversation id and its per-turn change count), and
   file restore is refused while a task is running. Every restore is preceded
   by a dry-run preview that reports the files that would be restored and
-  deleted (and is skipped entirely when nothing would change).
+  deleted (and is skipped entirely when nothing would change). When a
+  conversation rewind has to search other conversations for the matching
+  snapshot, ambiguous matches (the same prompt in more than one conversation)
+  decline to restore files rather than guessing.
 
 **Configuration** (`config.toml` under the codEx data directory):
 
@@ -124,8 +141,14 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 
 **Limitations**:
 
-- Snapshot capture is best effort: a failed capture is logged and the turn
-  continues, so a conversation rewind may have no matching file state.
+- Snapshot capture is best effort: a failed capture is surfaced in the
+  transcript and the turn continues, so a conversation rewind may have no
+  matching file state.
+- Snapshots treat a file as unchanged when its size and modification time
+  match the previous snapshot; content changes that preserve both (for
+  example `touch -r`) are not detected. The snapshot is taken synchronously
+  before the turn starts so it always reflects the state before the turn's
+  file writes.
 - Restore overwrites the current contents of affected files and deletes files
   that were created after the snapshot; edits made after the snapshot are not
   preserved.
