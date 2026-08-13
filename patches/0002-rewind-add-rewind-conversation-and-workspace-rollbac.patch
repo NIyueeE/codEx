@@ -1,11 +1,11 @@
-From 2108581a299edadde4a93ccad8d343d204ecbff4 Mon Sep 17 00:00:00 2001
+From 7e1fd75dad09541bb84b11aa14a6fe8f59cf7b23 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback
 
 ---
- codex-rs/config/src/config_toml.rs            |   18 +-
- codex-rs/core/config.schema.json              |   18 +-
+ codex-rs/config/src/config_toml.rs            |   19 +-
+ codex-rs/core/config.schema.json              |   17 +-
  codex-rs/core/src/config/config_tests.rs      |   35 +
  codex-rs/core/src/config/mod.rs               |   29 +-
  codex-rs/thread-manager-sample/src/main.rs    |    3 +
@@ -27,17 +27,17 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/rewind/mod.rs                | 1319 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1191 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    3 +
- 23 files changed, 3891 insertions(+), 156 deletions(-)
+ 23 files changed, 3892 insertions(+), 155 deletions(-)
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
  create mode 100644 codex-rs/tui/src/rewind/actions.rs
  create mode 100644 codex-rs/tui/src/rewind/mod.rs
  create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 5ffa42d..7fb2de8 100644
+index 5ffa42d..03d8ec5 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -468,10 +468,24 @@ pub struct ConfigToml {
+@@ -468,10 +468,25 @@ pub struct ConfigToml {
      pub project_root_markers: Option<Vec<String>>,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -59,13 +59,14 @@ index 5ffa42d..7fb2de8 100644
 +
 +    /// Maximum number of `/rewind` file snapshots retained per conversation.
 +    /// Defaults to `100`.
++    #[schemars(range(min = 1, max = 10000))]
 +    pub rewind_max_snapshots: Option<usize>,
 +
      /// When true, disables burst-paste detection for typed input entirely.
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index fd463f4..87b13bf 100644
+index fd463f4..abddcc7 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -4966,7 +4966,7 @@
@@ -77,7 +78,7 @@ index fd463f4..87b13bf 100644
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -5742,6 +5742,20 @@
+@@ -5742,6 +5742,21 @@
        "description": "Review model override used by the `/review` feature.",
        "type": "string"
      },
@@ -85,26 +86,20 @@ index fd463f4..87b13bf 100644
 +      "description": "When `true`, enables the `/rewind` command and takes a file snapshot of the workspace before each turn so the fork can roll back changes. Defaults to `true`.",
 +      "type": "boolean"
 +    },
++    "rewind_max_snapshots": {
++      "description": "Maximum number of `/rewind` file snapshots retained per conversation. Defaults to `100`.",
++      "format": "uint",
++      "maximum": 10000.0,
++      "minimum": 1.0,
++      "type": "integer"
++    },
 +    "rewind_respect_gitignore": {
 +      "description": "When `true`, `/rewind` snapshots respect `.gitignore` (and skip the `.git` directory). Set to `false` to snapshot every file. Defaults to `true`.",
 +      "type": "boolean"
 +    },
-+    "rewind_max_snapshots": {
-+      "description": "Maximum number of `/rewind` file snapshots retained per conversation. Defaults to `100`.",
-+      "type": "integer",
-+      "minimum": 1,
-+      "maximum": 10000
-+    },
      "sandbox_mode": {
        "allOf": [
          {
-@@ -5852,4 +5866,4 @@
-   },
-   "title": "ConfigToml",
-   "type": "object"
--}
-\ No newline at end of file
-+}
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
 index e3e91a6..83ce36c 100644
 --- a/codex-rs/core/src/config/config_tests.rs

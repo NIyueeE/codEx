@@ -1,4 +1,4 @@
-From dcfcc91af1f78c564ba315392d247f3c14b0a8d6 Mon Sep 17 00:00:00 2001
+From 36a0147ff5796be5b717ba7dad7ce3bcb8ed6cca Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases

@@ -1,4 +1,4 @@
-From 2ac40ad3648eaf5bb4a1315c1660da5c26fe6bf2 Mon Sep 17 00:00:00 2001
+From ba41b1f14e5e1c1e321f12ab54a8bd699844125e Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux-only cargo CI, fork release workflow, and installer
