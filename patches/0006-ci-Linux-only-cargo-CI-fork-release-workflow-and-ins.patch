@@ -1,33 +1,34 @@
-From ba41b1f14e5e1c1e321f12ab54a8bd699844125e Mon Sep 17 00:00:00 2001
+From b0198d5e5e6a409a3b953578c2e4d2e6a848247d Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux-only cargo CI, fork release workflow, and installer
 
 ---
  .github/scripts/install-musl-build-tools.sh   |   12 +-
- .github/workflows/bazel.yml                   |  559 ------
- .github/workflows/blob-size-policy.yml        |   54 -
- .github/workflows/blocking-ci.yml             |  139 +-
- .github/workflows/cargo-deny.yml              |   32 -
+ .github/workflows/bazel.yml                   |  554 ------
+ .github/workflows/blob-size-policy.yml        |   53 -
+ .github/workflows/blocking-ci.yml             |  140 +-
+ .github/workflows/cargo-deny.yml              |   31 -
+ .github/workflows/codespell.yml               |    3 +-
  .github/workflows/postmerge-ci.yml            |   40 -
  .github/workflows/python-runtime-build.yml    |  104 -
  .github/workflows/python-runtime-release.yml  |  100 -
- .github/workflows/python-sdk-release.yml      |  232 ---
+ .github/workflows/python-sdk-release.yml      |  237 ---
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   95 +-
- .../rust-ci-full-nextest-platform.yml         |  450 -----
+ .github/workflows/repo-checks.yml             |   71 +-
+ .../rust-ci-full-nextest-platform.yml         |  434 -----
  .github/workflows/rust-ci-full.yml            |  574 ------
- .github/workflows/rust-ci.yml                 |  268 ---
+ .github/workflows/rust-ci.yml                 |  263 ---
  .../rust-release-argument-comment-lint.yml    |  113 --
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1675 ++---------------
+ .github/workflows/rust-release.yml            | 1684 ++---------------
  .github/workflows/rusty-v8-release.yml        |  476 -----
- .github/workflows/sdk.yml                     |  168 --
- .github/workflows/v8-canary.yml               |  447 -----
- install.sh                                    |  197 ++
- patches/BUILD.bazel                           |   21 -
+ .github/workflows/sdk.yml                     |  166 --
+ .github/workflows/v8-canary.yml               |  445 -----
+ install.sh                                    |  198 ++
+ patches/BUILD.bazel                           |   22 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 --
@@ -47,7 +48,7 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 43 files changed, 451 insertions(+), 7879 deletions(-)
+ 44 files changed, 469 insertions(+), 7825 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -127,10 +128,10 @@ index 49035f5..9382592 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index 4197da9..0000000
+index 568086a..0000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
-@@ -1,559 +0,0 @@
+@@ -1,554 +0,0 @@
 -name: Bazel
 -
 -# Note this workflow was originally derived from:
@@ -187,7 +188,6 @@ index 4197da9..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Prepare Bazel CI
@@ -287,7 +287,6 @@ index 4197da9..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Test BuildBuddy Bazel wrapper
@@ -405,7 +404,6 @@ index 4197da9..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Prepare Bazel CI
@@ -498,7 +496,6 @@ index 4197da9..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Prepare Bazel CI
@@ -598,7 +595,6 @@ index 4197da9..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Prepare Bazel CI
@@ -692,10 +688,10 @@ index 4197da9..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
 deleted file mode 100644
-index 176f368..0000000
+index f80fb0e..0000000
 --- a/.github/workflows/blob-size-policy.yml
 +++ /dev/null
-@@ -1,54 +0,0 @@
+@@ -1,53 +0,0 @@
 -name: blob-size-policy
 -
 -on:
@@ -713,7 +709,6 @@ index 176f368..0000000
 -          mode: audit
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          fetch-depth: 0
 -          persist-credentials: false
 -
@@ -751,10 +746,10 @@ index 176f368..0000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index fe66fdd..67382a5 100644
+index c6f0055..3a7dde2 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,108 @@
+@@ -1,29 +1,114 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
@@ -792,7 +787,9 @@ index fe66fdd..67382a5 100644
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - name: Enable unprivileged user namespaces (Linux)
 +        run: |
-+          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
++            sudo sysctl -w kernel.unprivileged_userns_clone=1
++          fi
 +          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
 +            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 +          fi
@@ -829,7 +826,9 @@ index fe66fdd..67382a5 100644
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - name: Enable unprivileged user namespaces (Linux)
 +        run: |
-+          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
++            sudo sysctl -w kernel.unprivileged_userns_clone=1
++          fi
 +          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
 +            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 +          fi
@@ -861,7 +860,9 @@ index fe66fdd..67382a5 100644
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +      - name: Enable unprivileged user namespaces (Linux)
 +        run: |
-+          sudo sysctl -w kernel.unprivileged_userns_clone=1
++          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
++            sudo sysctl -w kernel.unprivileged_userns_clone=1
++          fi
 +          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
 +            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
 +          fi
@@ -879,7 +880,7 @@ index fe66fdd..67382a5 100644
  
    codespell:
      name: Codespell
-@@ -35,39 +114,17 @@ jobs:
+@@ -35,35 +120,20 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  
@@ -911,23 +912,20 @@ index fe66fdd..67382a5 100644
 -      - sdk
      runs-on: ubuntu-24.04
      steps:
--      # Keep the helper on the same revision as the caller and child workflows.
--      # CI workflow uploads are restricted, so this repository does not need a
--      # separate trusted-base checkout for the terminal policy step. Using the
--      # PR head also lets the introducing PR exercise a newly added helper.
--      #
--      # During the initial rollout, PR branches created before
--      # check_ci_results.py exists must rebase onto main before this gate can
--      # run.
+-      # Keep the helper on the same combined revision as the child workflows so
+-      # the merge gate evaluates the exact candidate they validated.
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
-           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
++          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+           persist-credentials: false
+ 
+       - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
 deleted file mode 100644
-index ccbf80e..0000000
+index 0f8ebae..0000000
 --- a/.github/workflows/cargo-deny.yml
 +++ /dev/null
-@@ -1,32 +0,0 @@
+@@ -1,31 +0,0 @@
 -name: cargo-deny
 -
 -on:
@@ -943,7 +941,6 @@ index ccbf80e..0000000
 -      - name: Checkout
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - uses: ./.github/actions/setup-ci
@@ -960,6 +957,22 @@ index ccbf80e..0000000
 -      - name: Check for a clean worktree
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
+diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
+index 996b3de..1c46902 100644
+--- a/.github/workflows/codespell.yml
++++ b/.github/workflows/codespell.yml
+@@ -17,9 +17,10 @@ jobs:
+       - name: Checkout
+         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
++          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+           persist-credentials: false
+       - name: Annotate locations with typos
+-        uses: codespell-project/codespell-problem-matcher@b80729f885d32f78a716c2f107b4db1025001c42 # v1.1.0
++        uses: codespell-project/codespell-problem-matcher@9ba2c57125d4908eade4308f32c4ff814c184633 # v1.2.0
+       - name: Codespell
+         uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
+         with:
 diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
 deleted file mode 100644
 index ac2b46d..0000000
@@ -1118,7 +1131,7 @@ index 433c086..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index 3efc775..0000000
+index f088c37..0000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
 @@ -1,100 +0,0 @@
@@ -1164,7 +1177,7 @@ index 3efc775..0000000
 -          path: dist/python-runtime
 -
 -      - name: Publish Python runtime wheels to PyPI
--        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 -        with:
 -          packages-dir: dist/python-runtime
 -          skip-existing: true
@@ -1224,10 +1237,10 @@ index 3efc775..0000000
 -          exit 1
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 2526b37..0000000
+index 16834a6..0000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
-@@ -1,232 +0,0 @@
+@@ -1,237 +0,0 @@
 -name: python-sdk-release
 -
 -on:
@@ -1268,10 +1281,10 @@ index 2526b37..0000000
 -          from pathlib import Path
 -
 -          sdk_version = os.environ["GITHUB_REF_NAME"].removeprefix("python-v")
--          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+b[0-9]+", sdk_version):
+-          if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+(?:b[0-9]+)?", sdk_version):
 -              raise SystemExit(
--                  "Python SDK release tags must identify a beta release, "
--                  "for example python-v0.1.0b1."
+-                  "Python SDK release tags must identify a stable or beta release, "
+-                  "for example python-v0.147.0 or python-v0.1.0b1."
 -              )
 -
 -          pyproject = tomllib.loads(Path("sdk/python/pyproject.toml").read_text())
@@ -1284,6 +1297,11 @@ index 2526b37..0000000
 -          if len(runtime_versions) != 1:
 -              raise SystemExit(
 -                  f"Expected exactly one pinned {prefix} dependency, found {runtime_versions}"
+-              )
+-
+-          if "b" not in sdk_version and sdk_version != runtime_versions[0]:
+-              raise SystemExit(
+-                  f"Stable SDK version {sdk_version} must match pinned runtime {runtime_versions[0]}."
 -              )
 -
 -          with Path(os.environ["GITHUB_OUTPUT"]).open("a") as output:
@@ -1323,7 +1341,7 @@ index 2526b37..0000000
 -          path: dist/python-runtime
 -
 -      - name: Publish Python runtime wheels to PyPI
--        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 -        with:
 -          packages-dir: dist/python-runtime
 -          skip-existing: true
@@ -1457,7 +1475,7 @@ index 2526b37..0000000
 -          path: dist/python-sdk
 -
 -      - name: Publish Python SDK to PyPI
--        uses: pypa/gh-action-pypi-publish@ed0c53931b1dc9bd32cbe73a98c7f6766f8a527e # v1.13.0
+-        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 -        with:
 -          packages-dir: dist/python-sdk
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
@@ -1520,10 +1538,10 @@ index 96a0768..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 6c82ebc..f89f6cc 100644
+index be2b9aa..3ce7027 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -6,9 +6,7 @@ on:
+@@ -6,62 +6,49 @@ on:
  jobs:
    build-test:
      runs-on: ubuntu-latest
@@ -1534,22 +1552,38 @@ index 6c82ebc..f89f6cc 100644
      steps:
        - name: Checkout repository
          uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-@@ -16,80 +14,39 @@ jobs:
-           ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+         with:
++          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
            persist-credentials: false
  
 -      - uses: ./.github/actions/setup-ci
--
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        with:
++          components: rustfmt
+ 
 -      - name: Verify codex-rs Cargo manifests inherit workspace settings
 -        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
--
++      - name: Bootstrap tree if needed
++        run: |
++          if [[ ! -d codex-rs ]]; then
++            bash scripts/bootstrap.sh
++          fi
++          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+ 
 -      - name: Verify codex-tui does not import codex-core directly
 -        run: python3 .github/scripts/verify_tui_core_boundary.py
--
++      - name: Validate patch-module layout
++        run: |
++          bash scripts/check-patch-modules.sh --patches patches
++          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
+ 
 -      - name: Verify Bazel clippy flags match Cargo workspace lints
 -        run: python3 .github/scripts/verify_bazel_clippy_lints.py
--
--      - name: Test Codex package builder
++      - name: Verify codex-tui does not import codex-core directly
++        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
+ 
+       - name: Test Codex package builder
 -        run: python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 -
 -      - name: Test standalone installer
@@ -1560,11 +1594,9 @@ index 6c82ebc..f89f6cc 100644
 -
 -      - name: Setup pnpm
 -        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-         with:
+-        with:
 -          run_install: false
-+          components: rustfmt
- 
+-
 -      - name: Setup Node.js
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
 -        with:
@@ -1572,62 +1604,23 @@ index 6c82ebc..f89f6cc 100644
 -
 -      - name: Install dependencies
 -        run: pnpm install --frozen-lockfile
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
++        env:
++          # The package-builder tests require CODEX_REPO_ROOT (upstream sets it
++          # in .github/actions/setup-ci, which the fork does not use).
++          CODEX_REPO_ROOT: ${{ env.TREE_DIR }}
++        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
  
--      - name: Stage npm package
--        id: stage_npm_package
--        env:
--          GH_TOKEN: ${{ github.token }}
-+      - name: Validate patch-module layout
-         run: |
--          set -euo pipefail
--          # Use a recent successful rust-release run that published the full
--          # cross-platform native payload required by the npm package layout.
--          # Passing the workflow URL directly avoids relying on old rust-v*
--          # branches remaining discoverable via `gh run list --branch ...`.
--          CODEX_VERSION=0.133.0-alpha.4
--          WORKFLOW_URL="https://github.com/openai/codex/actions/runs/26201494185"
--          OUTPUT_DIR="${RUNNER_TEMP}"
--          python3 ./scripts/stage_npm_packages.py \
--            --release-version "$CODEX_VERSION" \
--            --workflow-url "$WORKFLOW_URL" \
--            --package codex \
--            --output-dir "$OUTPUT_DIR"
--          PACK_OUTPUT="${OUTPUT_DIR}/codex-npm-${CODEX_VERSION}.tgz"
--          echo "pack_output=$PACK_OUTPUT" >> "$GITHUB_OUTPUT"
-+          if [[ -d patches && -f patches/0001-*.patch ]]; then
-+            bash scripts/check-patch-modules.sh --patches patches
-+          fi
-+          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
- 
--      - name: Upload staged npm package artifact
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: codex-npm-staging
--          path: ${{ steps.stage_npm_package.outputs.pack_output }}
-+      - name: Verify codex-tui does not import codex-core directly
-+        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
- 
--      - name: Ensure root README.md contains only ASCII and certain Unicode code points
+       - name: Ensure root README.md contains only ASCII and certain Unicode code points
 -        run: ./scripts/asciicheck.py README.md
 -      - name: Check root README ToC
 -        run: python3 scripts/readme_toc.py README.md
-+      - name: Test Codex package builder
-+        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
- 
+-
 -      - name: Install uv
 -        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 -        with:
 -          version: "0.11.3"
 -      - name: Check formatting (run `just fmt` to fix)
 -        run: just fmt-check
-+      - name: Ensure root README.md contains only ASCII and certain Unicode code points
 +        if: hashFiles('README.md') != ''
 +        run: python3 "${TREE_DIR}/scripts/asciicheck.py" README.md
  
@@ -1642,10 +1635,10 @@ index 6c82ebc..f89f6cc 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index 0908250..0000000
+index e86bc0b..0000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
-@@ -1,450 +0,0 @@
+@@ -1,434 +0,0 @@
 -name: rust-ci-full nextest platform
 -
 -on:
@@ -1811,14 +1804,6 @@ index 0908250..0000000
 -          tool: nextest
 -          version: 0.9.103
 -
--      - name: Enable unprivileged user namespaces (Linux)
--        if: runner.os == 'Linux'
--        run: |
--          sudo sysctl -w kernel.unprivileged_userns_clone=1
--          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
--            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
--          fi
--
 -      - name: Build nextest archive
 -        shell: bash
 -        run: |
@@ -1959,14 +1944,6 @@ index 0908250..0000000
 -        with:
 -          tool: nextest
 -          version: 0.9.103
--
--      - name: Enable unprivileged user namespaces (Linux)
--        if: runner.os == 'Linux'
--        run: |
--          sudo sysctl -w kernel.unprivileged_userns_clone=1
--          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
--            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
--          fi
 -
 -      - name: Set up remote test env (Docker)
 -        if: ${{ runner.os == 'Linux' && inputs.remote_env }}
@@ -2678,10 +2655,10 @@ index 9e8b116..0000000
 -          echo "Per-job sccache stats are attached to each matrix job's Step Summary."
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
 deleted file mode 100644
-index 01d51aa..0000000
+index 3702bec..0000000
 --- a/.github/workflows/rust-ci.yml
 +++ /dev/null
-@@ -1,268 +0,0 @@
+@@ -1,263 +0,0 @@
 -name: rust-ci
 -on:
 -  workflow_call:
@@ -2700,7 +2677,6 @@ index 01d51aa..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          fetch-depth: 0
 -          persist-credentials: false
 -      - name: Detect changed paths (no external action)
@@ -2753,7 +2729,6 @@ index 01d51aa..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -2779,7 +2754,6 @@ index 01d51aa..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -2804,7 +2778,6 @@ index 01d51aa..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -2891,7 +2864,6 @@ index 01d51aa..0000000
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -      - name: Run argument comment lint on codex-rs via Bazel
 -        if: ${{ steps.argument_comment_lint_gate.outputs.run == 'true' }}
@@ -3740,10 +3712,10 @@ index e814ec3..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 72b6e23..c4c3956 100644
+index e07c23b..5328069 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,227 +1,151 @@
+@@ -1,229 +1,153 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -3772,15 +3744,20 @@ index 72b6e23..c4c3956 100644
 -      - "rust-v*.*.*"
 -
 -env:
+-  CODEX_REPO_ROOT: ${{ github.workspace }}
 -  CODEX_ZSH_RELEASE_TAG: codex-zsh-v0.1.0
+-  CODEX_ZSH_MANIFEST_SHA256: c534eab89dcea7e3d8a5e5b3f49c025c7c64cd4e4d9814ee24871de58a9359a1
 +      - "rust-v*"
 +      - "v*"
  
  concurrency:
-   group: ${{ github.workflow }}
+-  group: ${{ github.workflow }}
 -  cancel-in-progress: false
 +  # Tag re-pushes supersede stale release runs (e.g. after force-updating the
-+  # release tag during an iteration), so never queue behind an old run.
++  # release tag during an iteration), so never queue behind an old run. The
++  # group is scoped to the ref so building one tag never cancels another tag's
++  # release, and a cancellation can never land between delete and create.
++  group: ${{ github.workflow }}-${{ github.ref }}
 +  cancel-in-progress: true
  
  jobs:
@@ -4051,7 +4028,7 @@ index 72b6e23..c4c3956 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1429 +161,78 @@ jobs:
+@@ -239,1430 +163,80 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4081,9 +4058,8 @@ index 72b6e23..c4c3956 100644
 -          if-no-files-found: warn
 -
 -      - name: Build symbols archive and strip binaries
-+      - name: Build codex
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          binaries=()
 -          for binary in ${{ matrix.binaries }}; do
 -            # bwrap is already stripped before hashing. Its symbols are not
@@ -4099,9 +4075,7 @@ index 72b6e23..c4c3956 100644
 -            --release-dir "target/${{ matrix.target }}/release" \
 -            --archive-dir "symbols-dist/${{ matrix.artifact_name }}" \
 -            --binaries "${binaries[*]}"
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-
 -      - name: Upload symbols archive
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
@@ -4111,14 +4085,12 @@ index 72b6e23..c4c3956 100644
 -
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
-+      - name: Stage archive
-         shell: bash
-         run: |
-           set -euo pipefail
+-        shell: bash
+-        run: |
+-          set -euo pipefail
 -
-+          cd "${CODE_DIR}"
-           target="${{ matrix.target }}"
-           release_dir="target/${target}/release"
+-          target="${{ matrix.target }}"
+-          release_dir="target/${target}/release"
 -          dest="unsigned-dist/${target}"
 -          mkdir -p "$dest"
 -
@@ -4130,9 +4102,7 @@ index 72b6e23..c4c3956 100644
 -              echo "Binary ${binary_path} not found"
 -              exit 1
 -            fi
-+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
- 
+-
 -            cp "${binary_path}" "${unsigned_path}"
 -            tar -C "$dest" -czf "${unsigned_path}.tar.gz" "${unsigned_name}"
 -            zstd -T0 -19 --rm "${unsigned_path}"
@@ -4159,8 +4129,7 @@ index 72b6e23..c4c3956 100644
 -        shell: bash
 -        run: |
 -          dest="dist/${{ matrix.target }}"
-+          dest="dist/${target}"
-           mkdir -p "$dest"
+-          mkdir -p "$dest"
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
@@ -4187,6 +4156,8 @@ index 72b6e23..c4c3956 100644
 -          curl -fsSL \
 -            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${CODEX_ZSH_RELEASE_TAG}/codex-zsh" \
 -            -o "${RUNNER_TEMP}/codex-zsh"
+-          bash "${GITHUB_WORKSPACE}/.github/scripts/verify-zsh-manifest.sh" \
+-            "${RUNNER_TEMP}/codex-zsh" "$CODEX_ZSH_MANIFEST_SHA256"
 -
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
@@ -4248,26 +4219,12 @@ index 72b6e23..c4c3956 100644
 -
 -      - name: Upload Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
-+          cp "${release_dir}/codex" "$dest/codex"
-+          cp "${release_dir}/bwrap" "$dest/bwrap"
-+          chmod +x "$dest/codex" "$dest/bwrap"
-+
-+          # The archive layout is consumed by `codex update`: `codex` and
-+          # `bwrap` at the archive root.
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "$dest/codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
-+
-+      - name: Upload archive
-         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-         with:
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
 -          name: python-runtime-wheel-${{ matrix.target }}
 -          path: python-runtime-dist/${{ matrix.target }}/*.whl
-+          name: dist-${{ matrix.target }}
-+          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
-           if-no-files-found: error
- 
+-          if-no-files-found: error
+-
 -      - name: Compress artifacts
 -        if: ${{ runner.os != 'macOS' }}
 -        shell: bash
@@ -4374,14 +4331,14 @@ index 72b6e23..c4c3956 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign and notarize macOS binaries
--        shell: bash
++      - name: Build codex
+         shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          BINARIES: ${{ matrix.binaries }}
--          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
--        run: |
+         run: |
 -          set -euo pipefail
 -
 -          input_dir="${RUNNER_TEMP}/unsigned-macos"
@@ -4399,7 +4356,9 @@ index 72b6e23..c4c3956 100644
 -
 -            zstd -d --stdout "$unsigned_path" >"$signed_path"
 -            chmod 0755 "$signed_path"
--
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release --bin codex
+ 
 -            entitlements="${GITHUB_WORKSPACE}/.github/scripts/macos-signing/${binary}.entitlements.plist"
 -            if [[ ! -f "$entitlements" ]]; then
 -              echo "Entitlements file $entitlements not found"
@@ -4426,14 +4385,14 @@ index 72b6e23..c4c3956 100644
 -
 -      - name: Fetch, sign, and notarize pinned macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
--        shell: bash
++      - name: Stage archive
+         shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
--          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
--        run: |
--          set -euo pipefail
+         run: |
+           set -euo pipefail
 -
 -          signed_root="${GITHUB_WORKSPACE}/signed-resources/${TARGET}"
 -          zsh_manifest="${RUNNER_TEMP}/codex-zsh-${TARGET}"
@@ -4441,6 +4400,8 @@ index 72b6e23..c4c3956 100644
 -          curl -fsSL \
 -            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${CODEX_ZSH_RELEASE_TAG}/codex-zsh" \
 -            -o "$zsh_manifest"
+-          bash "${GITHUB_WORKSPACE}/.github/scripts/verify-zsh-manifest.sh" \
+-            "$zsh_manifest" "$CODEX_ZSH_MANIFEST_SHA256"
 -
 -          PYTHONPATH="${GITHUB_WORKSPACE}/scripts" python3 - "$TARGET" "$signed_root" "$zsh_manifest" <<'PY'
 -          import shutil
@@ -4579,8 +4540,9 @@ index 72b6e23..c4c3956 100644
 -        run: |
 -          set -euo pipefail
 -
--          target="${{ matrix.target }}"
--          release_dir="target/${target}/release"
++          cd "${CODE_DIR}"
+           target="${{ matrix.target }}"
+           release_dir="target/${target}/release"
 -          dmg_root="${RUNNER_TEMP}/codex-dmg-root-${target}"
 -          volname="Codex (${target})"
 -          dmg_path="${release_dir}/codex-${target}.dmg"
@@ -4596,7 +4558,9 @@ index 72b6e23..c4c3956 100644
 -            fi
 -            ditto "$binary_path" "${dmg_root}/${binary}"
 -          done
--
++          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
++          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+ 
 -          rm -f "$dmg_path"
 -          hdiutil create \
 -            -volname "$volname" \
@@ -4623,7 +4587,8 @@ index 72b6e23..c4c3956 100644
 -        run: |
 -          set -euo pipefail
 -          dest="dist/${{ matrix.target }}"
--          mkdir -p "$dest"
++          dest="dist/${target}"
+           mkdir -p "$dest"
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
@@ -4763,7 +4728,6 @@ index 72b6e23..c4c3956 100644
 -        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
--          APPLE_NOTARIZATION_ISSUER_ID: ${{ secrets.APPLE_NOTARIZATION_ISSUER_ID }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
 -        run: |
@@ -4794,12 +4758,26 @@ index 72b6e23..c4c3956 100644
 -            >"${report_dir}/signature-info.yaml"
 -
 -      - name: Upload signed macOS DMG
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
++          cp "${release_dir}/codex" "$dest/codex"
++          cp "${release_dir}/bwrap" "$dest/bwrap"
++          chmod +x "$dest/codex" "$dest/bwrap"
++
++          # The archive layout is consumed by `codex update`: `codex` and
++          # `bwrap` at the archive root.
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
++
++      - name: Upload archive
+         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+         with:
 -          name: ${{ matrix.artifact_name }}-signed-dmg
 -          path: ${{ runner.temp }}/unsigned-dmg/codex-${{ matrix.target }}.dmg
--          if-no-files-found: error
--
++          name: dist-${{ matrix.target }}
++          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
+           if-no-files-found: error
+ 
 -      - name: Upload DMG signing verification
 -        if: ${{ always() }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -5080,18 +5058,18 @@ index 72b6e23..c4c3956 100644
 -
 -      - name: Download target artifacts
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          path: dist
+-          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
+-
+-      - name: Download supplemental release artifacts
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 +      - name: Download archives
 +        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
          with:
 +          pattern: dist-*
 +          merge-multiple: true
            path: dist
--          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
- 
--      - name: Download supplemental release artifacts
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
--          path: dist
 -          pattern: "{*-symbols,argument-comment-lint-*,python-runtime-wheel-*}"
 -
 -      - name: List
@@ -5162,7 +5140,7 @@ index 72b6e23..c4c3956 100644
 -        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
 -        with:
 -          run_install: false
--
+ 
 -      - name: Setup Node.js for npm packaging
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
 -        with:
@@ -5517,14 +5495,16 @@ index 72b6e23..c4c3956 100644
 -            -f sha="${GITHUB_SHA}" \
 -            -F force=true
 +          # Tag re-pushes supersede earlier builds; replace the previous
-+          # release for this tag instead of failing on duplicate assets.
++          # release's assets instead of deleting the release, so a failed or
++          # cancelled run can never leave the tag without a release.
 +          if gh release view "${tag}" >/dev/null 2>&1; then
-+            echo "Release ${tag} already exists; replacing it with the new build."
-+            gh release delete "${tag}" --yes
++            echo "Release ${tag} already exists; replacing its assets with the new build."
++          else
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
 +          fi
-+          gh release create "${tag}" "${assets[@]}" \
-+              --title "codEx ${tag}" \
-+              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
++          gh release upload "${tag}" "${assets[@]}" --clobber
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
 index a2f620a..0000000
@@ -6009,10 +5989,10 @@ index a2f620a..0000000
 -          prerelease: true
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 0c6bb89..0000000
+index f2e8fc7..0000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
-@@ -1,168 +0,0 @@
+@@ -1,166 +0,0 @@
 -name: sdk
 -
 -on:
@@ -6028,7 +6008,6 @@ index 0c6bb89..0000000
 -      - name: Checkout repository
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Test Python SDK
@@ -6070,7 +6049,6 @@ index 0c6bb89..0000000
 -      - name: Checkout repository
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Install Linux bwrap build dependencies
@@ -6183,10 +6161,10 @@ index 0c6bb89..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index 97610cd..0000000
+index b804086..0000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
-@@ -1,447 +0,0 @@
+@@ -1,445 +0,0 @@
 -name: v8-canary
 -
 -# Do not use trigger-level path filters here. This workflow is also called by
@@ -6206,9 +6184,9 @@ index 97610cd..0000000
 -  metadata:
 -    runs-on: ubuntu-latest
 -    outputs:
--      # A stale PR head can contain the old detector, which does not emit this
--      # output. Missing must mean "run" so older branches cannot silently skip
--      # the expensive V8 coverage while reporting success.
+-      # Older revisions can contain a detector that does not emit this output.
+-      # Missing must mean "run" so they cannot silently skip the expensive V8
+-      # coverage while reporting success.
 -      canary_required: ${{ steps.changes.outputs.canary_required || 'true' }}
 -      v8_version: ${{ steps.v8_version.outputs.version }}
 -      windows_source_required: ${{ steps.changes.outputs.windows_source_required }}
@@ -6216,7 +6194,6 @@ index 97610cd..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          fetch-depth: 0
 -          persist-credentials: false
 -
@@ -6362,7 +6339,6 @@ index 97610cd..0000000
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
--          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Set up Bazel
@@ -6636,10 +6612,10 @@ index 97610cd..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 0000000..c56fcf3
+index 0000000..834ee10
 --- /dev/null
 +++ b/install.sh
-@@ -0,0 +1,197 @@
+@@ -0,0 +1,198 @@
 +#!/bin/sh
 +#
 +# codEx standalone installer
@@ -6715,10 +6691,10 @@ index 0000000..c56fcf3
 +      printf 'x86_64-unknown-linux-musl\n'
 +      ;;
 +    Linux-aarch64 | Linux-arm64)
-+      printf 'aarch64-unknown-linux-musl\n'
++      die "codEx does not publish aarch64 binaries yet; only x86_64-unknown-linux-musl releases are available"
 +      ;;
 +    *)
-+      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 and aarch64 binaries only"
++      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 binaries only"
 +      ;;
 +  esac
 +}
@@ -6726,7 +6702,8 @@ index 0000000..c56fcf3
 +resolve_latest_tag() {
 +  curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
 +    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-+    head -1
++    head -1 ||
++    die "failed to fetch the latest release tag from $API_BASE_URL"
 +}
 +
 +file_sha256() {
@@ -6839,10 +6816,10 @@ index 0000000..c56fcf3
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 81bc6d4..0000000
+index eb1fe27..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,21 +0,0 @@
+@@ -1,22 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -6861,6 +6838,7 @@ index 81bc6d4..0000000
 -    "v8_source_portability.patch",
 -    "webrtc-sys_hermetic_darwin_sysroot.patch",
 -    "windows-link.patch",
+-    "windows-support-remote-case-aliases.patch",
 -    "xz_windows_stack_args.patch",
 -    "zstd-sys_windows_msvc_include_dirs.patch",
 -])
@@ -8848,5 +8826,5 @@ index c45a360..0000000
 -     config.define("XXH_PRIVATE_API", Some(""));
 -     config.define("ZSTDLIB_VISIBILITY", Some(""));
 -- 
-2.55.0
+2.47.3
 

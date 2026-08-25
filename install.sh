@@ -73,10 +73,10 @@ detect_target() {
       printf 'x86_64-unknown-linux-musl\n'
       ;;
     Linux-aarch64 | Linux-arm64)
-      printf 'aarch64-unknown-linux-musl\n'
+      die "codEx does not publish aarch64 binaries yet; only x86_64-unknown-linux-musl releases are available"
       ;;
     *)
-      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 and aarch64 binaries only"
+      die "unsupported platform $os-$arch; codEx publishes Linux x86_64 binaries only"
       ;;
   esac
 }
@@ -84,7 +84,8 @@ detect_target() {
 resolve_latest_tag() {
   curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
     sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-    head -1
+    head -1 ||
+    die "failed to fetch the latest release tag from $API_BASE_URL"
 }
 
 file_sha256() {

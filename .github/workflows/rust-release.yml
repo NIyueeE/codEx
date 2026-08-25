@@ -19,9 +19,11 @@ on:
       - "v*"
 
 concurrency:
-  group: ${{ github.workflow }}
   # Tag re-pushes supersede stale release runs (e.g. after force-updating the
-  # release tag during an iteration), so never queue behind an old run.
+  # release tag during an iteration), so never queue behind an old run. The
+  # group is scoped to the ref so building one tag never cancels another tag's
+  # release, and a cancellation can never land between delete and create.
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -228,11 +230,13 @@ jobs:
             exit 1
           fi
           # Tag re-pushes supersede earlier builds; replace the previous
-          # release for this tag instead of failing on duplicate assets.
+          # release's assets instead of deleting the release, so a failed or
+          # cancelled run can never leave the tag without a release.
           if gh release view "${tag}" >/dev/null 2>&1; then
-            echo "Release ${tag} already exists; replacing it with the new build."
-            gh release delete "${tag}" --yes
+            echo "Release ${tag} already exists; replacing its assets with the new build."
+          else
+            gh release create "${tag}" \
+                --title "codEx ${tag}" \
+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
           fi
-          gh release create "${tag}" "${assets[@]}" \
-              --title "codEx ${tag}" \
-              --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+          gh release upload "${tag}" "${assets[@]}" --clobber

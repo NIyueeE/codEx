@@ -1,25 +1,29 @@
-From ee66a53a7ada6273ad9c6fe98564343a5f18166c Mon Sep 17 00:00:00 2001
+From c452d4119819dbd0393e5d9327afeebacdfddd3b Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: branding: codEx name and version output
 
 ---
- codex-rs/cli/tests/sandbox_cloud_config.rs                  | 4 +++-
- codex-rs/exec/src/event_processor_with_human_output.rs      | 2 +-
- codex-rs/login/src/device_code_auth.rs                      | 4 ++--
- codex-rs/login/src/device_code_auth_tests.rs                | 2 +-
- codex-rs/tui/src/app/tests/session_lifecycle_requests.rs    | 4 ++--
- codex-rs/tui/src/history_cell/session.rs                    | 6 +++---
- ..._cell__tests__session_header_clamps_to_narrow_width.snap | 2 +-
- ...ory_cell__tests__session_header_halfwidth_directory.snap | 4 ++--
- ...y_cell__tests__session_header_halfwidth_sound_marks.snap | 4 ++--
- ...ory_cell__tests__session_header_indicates_yolo_mode.snap | 4 ++--
- codex-rs/tui/src/onboarding/welcome.rs                      | 4 ++--
- ...s__clear_ui_after_long_transcript_fresh_header_only.snap | 4 ++--
- ...ts__clear_ui_header_fast_status_fast_capable_models.snap | 4 ++--
- codex-rs/tui/src/status/card.rs                             | 2 +-
- codex-rs/tui/tests/suite/focus_palette.rs                   | 2 +-
- 15 files changed, 27 insertions(+), 25 deletions(-)
+ codex-rs/cli/tests/sandbox_cloud_config.rs           |  4 +++-
+ .../exec/src/event_processor_with_human_output.rs    |  2 +-
+ codex-rs/login/src/device_code_auth.rs               |  4 ++--
+ codex-rs/login/src/device_code_auth_tests.rs         |  2 +-
+ .../tui/src/app/tests/session_lifecycle_requests.rs  |  4 ++--
+ codex-rs/tui/src/chatwidget/rendering_tests.rs       |  2 +-
+ codex-rs/tui/src/history_cell/session.rs             |  6 +++---
+ ...tests__session_header_clamps_to_narrow_width.snap |  2 +-
+ ...l__tests__session_header_halfwidth_directory.snap |  4 ++--
+ ..._tests__session_header_halfwidth_sound_marks.snap |  4 ++--
+ ...l__tests__session_header_indicates_yolo_mode.snap |  4 ++--
+ codex-rs/tui/src/onboarding/welcome.rs               |  4 ++--
+ ...r_ui_after_long_transcript_fresh_header_only.snap |  4 ++--
+ ...ar_ui_header_fast_status_fast_capable_models.snap |  4 ++--
+ ...sts__startup_draft_fresh_session_transitions.snap | 12 ++++++------
+ ...rtup_draft__tests__startup_draft_full_frames.snap | 10 +++++-----
+ ...__tests__startup_draft_onboarding_transition.snap |  2 +-
+ codex-rs/tui/src/status/card.rs                      |  2 +-
+ codex-rs/tui/tests/suite/focus_palette.rs            |  2 +-
+ 19 files changed, 40 insertions(+), 38 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
 index 81fbf07..f43276f 100644
@@ -80,10 +84,10 @@ index ba6071b..5ee6210 100644
      ));
  }
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index c560f72..9d86935 100644
+index 23c2fe7..b9ef897 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -933,14 +933,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -1024,14 +1024,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          };
          let partial = render_overlay(overlay);
          assert!(partial.contains("Earlier messages are available — scroll up to load them"));
@@ -100,6 +104,19 @@ index c560f72..9d86935 100644
          assert!(!loading.contains('%'));
      } else {
          panic!("expected transcript overlay");
+diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
+index e3cf4ab..5614006 100644
+--- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
++++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
+@@ -102,7 +102,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+ 
+     insta::assert_snapshot!(header.replace(&cwd, &normalized_cwd), @r"
+     ╭───────────────────────────────────────╮
+-    │ >_ OpenAI Codex (v<VERSION>)              │
++    │ >_ codEx (v<VERSION>)                   │
+     │                                       │
+     │ model:     loading   /model to change │
+     │ directory: /tmp/project               │
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
 index 03df014..05c9723 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
@@ -246,11 +263,131 @@ index 08afd02..d545154 100644
  │                                                    │
  │ model:     gpt-5.4 xhigh   fast   /model to change │
  │ directory: /tmp/project                            │
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
+index 32f6de9..d5474c7 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
+@@ -5,7 +5,7 @@ expression: "snapshots.join(\"\\n---\\n\")"
+ resume lookup fallback:
+ before:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -17,7 +17,7 @@ before:
+ 
+ after:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -31,7 +31,7 @@ after:
+ fork lookup fallback:
+ before:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -43,7 +43,7 @@ before:
+ 
+ after:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -59,7 +59,7 @@ before:
+ hidden while picker owns input
+ after:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -75,7 +75,7 @@ before:
+ hidden while picker owns input
+ after:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
+index 9195af7..b9966d3 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
+@@ -4,7 +4,7 @@ expression: "snapshots.join(\"\\n---\\n\")"
+ ---
+ empty (48 columns):
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -17,7 +17,7 @@ empty (48 columns):
+ ---
+ resuming (48 columns):
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -30,7 +30,7 @@ resuming (48 columns):
+ ---
+ forking (48 columns):
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -43,7 +43,7 @@ forking (48 columns):
+ ---
+ multiline (48 columns):
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
+@@ -57,7 +57,7 @@ multiline (48 columns):
+ ---
+ narrow (18 columns):
+ ╭────────────────╮
+-│ >_ OpenAI Cod… │
++│ >_ codEx (v0.… │
+ │                │
+ │ model:     lo… │
+ │ directory: …ng │
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
+index 6284b07..edeaf03 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
+@@ -6,7 +6,7 @@ before onboarding: hidden (0x0 viewport)
+ ---
+ after onboarding:
+ ╭───────────────────────────────────────╮
+-│ >_ OpenAI Codex (v<VERSION>)              │
++│ >_ codEx (v<VERSION>)                   │
+ │                                       │
+ │ model:     loading   /model to change │
+ │ directory: loading                    │
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 382a9e3..7a36643 100644
+index 93f959c..1037a50 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -708,7 +708,7 @@ impl HistoryCell for StatusHistoryCell {
+@@ -727,7 +727,7 @@ impl HistoryCell for StatusHistoryCell {
          let mut lines: Vec<Line<'static>> = Vec::new();
          lines.push(Line::from(vec![
              Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
@@ -260,10 +397,10 @@ index 382a9e3..7a36643 100644
              Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
          ]));
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index c820024..c8d63d2 100644
+index 5b96726..1bbf1e4 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
-@@ -125,7 +125,7 @@ impl PtyCodex {
+@@ -126,7 +126,7 @@ impl PtyCodex {
              self.read_output(Duration::from_millis(/*millis*/ 50))?;
              self.answer_startup_queries()?;
  
@@ -273,5 +410,5 @@ index c820024..c8d63d2 100644
              }
  
 -- 
-2.55.0
+2.47.3
 

@@ -35,6 +35,10 @@ jobs:
         run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
 
       - name: Test Codex package builder
+        env:
+          # The package-builder tests require CODEX_REPO_ROOT (upstream sets it
+          # in .github/actions/setup-ci, which the fork does not use).
+          CODEX_REPO_ROOT: ${{ env.TREE_DIR }}
         run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
 
       - name: Ensure root README.md contains only ASCII and certain Unicode code points

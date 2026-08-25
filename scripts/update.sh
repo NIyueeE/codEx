@@ -38,6 +38,22 @@ code_dir="${work_dir}/codex-rs"
 rm -rf "${work_dir}"
 echo "Cloning https://github.com/${repo}.git at ${upstream_tag} ..."
 git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" "${work_dir}"
+
+# `git am --3way` rebuilds a fake ancestor from the blob SHAs recorded in each
+# patch. A shallow clone of the *new* tag only carries that tag's blobs, so any
+# patched file that changed since the current BASE_TAG makes `git am` fail with
+# "sha1 information is lacking or useless" before conflict resolution can even
+# start. Fetch the old base tag too so those pre-image blobs resolve locally.
+old_base_tag="$(cat "${repo_root}/BASE_TAG" 2>/dev/null || true)"
+if [[ -n "${old_base_tag}" && "${old_base_tag}" != "${upstream_tag}" ]]; then
+  echo "Fetching previous base ${old_base_tag} for three-way merge ..."
+  if ! git -C "${work_dir}" fetch --depth 1 \
+      "+refs/tags/${old_base_tag}:refs/tags/${old_base_tag}" 2>/dev/null; then
+    echo "warning: could not fetch ${old_base_tag}; the queue may fail to apply" >&2
+    echo "warning: if 'git am' reports missing blob SHAs, fetch the tag manually." >&2
+  fi
+fi
+
 cd "${work_dir}"
 git config user.name "codEx Fork Bot"
 git config user.email "codex-fork-bot@localhost"

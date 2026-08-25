@@ -1,13 +1,16 @@
-From 36a0147ff5796be5b717ba7dad7ce3bcb8ed6cca Mon Sep 17 00:00:00 2001
+From 6a3ca445b1e9a9a8cb2979d683331d8079815bcf Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
 
 ---
+ codex-rs/app-server-daemon/src/lib.rs         |   2 +-
+ codex-rs/app-server-daemon/src/update_loop.rs | 111 +-----
+ .../src/update_loop_tests.rs                  |  63 ---
  codex-rs/cli/Cargo.toml                       |   3 +
  codex-rs/cli/src/doctor/updates.rs            |  53 +--
  codex-rs/cli/src/main.rs                      |  90 ++---
- codex-rs/cli/src/self_update.rs               | 345 ++++++++++++++++++
+ codex-rs/cli/src/self_update.rs               | 362 ++++++++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 ---
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
  ...pdate_available_history_cell_snapshot.snap |  11 -
@@ -15,24 +18,280 @@ Subject: update: pure-Rust self-update against fork releases
  ...pdate_available_history_cell_snapshot.snap |  14 +-
  ...pdate_available_history_cell_snapshot.snap |  12 -
  codex-rs/tui/src/history_cell/tests.rs        |  18 -
- codex-rs/tui/src/update_action.rs             | 105 ++----
+ codex-rs/tui/src/update_action.rs             | 105 +----
  codex-rs/tui/src/update_prompt.rs             |   7 +-
  codex-rs/tui/src/update_versions.rs           |  23 +-
  codex-rs/tui/src/updates.rs                   |  52 +--
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 17 files changed, 492 insertions(+), 340 deletions(-)
+ 20 files changed, 517 insertions(+), 508 deletions(-)
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
  create mode 100644 codex-rs/utils/cli/src/fork.rs
 
+diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
+index c909788..8f6d26b 100644
+--- a/codex-rs/app-server-daemon/src/lib.rs
++++ b/codex-rs/app-server-daemon/src/lib.rs
+@@ -674,7 +674,7 @@ impl Daemon {
+             "managed standalone Codex install not found at {managed_codex_path}\n\n\
+              This command requires the standalone install managed by the Codex installer, because \
+              the daemon starts and updates app-server from that fixed path.\n\n\
+-             Install it with:\n  curl -fsSL https://chatgpt.com/codex/install.sh | sh\n\n\
++             Install it from the codEx fork releases:\n  https://github.com/NIyueeE/codEx/releases\n\n\
+              Then rerun the command you just tried."
+         ))
+     }
+diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
+index 76fd948..2257234 100644
+--- a/codex-rs/app-server-daemon/src/update_loop.rs
++++ b/codex-rs/app-server-daemon/src/update_loop.rs
+@@ -1,8 +1,6 @@
+ #[cfg(unix)]
+ use std::process::Command as StdCommand;
+ #[cfg(unix)]
+-use std::process::Stdio;
+-#[cfg(unix)]
+ use std::time::Duration;
+ 
+ #[cfg(unix)]
+@@ -10,20 +8,12 @@ use anyhow::Context;
+ use anyhow::Result;
+ #[cfg(not(unix))]
+ use anyhow::bail;
+-#[cfg(unix)]
+-use codex_http_client::ClientRouteClass;
+ use codex_http_client::HttpClientFactory;
+ #[cfg(unix)]
+-use codex_http_client::RouteAwareClientPool;
+-#[cfg(unix)]
+ use futures::FutureExt;
+ #[cfg(unix)]
+ use std::os::unix::process::CommandExt;
+ #[cfg(unix)]
+-use tokio::io::AsyncWriteExt;
+-#[cfg(unix)]
+-use tokio::process::Command;
+-#[cfg(unix)]
+ use tokio::signal::unix::Signal;
+ #[cfg(unix)]
+ use tokio::signal::unix::SignalKind;
+@@ -54,22 +44,15 @@ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
+ #[cfg(unix)]
+ const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+ #[cfg(unix)]
+-const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
+-
+-#[cfg(unix)]
+-pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
++pub(crate) async fn run(_http_client_factory: HttpClientFactory) -> Result<()> {
+     let mut terminate =
+         signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
+     let running_updater_identity = current_updater_identity().await?;
+-    let http = RouteAwareClientPool::new_without_request_logging(
+-        http_client_factory,
+-        ClientRouteClass::Other,
+-    );
+     if sleep_or_terminate(INITIAL_UPDATE_DELAY, &mut terminate).await {
+         return Ok(());
+     }
+     loop {
+-        match update_once(&http, &running_updater_identity, &mut terminate).await {
++        match update_once(&running_updater_identity, &mut terminate).await {
+             Ok(UpdateLoopControl::Continue) | Err(_) => {}
+             Ok(UpdateLoopControl::Stop) => return Ok(()),
+         }
+@@ -100,12 +83,14 @@ enum UpdateLoopControl {
+ 
+ #[cfg(unix)]
+ async fn update_once(
+-    http: &RouteAwareClientPool,
+     running_updater_identity: &ExecutableIdentity,
+     terminate: &mut Signal,
+ ) -> Result<UpdateLoopControl> {
+-    install_latest_standalone(http).await?;
+-
++    // The codEx fork never auto-installs from a remote script: upstream's
++    // loop piped https://chatgpt.com/codex/install.sh into /bin/sh, which
++    // would replace codEx with upstream Codex. Updates go through `codex
++    // update` against fork releases; this loop only supervises the managed
++    // binary and re-executes the updater when an external update changed it.
+     let daemon = Daemon::from_environment()?;
+     let managed_codex_bin = resolved_managed_codex_bin(&daemon.managed_codex_bin).await?;
+     let managed_identity = executable_identity(&managed_codex_bin).await?;
+@@ -165,88 +150,6 @@ pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Res
+     })
+ }
+ 
+-#[cfg(unix)]
+-async fn install_latest_standalone(http: &RouteAwareClientPool) -> Result<()> {
+-    let script = fetch_installer_script(http).await?;
+-
+-    let mut child = Command::new("/bin/sh")
+-        .arg("-s")
+-        .stdin(Stdio::piped())
+-        .stdout(Stdio::null())
+-        .stderr(Stdio::null())
+-        .spawn()
+-        .context("failed to invoke standalone Codex updater")?;
+-    let mut stdin = child
+-        .stdin
+-        .take()
+-        .context("standalone Codex updater stdin was unavailable")?;
+-    stdin
+-        .write_all(&script)
+-        .await
+-        .context("failed to pass standalone Codex updater to shell")?;
+-    drop(stdin);
+-    let status = child
+-        .wait()
+-        .await
+-        .context("failed to wait for standalone Codex updater")?;
+-
+-    if status.success() {
+-        Ok(())
+-    } else {
+-        anyhow::bail!("standalone Codex updater exited with status {status}")
+-    }
+-}
+-
+-#[cfg(unix)]
+-async fn fetch_installer_script(http: &impl InstallerHttp) -> Result<Vec<u8>> {
+-    match http.get(INSTALL_URL).await? {
+-        InstallerResponse::Success(body) => Ok(body),
+-        InstallerResponse::Unsuccessful { status } => {
+-            anyhow::bail!("standalone Codex updater request failed with status {status}")
+-        }
+-    }
+-}
+-
+-#[cfg(unix)]
+-#[derive(Clone, Debug, PartialEq, Eq)]
+-enum InstallerResponse {
+-    Success(Vec<u8>),
+-    Unsuccessful { status: u16 },
+-}
+-
+-#[cfg(unix)]
+-/// HTTP boundary used to download the standalone installer.
+-///
+-/// Implementations must issue a GET for the supplied URL, return exact response bytes for a
+-/// successful status, and report a non-success status without buffering its response body.
+-trait InstallerHttp: Send + Sync {
+-    fn get<'a>(
+-        &'a self,
+-        url: &'a str,
+-    ) -> impl std::future::Future<Output = Result<InstallerResponse>> + Send + 'a;
+-}
+-
+-#[cfg(unix)]
+-impl InstallerHttp for RouteAwareClientPool {
+-    async fn get(&self, url: &str) -> Result<InstallerResponse> {
+-        let response = RouteAwareClientPool::get(self, url)
+-            .send()
+-            .await
+-            .context("failed to fetch standalone Codex updater")?;
+-        if !response.status().is_success() {
+-            return Ok(InstallerResponse::Unsuccessful {
+-                status: response.status().as_u16(),
+-            });
+-        }
+-        let body = response
+-            .bytes()
+-            .await
+-            .context("failed to read standalone Codex updater")?
+-            .to_vec();
+-        Ok(InstallerResponse::Success(body))
+-    }
+-}
+-
+ #[cfg(all(test, unix))]
+ #[path = "update_loop_tests.rs"]
+ mod tests;
+diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+index 8c94f91..cf27069 100644
+--- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
++++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
+@@ -1,11 +1,5 @@
+-use std::sync::Mutex;
+-
+ use pretty_assertions::assert_eq;
+ 
+-use super::INSTALL_URL;
+-use super::InstallerHttp;
+-use super::InstallerResponse;
+-use super::fetch_installer_script;
+ use super::update_modes_for_identities;
+ use crate::RestartMode;
+ use crate::UpdaterRefreshMode;
+@@ -35,60 +29,3 @@ fn changed_updater_forces_refresh_even_when_version_may_match() {
+         )
+     );
+ }
+-
+-#[tokio::test]
+-async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
+-    let script = b"#!/bin/sh\nprintf 'update bytes'\n".to_vec();
+-    let http = FakeInstallerHttp::new(InstallerResponse::Success(script.clone()));
+-
+-    assert_eq!(
+-        fetch_installer_script(&http)
+-            .await
+-            .expect("installer fetch should succeed"),
+-        script
+-    );
+-    assert_eq!(http.requested_urls(), vec![INSTALL_URL.to_string()]);
+-}
+-
+-#[tokio::test]
+-async fn installer_fetch_rejects_non_success_status() {
+-    let http = FakeInstallerHttp::new(InstallerResponse::Unsuccessful { status: 503 });
+-
+-    let error = fetch_installer_script(&http)
+-        .await
+-        .expect_err("non-success response should fail");
+-
+-    assert!(error.to_string().contains("503"));
+-    assert_eq!(http.requested_urls(), vec![INSTALL_URL.to_string()]);
+-}
+-
+-struct FakeInstallerHttp {
+-    response: InstallerResponse,
+-    requested_urls: Mutex<Vec<String>>,
+-}
+-
+-impl FakeInstallerHttp {
+-    fn new(response: InstallerResponse) -> Self {
+-        Self {
+-            response,
+-            requested_urls: Mutex::new(Vec::new()),
+-        }
+-    }
+-
+-    fn requested_urls(&self) -> Vec<String> {
+-        self.requested_urls
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .clone()
+-    }
+-}
+-
+-impl InstallerHttp for FakeInstallerHttp {
+-    async fn get(&self, url: &str) -> anyhow::Result<InstallerResponse> {
+-        self.requested_urls
+-            .lock()
+-            .unwrap_or_else(std::sync::PoisonError::into_inner)
+-            .push(url.to_string());
+-        Ok(self.response.clone())
+-    }
+-}
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index 5adc7a6..26347a6 100644
+index 2640c96..8fbb301 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
-@@ -71,6 +71,7 @@ codex-tui = { workspace = true }
+@@ -73,6 +73,7 @@ codex-tui = { workspace = true }
  codex-utils-absolute-path = { workspace = true }
  codex-utils-path = { workspace = true }
  crossterm = { workspace = true }
@@ -40,7 +299,7 @@ index 5adc7a6..26347a6 100644
  http = { workspace = true }
  libc = { workspace = true }
  os_info = { workspace = true }
-@@ -78,8 +79,10 @@ owo-colors = { workspace = true }
+@@ -80,8 +81,10 @@ owo-colors = { workspace = true }
  regex-lite = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -52,27 +311,27 @@ index 5adc7a6..26347a6 100644
  tokio = { workspace = true, features = [
      "io-std",
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
-index b13de06..87634fc 100644
+index 7c2add2..ec67709 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
 +++ b/codex-rs/cli/src/doctor/updates.rs
-@@ -11,6 +11,7 @@ use std::path::Path;
- use codex_core::config::Config;
+@@ -19,6 +19,7 @@ use codex_http_client::ClientRouteClass;
+ use codex_http_client::RouteAwareClientPool;
  use codex_install_context::InstallContext;
  use codex_install_context::InstallMethod;
 +use codex_utils_cli::latest_release_url;
+ #[cfg(any(target_os = "macos", target_os = "windows"))]
+ use http::Method;
  use serde::Deserialize;
- 
- use super::CheckStatus;
-@@ -22,8 +23,6 @@ use super::npm_global_root_check;
+@@ -40,8 +41,6 @@ use super::npm_global_root_check;
  use super::run_command;
  
  const VERSION_FILE_NAME: &str = "version.json";
 -const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
 -const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
- 
- /// Builds the update-health row for the current installation.
- ///
-@@ -85,7 +84,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
+ #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+ const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
+ #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
+@@ -112,7 +111,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
          }
      }
  
@@ -81,7 +340,7 @@ index b13de06..87634fc 100644
          Ok(latest_version) => {
              details.push(format!("latest version: {latest_version}"));
              if is_newer(&latest_version, env!("CARGO_PKG_VERSION")) == Some(true) {
-@@ -131,48 +130,29 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
+@@ -430,48 +429,29 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
  
  fn update_action_label(context: &InstallContext) -> &'static str {
      match &context.method {
@@ -138,16 +397,16 @@ index b13de06..87634fc 100644
  fn http_get_json<T>(url: &str) -> Result<T, String>
  where
      T: for<'de> Deserialize<'de>,
-@@ -208,6 +188,8 @@ struct VersionInfo {
+@@ -507,6 +487,8 @@ struct VersionInfo {
  #[cfg(test)]
  mod tests {
      use super::*;
 +    use codex_install_context::StandalonePlatform;
 +    use codex_utils_absolute_path::AbsolutePathBuf;
  
+     #[cfg(target_os = "macos")]
      #[test]
-     fn is_newer_compares_plain_semver() {
-@@ -223,14 +205,19 @@ mod tests {
+@@ -633,14 +615,19 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -171,10 +430,10 @@ index b13de06..87634fc 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 4c88718..e36e8fa 100644
+index 45218a6..b160b67 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -55,9 +55,8 @@ mod plugin_cmd;
+@@ -59,9 +59,8 @@ mod queue_cmd;
  mod remote_control_cmd;
  #[cfg(target_os = "windows")]
  mod sandbox_setup;
@@ -185,7 +444,7 @@ index 4c88718..e36e8fa 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -88,13 +87,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -97,13 +96,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -205,7 +464,7 @@ index 4c88718..e36e8fa 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -161,7 +164,7 @@ enum Subcommand {
+@@ -169,7 +172,7 @@ enum Subcommand {
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
@@ -214,7 +473,7 @@ index 4c88718..e36e8fa 100644
      Update,
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
-@@ -752,7 +755,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
+@@ -813,7 +816,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -223,7 +482,7 @@ index 4c88718..e36e8fa 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -771,55 +774,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -832,55 +835,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -287,7 +546,7 @@ index 4c88718..e36e8fa 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -831,10 +804,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -892,10 +865,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -300,7 +559,7 @@ index 4c88718..e36e8fa 100644
      }
  }
  
-@@ -1025,7 +998,7 @@ async fn cli_main(
+@@ -1139,7 +1112,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -309,7 +568,7 @@ index 4c88718..e36e8fa 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1310,7 +1283,7 @@ async fn cli_main(
+@@ -1423,7 +1396,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -318,7 +577,7 @@ index 4c88718..e36e8fa 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1377,7 +1350,7 @@ async fn cli_main(
+@@ -1510,7 +1483,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -327,7 +586,7 @@ index 4c88718..e36e8fa 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1449,7 +1422,7 @@ async fn cli_main(
+@@ -1582,7 +1555,7 @@ async fn cli_main(
                  root_remote_auth_token_env.as_deref(),
                  "update",
              )?;
@@ -336,7 +595,7 @@ index 4c88718..e36e8fa 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -3282,6 +3255,23 @@ mod tests {
+@@ -3497,6 +3470,23 @@ mod tests {
          assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
      }
  
@@ -362,10 +621,10 @@ index 4c88718..e36e8fa 100644
          let (target, interactive, remote) = finalize_archive_from_args(
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..721f8a1
+index 0000000..645d24b
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,345 @@
+@@ -0,0 +1,362 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -414,13 +673,12 @@ index 0000000..721f8a1
 +
 +/// The platform triple codEx publishes binaries for this architecture.
 +///
-+/// The fork only ships `x86_64`/`aarch64` `unknown-linux-musl` builds.
++/// The fork currently ships `x86_64-unknown-linux-musl` builds only.
 +pub fn target_triple() -> Result<&'static str, String> {
 +    match (std::env::consts::ARCH, std::env::consts::OS) {
 +        ("x86_64", "linux") => Ok("x86_64-unknown-linux-musl"),
-+        ("aarch64", "linux") => Ok("aarch64-unknown-linux-musl"),
 +        (arch, os) => Err(format!(
-+            "unsupported platform {arch}-{os}; codEx publishes Linux x86_64 and aarch64 binaries"
++            "unsupported platform {arch}-{os}; codEx currently publishes Linux x86_64 binaries only"
 +        )),
 +    }
 +}
@@ -519,8 +777,19 @@ index 0000000..721f8a1
 +    }
 +
 +    let current_exe = std::env::current_exe().context("failed to resolve current executable")?;
-+    replace_binary(&new_bwrap, &resources_dir.join(BWRAP_BINARY_NAME))?;
++
++    // Keep a copy of the current codex so a failed bwrap swap can roll codex
++    // back: the binary embeds the digest of the bundled bwrap, and a mismatched
++    // pair would break sandbox startup until the next update.
++    let codex_backup = temp_dir.path().join("codex.previous");
++    std::fs::copy(&current_exe, &codex_backup)
++        .context("failed to back up the current codex binary")?;
++
 +    replace_binary(&new_codex, &current_exe)?;
++    if let Err(err) = replace_binary(&new_bwrap, &resources_dir.join(BWRAP_BINARY_NAME)) {
++        let _ = replace_binary(&codex_backup, &current_exe);
++        return Err(err);
++    }
 +    Ok(())
 +}
 +
@@ -591,26 +860,33 @@ index 0000000..721f8a1
 +}
 +
 +/// Replaces `target` with `source`, preserving a `target.old` backup, and
-+/// marks the result executable.
++/// marks the result executable. The new file is fully staged (copy + chmod)
++/// before any rename, and a single atomic rename swaps it in, so the
++/// canonical path is never left missing. If the swap fails, the previous
++/// binary is restored from the backup.
 +fn replace_binary(source: &Path, target: &Path) -> anyhow::Result<()> {
 +    if let Some(parent) = target.parent() {
 +        std::fs::create_dir_all(parent)
 +            .with_context(|| format!("failed to create {}", parent.display()))?;
 +    }
 +    let backup = target.with_extension("old");
++    let staged = target.with_extension("new");
 +    if target.exists() {
-+        std::fs::rename(target, &backup)
++        std::fs::copy(target, &backup)
 +            .with_context(|| format!("failed to back up {}", target.display()))?;
 +    }
-+    let staged = target.with_extension("new");
 +    std::fs::copy(source, &staged)
 +        .with_context(|| format!("failed to stage {}", target.display()))?;
 +    set_executable(&staged)?;
-+    std::fs::rename(&staged, target)
-+        .with_context(|| format!("failed to replace {}", target.display()))?;
-+    if backup.exists() {
-+        let _ = std::fs::remove_file(&backup);
++    // POSIX rename atomically replaces the destination, so the canonical
++    // path always exists (old or new) at every instant.
++    if let Err(err) = std::fs::rename(&staged, target) {
++        if backup.exists() {
++            let _ = std::fs::rename(&backup, target);
++        }
++        return Err(err).with_context(|| format!("failed to replace {}", target.display()));
 +    }
++    let _ = std::fs::remove_file(&backup);
 +    Ok(())
 +}
 +
@@ -856,7 +1132,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..fa543cb 100644
+index ad0fc4b..b5ab7e3 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -867,12 +1143,12 @@ index ad0fc4b..fa543cb 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ codEx (v0.147.0)                 │
++│ >_ codEx (v0.149.1)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..98ab037 100644
+index c8f352d..45d0b92 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -887,7 +1163,7 @@ index c8f352d..98ab037 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.147.0 -> 9.9.9            │
++│ ✨ Update available! 0.149.1 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -912,10 +1188,10 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 1a94689..a61d659 100644
+index 47403c1..983751a 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1196,24 +1196,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1198,24 +1198,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -1098,7 +1374,7 @@ index 0fe4408..0ba771a 100644
      }
  }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index de8bfb0..0b55e7c 100644
+index ae83031..f2b518b 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
 @@ -26,7 +26,8 @@ use ratatui::widgets::Clear;
@@ -1111,7 +1387,7 @@ index de8bfb0..0b55e7c 100644
  
  pub(crate) enum UpdatePromptOutcome {
      Continue,
-@@ -188,7 +189,7 @@ impl WidgetRef for &UpdatePromptScreen {
+@@ -189,7 +190,7 @@ impl WidgetRef for &UpdatePromptScreen {
          Clear.render(area, buf);
          let mut column = ColumnRenderable::new();
  
@@ -1120,7 +1396,7 @@ index de8bfb0..0b55e7c 100644
  
          column.push("");
          column.push(Line::from(vec![
-@@ -255,7 +256,7 @@ mod tests {
+@@ -256,7 +257,7 @@ mod tests {
          UpdatePromptScreen::new(
              FrameRequester::test_dummy(),
              "9.9.9".into(),
@@ -1327,5 +1603,5 @@ index 633638e..d919c1a 100644
  pub use resume_command::resume_command;
  pub use resume_command::resume_hint;
 -- 
-2.55.0
+2.47.3
 

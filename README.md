@@ -9,7 +9,7 @@ This repository follows a **patch-queue model**: instead of vendoring the
 upstream tree, it stores only the fork's changes as a `git format-patch`
 series plus the scripts that rebuild a full codex tree from an upstream tag.
 The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
-patch queue applies to (currently `rust-v0.147.0`).
+patch queue applies to (currently `rust-v0.149.1`).
 
 ## Installing from a release
 
@@ -28,7 +28,7 @@ afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
 
 Environment overrides:
 
-- `CODEX_RELEASE` - version to install, e.g. `0.147.0` (default: `latest`)
+- `CODEX_RELEASE` - version to install, e.g. `0.149.1` (default: `latest`)
 - `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 - `CODEX_HOME` - codex home (default: `~/.codex`)
 
@@ -207,11 +207,11 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 ### Branding
 
 - `codex --version` prints
-  `codEx 0.147.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
+  `codEx 0.149.1 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
   bar shows `codEx <version>`.
 - The TUI welcome screen, session header, and status header display `codEx`;
   tips reference `codEx` as well.
-- The version number itself **matches the upstream base tag** (e.g. `0.147.0`),
+- The version number itself **matches the upstream base tag** (e.g. `0.149.1`),
   so version parsing stays plain semver and fork release tags stay clean.
 
 ### Release & CI (Linux + CLI only)
@@ -239,7 +239,7 @@ per commit):
 
 | Piece | Purpose |
 | --- | --- |
-| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.147.0`) |
+| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.149.1`) |
 | `patches/` | one `git format-patch` per feature module, in fixed order |
 | `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
 | `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
@@ -248,8 +248,8 @@ per commit):
 | `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
 
 The seven modules are `infra` (patch-queue tooling, lockfile, README),
-`rollback` (`/rewind`), `input` (double-Esc interrupt), `updates` (pure-Rust
-self-update), `privacy` (no startup network chatter), `distribution`
+`rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
+interrupt), `privacy` (no startup network chatter), `distribution`
 (Linux-only CI/release), and `identity` (branding). Every file changed by the
 fork is owned by exactly one module; `check-patch-modules.sh` enforces the
 partition at export time (gen-patches), during upgrades (update.sh), in CI
@@ -287,20 +287,20 @@ cargo build --release --bin codex
 ## Upgrading to a new upstream tag
 
 ```sh
-bash scripts/update.sh rust-v0.148.0
+bash scripts/update.sh rust-v0.149.1
 ```
 
 `update.sh` clones the new tag into `update-work/`, applies the patch queue
 with `git am --3way`, then runs the same checks as CI (build, `cargo fmt
 --check`, and the `codex-tui`/`codex-core` nextest runs) from the `codex-rs`
 workspace. It accepts the tag with or without the `rust-v` prefix
-(`rust-v0.148.0` or `0.148.0`). If a patch conflicts, resolve it in
+(`rust-v0.149.1` or `0.149.1`). If a patch conflicts, resolve it in
 `update-work/` (`git am --continue`), then regenerate with
-`bash scripts/gen-patches.sh rust-v0.148.0` from inside the bootstrapped tree
+`bash scripts/gen-patches.sh rust-v0.149.1` from inside the bootstrapped tree
 (the slim repo has no upstream history, so the script refuses to run there).
 The patch queue never changes version numbers; fork releases keep the
 upstream semver and are tagged `rust-v<version>` (for example
-`rust-v0.148.0`), and the release workflow publishes
+`rust-v0.149.1`), and the release workflow publishes
 `codex-<target>.tar.gz` + sha256 checksums.
 
 ## License

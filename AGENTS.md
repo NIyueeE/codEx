@@ -8,9 +8,9 @@ from `BASE_TAG` and applies `patches/` via `git am`.
 ## Project Structure & Module Organization
 
 - `patches/` — one `git format-patch` per feature module, applied in order:
-  `infra`, `rollback`, `input`, `updates`, `privacy`, `distribution`,
+  `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
   `identity` (see `scripts/patch-modules.conf`)
-- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.147.0`)
+- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.149.1`)
 - `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
   `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
@@ -29,8 +29,8 @@ cargo build --release --bin codex   # build the CLI
 cargo fmt --check                   # rustfmt check
 ```
 
-- `bash scripts/update.sh <tag>` — upgrade to a new upstream tag (`rust-v0.148.0`
-  or `0.148.0` both work): clones into `update-work/`, applies the queue with
+- `bash scripts/update.sh <tag>` — upgrade to a new upstream tag (`rust-v0.149.1`
+  or `0.149.1` both work): clones into `update-work/`, applies the queue with
   `git am --3way`, runs the CI-equivalent checks (build, fmt, nextest) from
   `codex-rs/`, then regenerates `patches/` and `BASE_TAG`
 - `bash scripts/gen-patches.sh <base-tag> [output-dir]` — regenerate `patches/`

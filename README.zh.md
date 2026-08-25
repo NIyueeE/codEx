@@ -7,7 +7,7 @@ codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向
 本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
 `git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
 真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.147.0`)。
+`rust-v0.149.1`)。
 
 ## 从 Release 安装
 
@@ -25,7 +25,7 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.147.0`(默认:`latest`)
+- `CODEX_RELEASE` - 要安装的版本,如 `0.149.1`(默认:`latest`)
 - `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
 
@@ -167,10 +167,10 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.147.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.149.1 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.147.0`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.149.1`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
 ### 发布与 CI(仅 Linux + CLI)
@@ -196,7 +196,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.147.0`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.149.1`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -205,7 +205,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 | `scripts/gen-patches.sh` | 从代码树历史重新生成 `patches/`;拒绝导出违反清单的布局 |
 
 七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
-`input`(双击 Esc 中断)、`updates`(纯 Rust 自更新)、`privacy`(启动无网络
+`updates`(纯 Rust 自更新)、`input`(双击 Esc 中断)、`privacy`(启动无网络
 请求)、`distribution`(仅 Linux 的 CI/release)与 `identity`(品牌标识)。
 分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
 (gen-patches)、升级(update.sh)、CI(repo-checks)和本地提交(pre-commit)
@@ -240,17 +240,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.148.0
+bash scripts/update.sh rust-v0.149.1
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.148.0` 或 `0.148.0`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.149.1` 或 `0.149.1`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.148.0` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.149.1` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.148.0`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.149.1`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证

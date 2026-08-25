@@ -1,4 +1,4 @@
-From 7e1fd75dad09541bb84b11aa14a6fe8f59cf7b23 Mon Sep 17 00:00:00 2001
+From fa5d1203e734c72bf1fc02a5765c4adca8d37903 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -10,7 +10,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/core/src/config/mod.rs               |   29 +-
  codex-rs/thread-manager-sample/src/main.rs    |    3 +
  codex-rs/tui/Cargo.toml                       |    1 +
- codex-rs/tui/src/app/event_dispatch.rs        |   63 +-
+ codex-rs/tui/src/app/event_dispatch.rs        |  146 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
  codex-rs/tui/src/app/tests.rs                 |  627 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
@@ -23,21 +23,21 @@ Subject: rewind: add /rewind conversation and workspace rollback
  .../tui/src/chatwidget/tests/app_server.rs    |    3 +
  .../chatwidget/tests/composer_submission.rs   |   35 +-
  .../src/chatwidget/tests/slash_commands.rs    |    3 +-
- codex-rs/tui/src/rewind/actions.rs            |  376 +++++
- codex-rs/tui/src/rewind/mod.rs                | 1319 +++++++++++++++++
- codex-rs/tui/src/rewind/rewind_tests.rs       | 1191 +++++++++++++++
+ codex-rs/tui/src/rewind/actions.rs            |  386 +++++
+ codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
+ codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    3 +
- 23 files changed, 3892 insertions(+), 155 deletions(-)
+ 23 files changed, 3999 insertions(+), 198 deletions(-)
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
  create mode 100644 codex-rs/tui/src/rewind/actions.rs
  create mode 100644 codex-rs/tui/src/rewind/mod.rs
  create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 5ffa42d..03d8ec5 100644
+index ceff237..08b2969 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -468,10 +468,25 @@ pub struct ConfigToml {
+@@ -471,10 +471,25 @@ pub struct ConfigToml {
      pub project_root_markers: Option<Vec<String>>,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -66,10 +66,10 @@ index 5ffa42d..03d8ec5 100644
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index fd463f4..abddcc7 100644
+index d9084d3..99eacc6 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -4966,7 +4966,7 @@
+@@ -5275,7 +5275,7 @@
        "type": "string"
      },
      "check_for_update_on_startup": {
@@ -78,7 +78,7 @@ index fd463f4..abddcc7 100644
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -5742,6 +5742,21 @@
+@@ -6099,6 +6099,21 @@
        "description": "Review model override used by the `/review` feature.",
        "type": "string"
      },
@@ -101,10 +101,10 @@ index fd463f4..abddcc7 100644
        "allOf": [
          {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index e3e91a6..83ce36c 100644
+index 22e5724..d7a764a 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -531,6 +531,41 @@ enabled = false
+@@ -564,6 +564,41 @@ enabled = false
      Ok(())
  }
  
@@ -147,10 +147,10 @@ index e3e91a6..83ce36c 100644
  async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
      let codex_home = tempdir()?;
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index fc3b7f5..0a1a174 100644
+index 0a3ebf4..644778b 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1088,10 +1088,24 @@ pub struct Config {
+@@ -1022,10 +1022,24 @@ pub struct Config {
      pub notices: Notice,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -177,7 +177,7 @@ index fc3b7f5..0a1a174 100644
      /// When true, disables burst-paste detection for typed input entirely.
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
-@@ -3946,7 +3960,13 @@ impl Config {
+@@ -3868,7 +3882,13 @@ impl Config {
  
          let review_model = override_review_model.or(cfg.review_model);
  
@@ -192,7 +192,7 @@ index fc3b7f5..0a1a174 100644
          let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
  
          let log_dir = cfg
-@@ -4257,6 +4277,9 @@ impl Config {
+@@ -4178,6 +4198,9 @@ impl Config {
              active_project,
              notices,
              check_for_update_on_startup,
@@ -203,10 +203,10 @@ index fc3b7f5..0a1a174 100644
              analytics_enabled: cfg.analytics.as_ref().and_then(|a| a.enabled),
              feedback_enabled: cfg
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 1e7f8d7..d307ae5 100644
+index 155e302..080f1a6 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -310,6 +310,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+@@ -309,6 +309,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
          active_project: ProjectConfig { trust_level: None },
          notices: Notice::default(),
          check_for_update_on_startup: false,
@@ -217,10 +217,10 @@ index 1e7f8d7..d307ae5 100644
          analytics_enabled: Some(false),
          feedback_enabled: false,
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index 8d79afc..2076571 100644
+index 2152c79..d866812 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
-@@ -74,6 +74,7 @@ diffy = { workspace = true }
+@@ -75,6 +75,7 @@ diffy = { workspace = true }
  dirs = { workspace = true }
  dunce = { workspace = true }
  image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
@@ -229,10 +229,10 @@ index 8d79afc..2076571 100644
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 2d55735..677f291 100644
+index e967543..0fdab0e 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -145,6 +145,33 @@ impl App {
+@@ -230,6 +230,33 @@ impl App {
                  // Leaving alt-screen may blank the inline viewport; force a redraw either way.
                  tui.frame_requester().schedule_frame();
              }
@@ -266,7 +266,7 @@ index 2d55735..677f291 100644
              AppEvent::OpenExternalAgentConfigMigration => {
                  match crate::external_agent_config_migration::flow::handle_external_agent_config_migration_prompt(
                      tui,
-@@ -291,6 +318,7 @@ impl App {
+@@ -379,6 +406,7 @@ impl App {
                  thread_id,
                  nth_user_message,
                  mut prompt,
@@ -274,34 +274,124 @@ index 2d55735..677f291 100644
              } => {
                  if self.chat_widget.thread_id() != Some(thread_id) {
                      return Ok(AppRunControl::Continue);
-@@ -303,9 +331,23 @@ impl App {
+@@ -391,59 +419,70 @@ impl App {
                  self.refresh_in_memory_config_from_disk_best_effort("forking the thread")
                      .await;
                  let config = self.fresh_session_config();
 -                let turns = match self.thread_event_channels.get(&thread_id) {
--                    Some(channel) => Some(channel.store.lock().await.turns.clone()),
--                    None => None,
-+                // The channel's turns are a snapshot taken when the thread was
-+                // attached; turns completed since then render live in the
-+                // transcript but are never appended to the channel store.
-+                // Resolve the selected message against the app server's
-+                // canonical persisted turns so messages submitted after attach
-+                // (e.g. the newest message) can be rewound, and fall back to
-+                // the channel store when a fresh read is unavailable (e.g.
-+                // paginated threads without a turns view).
+-                    Some(channel) => {
+-                        let store = channel.store.lock().await;
+-                        let mut turns = store.turns.clone();
+-                        // Snapshot turns contain loaded history; newer live turns remain in
+-                        // the replay buffer and must also be visible to prompt-edit lookups.
+-                        for event in &store.buffer {
+-                            let ThreadBufferedEvent::Notification(notification) = event else {
+-                                continue;
+-                            };
+-                            match notification.as_ref() {
+-                                ServerNotification::TurnStarted(notification)
+-                                    if !turns
+-                                        .iter()
+-                                        .any(|turn| turn.id == notification.turn.id) =>
+-                                {
+-                                    turns.push(notification.turn.clone());
+-                                }
+-                                ServerNotification::ItemCompleted(notification) => {
+-                                    if matches!(
+-                                        notification.item,
+-                                        ThreadItem::UserMessage { .. }
+-                                            | ThreadItem::EnteredReviewMode { .. }
+-                                            | ThreadItem::ExitedReviewMode { .. }
+-                                    ) && let Some(turn) = turns
+-                                        .iter_mut()
+-                                        .find(|turn| turn.id == notification.turn_id)
+-                                        && !turn
+-                                            .items
++// The channel store's turns are a snapshot taken when the thread was
++// attached; prefer the app server's canonical persisted turns so messages
++// submitted after attach (e.g. the newest message) can be rewound. Fall
++// back to the channel store (enriched with buffered live-turn events) when
++// a fresh read is unavailable (e.g. paginated threads without a turns view).
 +                let turns = match app_server
 +                    .thread_read(thread_id, /*include_turns*/ true)
 +                    .await
 +                {
 +                    Ok(thread) if !thread.turns.is_empty() => Some(thread.turns),
 +                    _ => match self.thread_event_channels.get(&thread_id) {
-+                        Some(channel) => Some(channel.store.lock().await.turns.clone()),
++                        Some(channel) => {
++                            let store = channel.store.lock().await;
++                            let mut turns = store.turns.clone();
++                            // Snapshot turns contain loaded history; newer live turns remain in
++                            // the replay buffer and must also be visible to prompt-edit lookups.
++                            for event in &store.buffer {
++                                let ThreadBufferedEvent::Notification(notification) = event else {
++                                    continue;
++                                };
++                                match notification.as_ref() {
++                                    ServerNotification::TurnStarted(notification)
++                                        if !turns
+                                             .iter()
+-                                            .any(|item| item.id() == notification.item.id())
++                                            .any(|turn| turn.id == notification.turn.id) =>
+                                     {
+-                                        turn.items.push(notification.item.clone());
++                                        turns.push(notification.turn.clone());
+                                     }
+-                                }
+-                                ServerNotification::TurnCompleted(notification) => {
+-                                    if let Some(turn) = turns
+-                                        .iter_mut()
+-                                        .find(|turn| turn.id == notification.turn.id)
+-                                    {
+-                                        turn.status = notification.turn.status.clone();
+-                                        turn.error = notification.turn.error.clone();
+-                                        turn.started_at = notification.turn.started_at;
+-                                        turn.completed_at = notification.turn.completed_at;
+-                                        turn.duration_ms = notification.turn.duration_ms;
++                                    ServerNotification::ItemCompleted(notification) => {
++                                        if matches!(
++                                            notification.item,
++                                            ThreadItem::UserMessage { .. }
++                                                | ThreadItem::EnteredReviewMode { .. }
++                                                | ThreadItem::ExitedReviewMode { .. }
++                                        ) && let Some(turn) = turns
++                                            .iter_mut()
++                                            .find(|turn| turn.id == notification.turn_id)
++                                            && !turn
++                                                .items
++                                                .iter()
++                                                .any(|item| item.id() == notification.item.id())
++                                        {
++                                            turn.items.push(notification.item.clone());
++                                        }
+                                     }
++                                    ServerNotification::TurnCompleted(notification) => {
++                                        if let Some(turn) = turns
++                                            .iter_mut()
++                                            .find(|turn| turn.id == notification.turn.id)
++                                        {
++                                            turn.status = notification.turn.status.clone();
++                                            turn.error = notification.turn.error.clone();
++                                            turn.started_at = notification.turn.started_at;
++                                            turn.completed_at = notification.turn.completed_at;
++                                            turn.duration_ms = notification.turn.duration_ms;
++                                        }
++                                    }
++                                    _ => {}
+                                 }
+-                                _ => {}
+                             }
++                            Some(turns)
+                         }
+-                        Some(turns)
+-                    }
+-                    None => None,
 +                        None => None,
 +                    },
                  };
                  let started = match turns {
                      Some(turns) => match crate::app_backtrack::backtrack_fork_before_turn_id(
-@@ -354,7 +396,20 @@ impl App {
+@@ -493,7 +532,20 @@ impl App {
                              )
                              .await
                          {
@@ -324,10 +414,10 @@ index 2d55735..677f291 100644
                                  self.restore_backtrack_prompt_after_branch_error(prompt, err);
                              }
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 51877ce..c998fe8 100644
+index 60e6c54..cdfa487 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -754,6 +754,11 @@ impl App {
+@@ -810,6 +810,11 @@ impl App {
              initial_user_message,
          );
          self.replace_chat_widget(ChatWidget::new_with_app_event(init));
@@ -336,14 +426,14 @@ index 51877ce..c998fe8 100644
 +        // without this the old conversation stays visible after a fork, resume,
 +        // or `/rewind` conversation rollback.
 +        self.reset_for_thread_switch(tui)?;
+         self.chat_widget
+             .note_rendered_width(tui.terminal.last_known_screen_size.width);
          if started.blocks_direct_input {
-             self.mark_primary_thread_parent_owned(started.session.thread_id);
-         }
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 2ef3387..95350d3 100644
+index 7b04334..7909c54 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -5978,13 +5978,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -6465,13 +6465,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              rollout_path: Some(PathBuf::new()),
          });
  
@@ -360,7 +450,7 @@ index 2ef3387..95350d3 100644
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -6011,6 +6007,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -6498,6 +6494,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              thread_id,
              nth_user_message,
              prompt,
@@ -368,7 +458,7 @@ index 2ef3387..95350d3 100644
          } if thread_id == expected.thread_id
              && nth_user_message == expected.nth_user_message
              && prompt == expected.prompt
-@@ -6048,6 +6045,567 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -6535,6 +6532,567 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
@@ -936,7 +1026,7 @@ index 2ef3387..95350d3 100644
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -6572,6 +7130,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
+@@ -7107,6 +7665,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
              thread_id: source_thread_id,
              nth_user_message: 1,
              prompt: prompt.clone(),
@@ -944,7 +1034,7 @@ index 2ef3387..95350d3 100644
          },
      ))
      .await?;
-@@ -6670,6 +7229,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
+@@ -7205,6 +7764,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
              thread_id: source_thread_id,
              nth_user_message: 0,
              prompt: crate::chatwidget::UserMessage::from("first prompt"),
@@ -952,7 +1042,7 @@ index 2ef3387..95350d3 100644
          },
      ))
      .await?;
-@@ -7076,7 +7636,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -7612,7 +8172,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -960,7 +1050,7 @@ index 2ef3387..95350d3 100644
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -7088,7 +7647,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -7624,7 +8183,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -968,7 +1058,7 @@ index 2ef3387..95350d3 100644
      })
      .await;
  }
-@@ -7709,9 +8267,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -8245,9 +8803,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -978,7 +1068,7 @@ index 2ef3387..95350d3 100644
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -7720,8 +8275,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -8256,8 +8811,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -987,7 +1077,7 @@ index 2ef3387..95350d3 100644
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -7756,15 +8309,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -8292,15 +8845,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -1008,7 +1098,7 @@ index 2ef3387..95350d3 100644
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -7772,25 +8327,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -8308,25 +8863,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1039,7 +1129,7 @@ index 2ef3387..95350d3 100644
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -7800,33 +8354,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -8336,33 +8890,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1076,10 +1166,10 @@ index 2ef3387..95350d3 100644
      Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
  }
 diff --git a/codex-rs/tui/src/app/tests/turn_submission.rs b/codex-rs/tui/src/app/tests/turn_submission.rs
-index 8737007..4e202f8 100644
+index ff2265e..8d912ce 100644
 --- a/codex-rs/tui/src/app/tests/turn_submission.rs
 +++ b/codex-rs/tui/src/app/tests/turn_submission.rs
-@@ -6,6 +6,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
+@@ -16,6 +16,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
      let (mut app, mut app_event_rx, mut op_rx) = make_test_app_with_channels().await;
      let mut tui = crate::tui::test_support::make_test_tui()?;
      let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
@@ -1090,7 +1180,7 @@ index 8737007..4e202f8 100644
      app.active_thread_id = Some(thread_id);
      app.chat_widget
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 6eebdf2..add559f 100644
+index 855e7c5..0248e18 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
 @@ -1,17 +1,10 @@
@@ -1206,7 +1296,7 @@ index 6eebdf2..add559f 100644
          });
      }
  
-@@ -249,33 +265,6 @@ impl App {
+@@ -254,33 +270,6 @@ impl App {
          }
      }
  
@@ -1240,7 +1330,7 @@ index 6eebdf2..add559f 100644
      /// When overlay is already open, begin preview mode and select latest user message.
      fn begin_overlay_backtrack_preview(&mut self, tui: &mut tui::Tui) {
          if !has_backtrack_target(&self.transcript_cells) {
-@@ -408,15 +397,44 @@ impl App {
+@@ -413,15 +402,44 @@ impl App {
          Ok(())
      }
  
@@ -1288,7 +1378,7 @@ index 6eebdf2..add559f 100644
      }
  
      /// Handle Esc in overlay backtrack preview: step selection if armed, else forward.
-@@ -443,26 +461,25 @@ impl App {
+@@ -448,26 +466,25 @@ impl App {
          Ok(())
      }
  
@@ -1325,7 +1415,7 @@ index 6eebdf2..add559f 100644
              return None;
          }
  
-@@ -480,7 +497,7 @@ impl App {
+@@ -485,7 +502,7 @@ impl App {
              .collect();
  
          Some(BacktrackSelection {
@@ -1334,7 +1424,7 @@ index 6eebdf2..add559f 100644
              nth_user_message,
              prompt: UserMessage {
                  text: selected.message.clone(),
-@@ -491,6 +508,23 @@ impl App {
+@@ -496,6 +513,23 @@ impl App {
              },
          })
      }
@@ -1359,11 +1449,11 @@ index 6eebdf2..add559f 100644
  
  /// Find the persisted turn that contains a selected transcript prompt.
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 4e55cca..8a4a72c 100644
+index 8593862..776633c 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -184,6 +184,17 @@ pub(crate) enum KeymapCaptureMode {
-     Chord,
+@@ -192,6 +192,17 @@ pub(crate) enum TranscriptExportDestination {
+     File(PathBuf),
  }
  
 +/// A pending `/rewind` file-restore request attached to a conversation fork.
@@ -1380,7 +1470,7 @@ index 4e55cca..8a4a72c 100644
  #[allow(clippy::large_enum_variant)]
  #[derive(Debug)]
  pub(crate) enum AppEvent {
-@@ -313,10 +324,40 @@ pub(crate) enum AppEvent {
+@@ -369,10 +380,40 @@ pub(crate) enum AppEvent {
      },
  
      /// Branch before a selected prompt and reopen it in the new thread's composer.
@@ -1422,10 +1512,10 @@ index 4e55cca..8a4a72c 100644
  
      /// Request to exit the application.
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index bb1d3aa..16c9c4e 100644
+index 331b347..18da721 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -703,6 +703,9 @@ pub(crate) struct ChatWidget {
+@@ -710,6 +710,9 @@ pub(crate) struct ChatWidget {
      /// We require the second press to match this key so `Ctrl+C` followed by
      /// `Ctrl+D` (or vice versa) doesn't quit accidentally.
      quit_shortcut_key: Option<KeyBinding>,
@@ -1434,9 +1524,9 @@ index bb1d3aa..16c9c4e 100644
 +    esc_interrupt_expires_at: Option<Instant>,
      // Runtime metrics accumulated across delta snapshots for the active turn.
      turn_runtime_metrics: RuntimeMetricsSummary,
-     last_rendered_width: std::cell::Cell<Option<usize>>,
-@@ -1676,9 +1679,15 @@ impl ChatWidget {
-         self.bottom_pane.composer_is_empty()
+     last_rendered_width: std::cell::Cell<Option<u16>>,
+@@ -1730,9 +1733,15 @@ impl ChatWidget {
+         self.bottom_pane.composer_is_empty() && !self.bottom_pane.is_in_paste_burst()
      }
  
 +    /// Whether a task (agent turn, review, or other cancellable work) is
@@ -1452,7 +1542,7 @@ index bb1d3aa..16c9c4e 100644
      }
  
      pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
-@@ -1693,7 +1702,7 @@ impl ChatWidget {
+@@ -1747,7 +1756,7 @@ impl ChatWidget {
  
      /// True when the UI is in the regular composer state with no running task,
      /// no modal overlay (e.g. approvals or status indicator), and no composer popups.
@@ -1461,7 +1551,7 @@ index bb1d3aa..16c9c4e 100644
      pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
          self.bottom_pane.is_normal_backtrack_mode()
      }
-@@ -1730,14 +1739,6 @@ impl ChatWidget {
+@@ -1783,14 +1792,6 @@ impl ChatWidget {
          self.bottom_pane.has_active_view()
      }
  
@@ -1477,10 +1567,10 @@ index bb1d3aa..16c9c4e 100644
          self.submit_op(AppCommand::list_skills(
              vec![self.config.cwd.to_path_buf()],
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 830cd3e..60164dc 100644
+index b4af64b..6ba5302 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
-@@ -161,6 +161,15 @@ impl ChatWidget {
+@@ -162,6 +162,15 @@ impl ChatWidget {
              return (app_command.is_some(), app_command);
          }
  
@@ -1496,7 +1586,7 @@ index 830cd3e..60164dc 100644
          for image_url in &remote_image_urls {
              items.push(UserInput::Image {
                  url: image_url.clone(),
-@@ -453,4 +462,56 @@ impl ChatWidget {
+@@ -454,4 +463,56 @@ impl ChatWidget {
          ));
          self.request_redraw();
      }
@@ -1554,10 +1644,10 @@ index 830cd3e..60164dc 100644
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index e0d19d8..7472035 100644
+index 1b434ec..00b88a9 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -245,6 +245,9 @@ impl ChatWidget {
+@@ -247,6 +247,9 @@ impl ChatWidget {
                  self.app_event_tx
                      .send(AppEvent::ForkCurrentSession { name: None });
              }
@@ -1567,7 +1657,7 @@ index e0d19d8..7472035 100644
              SlashCommand::App => {
                  let Some(thread_id) = self.thread_id else {
                      self.add_error_message(
-@@ -1096,6 +1099,7 @@ impl ChatWidget {
+@@ -1152,6 +1155,7 @@ impl ChatWidget {
              | SlashCommand::Clear
              | SlashCommand::Resume
              | SlashCommand::Fork
@@ -1596,10 +1686,10 @@ index 0000000..11c7aab
 +
 +  Press enter to confirm or esc to go back
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 3edeacf..e0a71c0 100644
+index 56ba697..68bb764 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -505,6 +505,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
+@@ -518,6 +518,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.thread_id = Some(ThreadId::new());
  
@@ -1610,10 +1700,10 @@ index 3edeacf..e0a71c0 100644
          .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
      chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 49fa1dd..d0e84d3 100644
+index 2d62dc2..fd4f94a 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -1140,7 +1140,7 @@ fn interrupted_history(
+@@ -1592,7 +1592,7 @@ fn interrupted_history(
  }
  
  #[tokio::test]
@@ -1622,7 +1712,7 @@ index 49fa1dd..d0e84d3 100644
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
-@@ -1149,22 +1149,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1601,22 +1601,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
      handle_turn_started(&mut chat, "turn-1");
      chat.bottom_pane.ensure_status_indicator();
  
@@ -1657,7 +1747,7 @@ index 49fa1dd..d0e84d3 100644
          }
      }
  
-@@ -1180,6 +1178,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1632,6 +1630,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
@@ -1667,7 +1757,7 @@ index 49fa1dd..d0e84d3 100644
      chat.submit_user_message(UserMessage::from(prompt));
      assert_matches!(next_submit_op(&mut op_rx), Op::UserTurn { .. });
      handle_turn_started(&mut chat, "turn-1");
-@@ -1221,7 +1222,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
+@@ -1673,7 +1674,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
      assert!(!chat.input_queue.submit_pending_steers_after_interrupt);
      assert!(op_rx.try_recv().is_err());
  
@@ -1679,7 +1769,7 @@ index 49fa1dd..d0e84d3 100644
      match op_rx.try_recv() {
          Ok(Op::Interrupt) => {}
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index ff3b3fb..0e0cd3c 100644
+index 2997c0a..9e6d488 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -1164,7 +1164,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
@@ -1694,15 +1784,16 @@ index ff3b3fb..0e0cd3c 100644
  
 diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
 new file mode 100644
-index 0000000..9d09e1e
+index 0000000..2bdf62e
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/actions.rs
-@@ -0,0 +1,376 @@
+@@ -0,0 +1,386 @@
 +//! `/rewind` UI actions: scope picker, message picker, snapshot picker, and
 +//! file restoration. The file snapshot engine lives in [`super`].
 +
 +use crate::app::App;
 +use crate::app_backtrack::BacktrackSelection;
++use crate::app_backtrack::SIDE_EDIT_PREVIOUS_UNAVAILABLE_MESSAGE;
 +use crate::app_event::AppEvent;
 +use crate::app_event::RewindRestoreRequest;
 +use crate::bottom_pane::SelectionItem;
@@ -1840,6 +1931,15 @@ index 0000000..9d09e1e
 +        selection: BacktrackSelection,
 +        request: RewindRestoreRequest,
 +    ) {
++        // The file-restoring rewind forks a new thread; refuse while a side
++        // conversation is active, exactly like the conversation-only paths.
++        if self.chat_widget.side_conversation_active() {
++            self.reset_backtrack_state();
++            self.chat_widget
++                .add_error_message(SIDE_EDIT_PREVIOUS_UNAVAILABLE_MESSAGE.to_string());
++            return;
++        }
++
 +        let codex_home = self.config.codex_home.as_path();
 +        let cwd = self.config.cwd.as_path();
 +        let resolved = self.resolve_rewind_restore_target(&request);
@@ -2076,10 +2176,10 @@ index 0000000..9d09e1e
 +}
 diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
 new file mode 100644
-index 0000000..7b8c63d
+index 0000000..fdb69c0
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/mod.rs
-@@ -0,0 +1,1319 @@
+@@ -0,0 +1,1364 @@
 +//! File snapshots for `/rewind`.
 +//!
 +//! Before each user turn the TUI snapshots the workspace so the user can roll
@@ -2346,9 +2446,18 @@ index 0000000..7b8c63d
 +            let entry = match walk_entry {
 +                Ok(entry) => entry,
 +                Err(err) => {
-+                    // A directory we could not enumerate hides unknown files,
-+                    // so a partial snapshot could later delete them. Fail the
-+                    // whole snapshot instead of recording an incomplete one.
++                    // A directory we could not enumerate hides unknown files.
++                    // Record it as a skipped prefix (restore leaves skipped
++                    // paths untouched) instead of failing the whole snapshot,
++                    // so one unreadable subtree does not disable rewind for
++                    // the entire workspace. Only errors without a usable path
++                    // abort the snapshot.
++                    if let Some(path) = walk_error_path(&err) {
++                        if let Ok(relative) = path.strip_prefix(cwd) {
++                            record_skip(&mut skipped, &mut skipped_paths, relative);
++                            continue;
++                        }
++                    }
 +                    return Err(io::Error::other(err));
 +                }
 +            };
@@ -2807,6 +2916,18 @@ index 0000000..7b8c63d
 +
 +fn is_ignored_path(relative: &Path) -> bool {
 +    relative.starts_with(".git")
++}
++
++/// Best-effort path extraction from a walk error, recursing through the
++/// ignore crate's wrapper variants (`WithPath`/`WithLineNumber`/`WithDepth`).
++/// Used to record an unenumerable directory as a skipped prefix.
++fn walk_error_path(err: &ignore::Error) -> Option<&Path> {
++    match err {
++        ignore::Error::WithPath { path, .. } => Some(path.as_path()),
++        ignore::Error::WithLineNumber { err, .. } => walk_error_path(err),
++        ignore::Error::WithDepth { err, .. } => walk_error_path(err),
++        _ => None,
++    }
 +}
 +
 +fn next_snapshot_index(chain_root: &Path) -> io::Result<u64> {
@@ -3348,10 +3469,34 @@ index 0000000..7b8c63d
 +                && snapshot_prompt_matches(snapshot, prompt, &expected_hash)
 +        })
 +        .or_else(|| {
-+            snapshots
++            // When ordinal alignment drifted (e.g. a resumed thread whose
++            // transcript ordinals restart while the snapshot chain keeps
++            // counting), pick the snapshot whose index is closest to the
++            // selected message's ordinal instead of the newest match, which
++            // can silently restore a later occurrence of a repeated prompt.
++            // If two candidates tie for closest, the match is ambiguous, so
++            // decline to touch files rather than guess (mirrors the
++            // workspace-level ambiguity rule).
++            let mut matching = snapshots
 +                .iter()
-+                .filter(|snapshot| snapshot_prompt_matches(snapshot, prompt, &expected_hash))
-+                .max_by_key(|snapshot| snapshot.index)
++                .filter(|snapshot| snapshot_prompt_matches(snapshot, prompt, &expected_hash));
++            let Some(first) = matching.next() else {
++                return None;
++            };
++            let mut best = first;
++            let mut best_distance = best.index.abs_diff(expected_index);
++            let mut ambiguous = false;
++            for snapshot in matching {
++                let distance = snapshot.index.abs_diff(expected_index);
++                if distance < best_distance {
++                    best = snapshot;
++                    best_distance = distance;
++                    ambiguous = false;
++                } else if distance == best_distance && snapshot.index != best.index {
++                    ambiguous = true;
++                }
++            }
++            if ambiguous { None } else { Some(best) }
 +        })
 +        .cloned()
 +}
@@ -3401,10 +3546,10 @@ index 0000000..7b8c63d
 +pub(crate) use actions::rewind_scope_selection_params;
 diff --git a/codex-rs/tui/src/rewind/rewind_tests.rs b/codex-rs/tui/src/rewind/rewind_tests.rs
 new file mode 100644
-index 0000000..ee11a41
+index 0000000..81078cc
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/rewind_tests.rs
-@@ -0,0 +1,1191 @@
+@@ -0,0 +1,1203 @@
 +use super::*;
 +use pretty_assertions::assert_eq;
 +use std::os::unix::fs::MetadataExt;
@@ -4046,7 +4191,7 @@ index 0000000..ee11a41
 +}
 +
 +#[test]
-+fn resolve_snapshot_for_message_falls_back_to_newest_prompt_match() {
++fn resolve_snapshot_for_message_falls_back_to_closest_prompt_match() {
 +    let snapshots = vec![
 +        RewindSnapshotInfo {
 +            thread_id: TEST_THREAD.to_string(),
@@ -4082,15 +4227,27 @@ index 0000000..ee11a41
 +        },
 +    ];
 +    // When ordinal alignment drifted (e.g. a resumed thread whose snapshot
-+    // chain continues while transcript ordinals restart), the newest snapshot
-+    // carrying the selected prompt wins over a numerically closer one.
++    // chain continues while transcript ordinals restart), the snapshot whose
++    // index is closest to the selected message's ordinal wins; an exact-index
++    // match still wins outright via the primary lookup.
 +    assert_eq!(
-+        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "first").map(|s| s.index),
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 5, "first").map(|s| s.index),
 +        Some(5)
 +    );
 +    assert_eq!(
-+        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 4, "first").map(|s| s.index),
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 6, "first").map(|s| s.index),
 +        Some(5)
++    );
++    // Two equally close candidates are ambiguous: decline to touch files
++    // rather than silently restoring the wrong occurrence of a repeated
++    // prompt.
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "first").map(|s| s.index),
++        None
++    );
++    assert_eq!(
++        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 4, "first").map(|s| s.index),
++        None
 +    );
 +    assert_eq!(
 +        resolve_snapshot_for_message(&snapshots, /*expected_index*/ 2, "absent").map(|s| s.index),
@@ -4597,7 +4754,7 @@ index 0000000..ee11a41
 +    assert_eq!(fs::read(&file).expect("read"), b"v1");
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 07cb2c1..2004690 100644
+index cbfd820..fd00a23 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -35,6 +35,7 @@ pub enum SlashCommand {
@@ -4608,7 +4765,7 @@ index 07cb2c1..2004690 100644
      App,
      Init,
      Compact,
-@@ -93,6 +94,7 @@ impl SlashCommand {
+@@ -97,6 +98,7 @@ impl SlashCommand {
              SlashCommand::Delete => "permanently delete this session and exit",
              SlashCommand::Clear => "clear the terminal and start a new chat",
              SlashCommand::Fork => "fork the current chat",
@@ -4616,14 +4773,14 @@ index 07cb2c1..2004690 100644
              SlashCommand::App => "continue this session in the Desktop app",
              SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
              SlashCommand::Copy => "copy last response as markdown",
-@@ -194,6 +196,7 @@ impl SlashCommand {
+@@ -208,6 +210,7 @@ impl SlashCommand {
              | SlashCommand::Archive
              | SlashCommand::Delete
              | SlashCommand::Fork
 +            | SlashCommand::Rewind
              | SlashCommand::Init
              | SlashCommand::Compact
-             | SlashCommand::Keymap
+             | SlashCommand::Export
 -- 
-2.55.0
+2.47.3
 

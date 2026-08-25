@@ -1,4 +1,4 @@
-From fc1d71ee3e91b1884c3798a8b838ebea237bfada Mon Sep 17 00:00:00 2001
+From 30a0654468efaf88f99d00eb2f9ce27527c48dc3 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: config: disable update checks and announcement fetches by default
@@ -6,8 +6,8 @@ Subject: config: disable update checks and announcement fetches by default
 ---
  announcement_tip.toml            |  17 --
  codex-rs/tui/src/npm_registry.rs | 130 ----------
- codex-rs/tui/src/tooltips.rs     | 408 +------------------------------
- 3 files changed, 1 insertion(+), 554 deletions(-)
+ codex-rs/tui/src/tooltips.rs     | 409 +------------------------------
+ 3 files changed, 1 insertion(+), 555 deletions(-)
  delete mode 100644 announcement_tip.toml
  delete mode 100644 codex-rs/tui/src/npm_registry.rs
 
@@ -171,7 +171,7 @@ index 61ff242..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 79e74f5..0ba6e96 100644
+index f659ae7..5b236ba 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
 @@ -3,9 +3,6 @@ use codex_protocol::account::PlanType;
@@ -184,7 +184,7 @@ index 79e74f5..0ba6e96 100644
  const IS_MACOS: bool = cfg!(target_os = "macos");
  const IS_WINDOWS: bool = cfg!(target_os = "windows");
  
-@@ -13,7 +10,7 @@ const APP_TOOLTIP: &str = "Try the **Desktop app**. Run 'codex app' or visit htt
+@@ -16,7 +13,7 @@ const LINUX_APP_TOOLTIP: &str = "Try the **Desktop app** on Linux: install it fr
  const FAST_TOOLTIP: &str =
      "*New* Use **/fast** to enable our fastest inference with increased plan usage.";
  const OTHER_TOOLTIP: &str = "*New* Build faster with the **Desktop app**. Run 'codex app' or visit https://chatgpt.com/codex?app-landing-page=true";
@@ -204,7 +204,7 @@ index 79e74f5..0ba6e96 100644
      // Leave small chance for a random tooltip to be shown.
      if rng.random_ratio(8, 10) {
          match plan {
-@@ -120,210 +113,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
+@@ -150,211 +143,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
      }
  }
  
@@ -412,10 +412,11 @@ index 79e74f5..0ba6e96 100644
  mod tests {
      use super::*;
 -    use crate::tooltips::announcement::parse_announcement_tip_toml;
+-    use pretty_assertions::assert_eq;
      use rand::SeedableRng;
      use rand::rngs::StdRng;
  
-@@ -370,202 +162,4 @@ mod tests {
+@@ -449,202 +240,4 @@ mod tests {
          assert_eq!(seen, expected);
          assert!(!seen.contains(&Some(FAST_TOOLTIP)));
      }
@@ -619,5 +620,5 @@ index 79e74f5..0ba6e96 100644
 -    }
  }
 -- 
-2.55.0
+2.47.3
 
