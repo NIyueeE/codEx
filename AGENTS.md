@@ -44,6 +44,64 @@ cargo fmt --check                   # rustfmt check
   patch-module layout check, `cargo fmt --check`, config schema fixture
   check, patch export drift check)
 
+## Upgrading the Patch Queue
+
+Upgrades (`rust-vX.Y.Z`) routinely conflict: upstream refactors the same code
+regions the fork patches touch. Resolve conflicts with a clear hierarchy:
+
+- **Upstream wins by default.** Take the upstream implementation verbatim
+  whenever the conflict region is not part of a fork feature. Cosmetic fork
+  deltas (assertion messages, lockfile version sync) are re-applied only
+  when they are load-bearing (e.g. `--locked` reproducibility).
+- **Only fork core features are re-implemented.** Keep the fork's side when
+  the conflict touches behavior the fork exists to change: `/rewind`
+  snapshot/restore logic, single-Esc/double-Esc semantics, update-source
+  redirection, and the Linux-only CI/release replacement. Everything else
+  follows upstream.
+- **Independent additions coexist.** When both sides added separate items
+  at the same spot (an enum vs a struct, two unrelated calls), keep both.
+  When both sides rewrote the same logic block, prefer upstream's rewrite
+  and layer the fork behavior on top only if upstream provably cannot
+  satisfy the fork feature. Example: upstream's replay-buffer turn merge is
+  bounded (32768 events / 256KB of agent deltas), so long sessions evict
+  old turns; `/rewind` therefore keeps its `thread_read` fast path while
+  upstream's logic survives unchanged as the fallback.
+- **Snapshot conflicts resolve against upstream content.** Take the
+  upstream `.snap` side, run the suite with `INSTA_UPDATE=always`, then
+  review the regenerated diff to confirm it only contains fork-intended
+  deltas (bindings, branding, versions).
+
+Operational experience from the rust-v0.149.1 upgrade:
+
+- `git am --3way` needs the previous base tag's blobs to build its fake
+  ancestor; a shallow clone of the new tag alone fails with "sha1
+  information is lacking or useless". `update.sh` fetches the old `BASE_TAG`
+  into the shallow clone -- keep that behavior when changing it.
+- Module order must keep every intermediate revision of the queue
+  compilable: `[updates]` precedes `[input]` because the input module
+  removes `mod npm_registry;` from lib.rs only after the updates module
+  stops referencing it. Reorder commits and the manifest together, never
+  one without the other.
+- New fork-delta files introduced by an upgrade (regenerated snapshots,
+  newly touched upstream files such as the app-server-daemon updater) must
+  be added to `scripts/patch-modules.conf` before `gen-patches.sh` will
+  export the queue.
+- After resolving conflicts: grep for leftover conflict markers, run
+  `cargo fmt`, build, run the TUI suite (snapshots) and core unit tests,
+  then re-bootstrap a fresh tree from the regenerated patches as the final
+  proof that the queue applies cleanly.
+- Upstream files the fork does not need (e.g. CLA/issue-bot workflows that
+  only make sense on openai/codex) stay inert inside the bootstrapped tree;
+  the slim repo only runs its own four workflows, so they need no cleanup.
+- Release builds of this workspace are memory-heavy: linking `codex-cli`
+  with thin LTO holds 10+ GB in a single process. Never run multiple
+  cargo builds concurrently on one host (even in separate target dirs) --
+  the machine can OOM and hang. Run builds serially; on memory-constrained
+  hosts cap parallelism with `CARGO_BUILD_JOBS=2` and do not start other
+  cargo work while the final link runs. Run long builds detached
+  (`setsid nohup ... &`) and poll the log, so an outer tool timeout never
+  kills a half-finished compile or link.
+
 ## Coding Style & Naming Conventions
 
 - Rust: standard `rustfmt`; keep `cargo fmt --check` clean
