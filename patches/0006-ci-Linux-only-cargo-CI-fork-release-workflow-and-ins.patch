@@ -1,4 +1,4 @@
-From b0198d5e5e6a409a3b953578c2e4d2e6a848247d Mon Sep 17 00:00:00 2001
+From 689b686299b45a6f1a5ccc73c399c45e02104896 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux-only cargo CI, fork release workflow, and installer
@@ -16,7 +16,7 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  .github/workflows/python-sdk-release.yml      |  237 ---
  .github/workflows/r2-release.yml              |   53 -
  .github/workflows/repo-checks.yml             |   71 +-
- .../rust-ci-full-nextest-platform.yml         |  434 -----
+ .../rust-ci-full-nextest-platform.yml         |  439 -----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  263 ---
  .../rust-release-argument-comment-lint.yml    |  113 --
@@ -24,11 +24,11 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
  .github/workflows/rust-release.yml            | 1684 ++---------------
- .github/workflows/rusty-v8-release.yml        |  476 -----
+ .github/workflows/rusty-v8-release.yml        |  477 -----
  .github/workflows/sdk.yml                     |  166 --
- .github/workflows/v8-canary.yml               |  445 -----
+ .github/workflows/v8-canary.yml               |  448 -----
  install.sh                                    |  198 ++
- patches/BUILD.bazel                           |   22 -
+ patches/BUILD.bazel                           |   23 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 --
@@ -38,7 +38,7 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  patches/rules_cc_rusty_v8_custom_libcxx.patch |   44 -
  ...ules_rs_build_script_deps_annotation.patch |   58 -
  ...s_rust_build_script_tools_transition.patch |   19 -
- ...s_rust_windows_msvc_direct_link_args.patch |   96 -
+ ...s_rust_windows_msvc_direct_link_args.patch |  109 --
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
  patches/v8_bazel_rules.patch                  |  502 -----
@@ -48,7 +48,7 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 44 files changed, 469 insertions(+), 7825 deletions(-)
+ 44 files changed, 469 insertions(+), 7848 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -1635,10 +1635,10 @@ index be2b9aa..3ce7027 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index e86bc0b..0000000
+index b8540e8..0000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
-@@ -1,434 +0,0 @@
+@@ -1,439 +0,0 @@
 -name: rust-ci-full nextest platform
 -
 -on:
@@ -1703,6 +1703,8 @@ index e86bc0b..0000000
 -      # so the cross-compile build reuses the Windows x64 cache lineage.
 -      ARCHIVE_CACHE_RUNNER: ${{ inputs.archive_runner != '' && inputs.archive_runner || inputs.runner }}
 -      USE_SCCACHE: ${{ inputs.use_sccache && 'true' || 'false' }}
+-      CODEX_CI_PROFILE: ${{ inputs.profile }}
+-      CODEX_CI_TARGET: ${{ inputs.target }}
 -      CARGO_INCREMENTAL: "0"
 -      SCCACHE_CACHE_SIZE: 10G
 -      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
@@ -1721,7 +1723,7 @@ index e86bc0b..0000000
 -          set -euo pipefail
 -          if command -v apt-get >/dev/null 2>&1; then
 -            sudo apt-get update -y
--            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev bubblewrap
+-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev bubblewrap
 -          fi
 -
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -1811,8 +1813,8 @@ index e86bc0b..0000000
 -          archive_dir="${RUNNER_TEMP}/nextest-archive"
 -          mkdir -p "${archive_dir}"
 -          cargo nextest archive \
--            --target ${{ inputs.target }} \
--            --cargo-profile ${{ inputs.profile }} \
+-            --target "${CODEX_CI_TARGET}" \
+-            --cargo-profile "${CODEX_CI_PROFILE}" \
 -            --timings \
 -            --archive-file "${archive_dir}/${NEXTEST_ARCHIVE_FILE}"
 -
@@ -1826,20 +1828,20 @@ index e86bc0b..0000000
 -
 -          if [[ "${RUNNER_OS}" == "Linux" ]]; then
 -            cargo build \
--              --target ${{ inputs.target }} \
--              --profile ${{ inputs.profile }} \
+-              --target "${CODEX_CI_TARGET}" \
+-              --profile "${CODEX_CI_PROFILE}" \
 -              -p codex-linux-sandbox \
 -              --bin codex-linux-sandbox
--            cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/codex-linux-sandbox" "${helper_dir}/"
+-            cp "${CARGO_TARGET_DIR}/${CODEX_CI_TARGET}/${CODEX_CI_PROFILE}/codex-linux-sandbox" "${helper_dir}/"
 -          else
 -            cargo build \
--              --target ${{ inputs.target }} \
--              --profile ${{ inputs.profile }} \
+-              --target "${CODEX_CI_TARGET}" \
+-              --profile "${CODEX_CI_PROFILE}" \
 -              -p codex-windows-sandbox \
 -              --bin codex-windows-sandbox-setup \
 -              --bin codex-command-runner
--            cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/codex-windows-sandbox-setup.exe" "${helper_dir}/"
--            cp "${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}/codex-command-runner.exe" "${helper_dir}/"
+-            cp "${CARGO_TARGET_DIR}/${CODEX_CI_TARGET}/${CODEX_CI_PROFILE}/codex-windows-sandbox-setup.exe" "${helper_dir}/"
+-            cp "${CARGO_TARGET_DIR}/${CODEX_CI_TARGET}/${CODEX_CI_PROFILE}/codex-command-runner.exe" "${helper_dir}/"
 -          fi
 -
 -      - name: Upload Cargo timings (nextest)
@@ -1897,7 +1899,7 @@ index e86bc0b..0000000
 -        shell: bash
 -        run: |
 -          {
--            echo "### sccache stats — ${{ inputs.target }} (tests)";
+-            echo "### sccache stats — ${CODEX_CI_TARGET} (tests)";
 -            echo;
 -            echo '```';
 -            sccache --show-stats || true;
@@ -1913,6 +1915,9 @@ index e86bc0b..0000000
 -      run:
 -        working-directory: codex-rs
 -    env:
+-      CODEX_CI_PROFILE: ${{ inputs.profile }}
+-      CODEX_CI_TARGET: ${{ inputs.target }}
+-      CODEX_CI_TEST_THREADS: ${{ inputs.test_threads }}
 -      NEXTEST_ARCHIVE_FILE: nextest-${{ inputs.artifact_id }}.tar.zst
 -      TEST_HELPERS_ARTIFACT: nextest-test-helpers-${{ inputs.artifact_id }}
 -    strategy:
@@ -1985,13 +1990,13 @@ index e86bc0b..0000000
 -
 -          if [[ "${RUNNER_OS}" == "Linux" ]]; then
 -            helper_dir="${RUNNER_TEMP}/${TEST_HELPERS_ARTIFACT}"
--            helper_target_dir="${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}"
+-            helper_target_dir="${CARGO_TARGET_DIR}/${CODEX_CI_TARGET}/${CODEX_CI_PROFILE}"
 -            mkdir -p "${helper_target_dir}"
 -            cp "${helper_dir}/codex-linux-sandbox" "${helper_target_dir}/"
 -            chmod +x "${helper_target_dir}/codex-linux-sandbox"
 -          elif [[ "${RUNNER_OS}" == "Windows" ]]; then
 -            helper_dir="${RUNNER_TEMP}/${TEST_HELPERS_ARTIFACT}"
--            helper_target_dir="${CARGO_TARGET_DIR}/${{ inputs.target }}/${{ inputs.profile }}"
+-            helper_target_dir="${CARGO_TARGET_DIR}/${CODEX_CI_TARGET}/${CODEX_CI_PROFILE}"
 -            mkdir -p "${helper_target_dir}"
 -            cp "${helper_dir}/codex-windows-sandbox-setup.exe" "${helper_target_dir}/"
 -            cp "${helper_dir}/codex-command-runner.exe" "${helper_target_dir}/"
@@ -2004,8 +2009,8 @@ index e86bc0b..0000000
 -            --workspace-remap "${workspace_root}"
 -            --partition "hash:${{ matrix.shard }}/4"
 -          )
--          if [[ "${{ inputs.test_threads }}" != "0" ]]; then
--            nextest_args+=(--test-threads "${{ inputs.test_threads }}")
+-          if [[ "${CODEX_CI_TEST_THREADS}" != "0" ]]; then
+-            nextest_args+=(--test-threads "${CODEX_CI_TEST_THREADS}")
 -          fi
 -
 -          test_command=(cargo nextest "${nextest_args[@]}")
@@ -2075,7 +2080,7 @@ index e86bc0b..0000000
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
 deleted file mode 100644
-index 9e8b116..0000000
+index 7be29ba..0000000
 --- a/.github/workflows/rust-ci-full.yml
 +++ /dev/null
 @@ -1,574 +0,0 @@
@@ -2337,7 +2342,7 @@ index 9e8b116..0000000
 -          set -euo pipefail
 -          if command -v apt-get >/dev/null 2>&1; then
 -            sudo apt-get update -y
--            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev
+-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev
 -          fi
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -        with:
@@ -5507,10 +5512,10 @@ index e07c23b..5328069 100644
 +          gh release upload "${tag}" "${assets[@]}" --clobber
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index a2f620a..0000000
+index 37c8c65..0000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
-@@ -1,476 +0,0 @@
+@@ -1,477 +0,0 @@
 -name: rusty-v8-release
 -
 -on:
@@ -5829,6 +5834,7 @@ index a2f620a..0000000
 -          ref: v${{ needs.metadata.outputs.v8_version }}
 -          path: upstream-rusty-v8
 -          submodules: recursive
+-          persist-credentials: false
 -
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -6161,10 +6167,10 @@ index f2e8fc7..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index b804086..0000000
+index 29cb72e..0000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
-@@ -1,445 +0,0 @@
+@@ -1,448 +0,0 @@
 -name: v8-canary
 -
 -# Do not use trigger-level path filters here. This workflow is also called by
@@ -6484,6 +6490,8 @@ index b804086..0000000
 -
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
+-        with:
+-          persist-credentials: false
 -
 -      - id: setup_ci
 -        uses: ./.github/actions/setup-ci
@@ -6499,6 +6507,7 @@ index b804086..0000000
 -          ref: v${{ needs.metadata.outputs.v8_version }}
 -          path: upstream-rusty-v8
 -          submodules: recursive
+-          persist-credentials: false
 -
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
@@ -6816,10 +6825,10 @@ index 0000000..834ee10
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index eb1fe27..0000000
+index 6238671..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,22 +0,0 @@
+@@ -1,23 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -6831,6 +6840,7 @@ index eb1fe27..0000000
 -    "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
 -    "rules_cc_rusty_v8_custom_libcxx.patch",
 -    "rules_rs_build_script_deps_annotation.patch",
+-    "rules_rs_windows_msvc_linker.patch",
 -    "rusty_v8_prebuilt_out_dir.patch",
 -    "ring_windows_msvc_include_dirs.patch",
 -    "v8_bazel_rules.patch",
@@ -7339,12 +7349,25 @@ index dcbc456..0000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index ad8160b..0000000
+index aa5fb27..0000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
-@@ -1,96 +0,0 @@
+@@ -1,109 +0,0 @@
 ---- a/rust/private/rustc.bzl
 -+++ b/rust/private/rustc.bzl
+-@@ -438,4 +438,11 @@
+-     use_bpf_linker = toolchain.target_arch in ("bpfeb", "bpfel") and toolchain.linker
+--    if not ld or toolchain.linker_preference == "rust" or use_bpf_linker:
+-+    use_windows_msvc_linker = (
+-+        toolchain.target_arch == "x86_64" and
+-+        toolchain.target_os == "windows" and
+-+        toolchain.target_abi == "msvc" and
+-+        toolchain.linker != None and
+-+        toolchain.linker_preference != "cc"
+-+    )
+-+    if not ld or toolchain.linker_preference == "rust" or use_bpf_linker or use_windows_msvc_linker:
+-         ld = toolchain.linker.path
+-         ld_is_direct_driver = toolchain.linker_type == "direct"
 -@@ -468,11 +468,25 @@
 -                     filtered_args.append(version)
 -                     # Keep library search path flags

@@ -47,7 +47,9 @@ git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" 
 old_base_tag="$(cat "${repo_root}/BASE_TAG" 2>/dev/null || true)"
 if [[ -n "${old_base_tag}" && "${old_base_tag}" != "${upstream_tag}" ]]; then
   echo "Fetching previous base ${old_base_tag} for three-way merge ..."
-  if ! git -C "${work_dir}" fetch --depth 1 \
+  # The remote must be named explicitly: a bare `git fetch <refspec>` parses
+  # the refspec as the repository URL and fails.
+  if ! git -C "${work_dir}" fetch --depth 1 origin \
       "+refs/tags/${old_base_tag}:refs/tags/${old_base_tag}" 2>/dev/null; then
     echo "warning: could not fetch ${old_base_tag}; the queue may fail to apply" >&2
     echo "warning: if 'git am' reports missing blob SHAs, fetch the tag manually." >&2
@@ -64,6 +66,8 @@ if ! git am --3way "${repo_root}"/patches/*.patch; then
   echo "Conflict while applying patches against ${upstream_tag}." >&2
   echo "Resolve conflicts in ${work_dir}, then run:" >&2
   echo "  git am --continue" >&2
+  echo "After the queue applies, bump ${work_dir}/BASE_TAG to ${upstream_tag}" >&2
+  echo "and amend the [infra] commit, so the check and gen-patches see the new base." >&2
   echo "  bash ${repo_root}/scripts/gen-patches.sh ${upstream_tag}" >&2
   echo "Or abort with: git am --abort" >&2
   echo "=============================================================" >&2

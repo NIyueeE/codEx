@@ -1,4 +1,4 @@
-From 6a3ca445b1e9a9a8cb2979d683331d8079815bcf Mon Sep 17 00:00:00 2001
+From 8d5d52742b0f6da5dc5f7f9efb531818993f616c Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
@@ -9,7 +9,7 @@ Subject: update: pure-Rust self-update against fork releases
  .../src/update_loop_tests.rs                  |  63 ---
  codex-rs/cli/Cargo.toml                       |   3 +
  codex-rs/cli/src/doctor/updates.rs            |  53 +--
- codex-rs/cli/src/main.rs                      |  90 ++---
+ codex-rs/cli/src/main.rs                      | 114 ++----
  codex-rs/cli/src/self_update.rs               | 362 ++++++++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 ---
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
@@ -24,7 +24,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/tui/src/updates.rs                   |  52 +--
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 20 files changed, 517 insertions(+), 508 deletions(-)
+ 20 files changed, 517 insertions(+), 532 deletions(-)
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
@@ -430,10 +430,10 @@ index 7c2add2..ec67709 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 45218a6..b160b67 100644
+index 0bfea04..1a1c65d 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -59,9 +59,8 @@ mod queue_cmd;
+@@ -58,9 +58,8 @@ mod queue_cmd;
  mod remote_control_cmd;
  #[cfg(target_os = "windows")]
  mod sandbox_setup;
@@ -444,7 +444,7 @@ index 45218a6..b160b67 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -97,13 +96,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -96,13 +95,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -464,7 +464,7 @@ index 45218a6..b160b67 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -169,7 +172,7 @@ enum Subcommand {
+@@ -168,7 +171,7 @@ enum Subcommand {
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
@@ -473,7 +473,7 @@ index 45218a6..b160b67 100644
      Update,
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
-@@ -813,7 +816,7 @@ fn format_exit_messages(exit_info: AppExitInfo, color_enabled: bool) -> Vec<Stri
+@@ -784,7 +787,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -482,7 +482,7 @@ index 45218a6..b160b67 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -832,55 +835,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -806,79 +809,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -498,24 +498,35 @@ index 45218a6..b160b67 100644
      println!();
 -    let cmd_str = action.command_str();
 -    println!("Updating Codex via `{cmd_str}`...");
--
 -    let status = {
 -        #[cfg(windows)]
 -        {
--            if action == UpdateAction::StandaloneWindows {
--                let (cmd, args) = action.command_args();
--                // Run the standalone PowerShell installer with PowerShell
--                // itself. Routing this through `cmd.exe /C` would parse
--                // PowerShell metacharacters like `|` before PowerShell sees
--                // the installer command.
--                std::process::Command::new(cmd).args(args).status()?
+-            let (cmd, args) = action.command_args();
+-            let cmd = if action == UpdateAction::StandaloneWindows {
+-                // These args contain PowerShell metacharacters, so do not let
+-                // PATHEXT select a batch shim for this action.
+-                "powershell.exe"
 -            } else {
--                // On Windows, run via cmd.exe so .CMD/.BAT are correctly resolved (PATHEXT semantics).
--                std::process::Command::new("cmd")
--                    .args(["/C", &cmd_str])
--                    .status()?
--            }
--        }
+-                cmd
+-            };
+-            let path_env =
+-                std::env::var_os("PATH").ok_or_else(|| anyhow::anyhow!("PATH is not set"))?;
+-            let command_path = resolve_windows_update_command_from_path(cmd, &path_env)?;
+-            // Do not let a project-local command or package-manager config
+-            // influence the updater after the user accepts the update prompt.
+-            let update_cwd = tempfile::tempdir()?;
+-            // Resolve through PATH without consulting the project cwd. When
+-            // this returns a .cmd/.bat shim, std::process::Command routes the
+-            // absolute path through the system command processor.
+-            std::process::Command::new(command_path)
+-                .args(args)
+-                .current_dir(update_cwd.path())
+-                .status()?
++    match action {
++        UpdateAction::StandaloneUnix => {
++            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
++            self_update::run().await?;
+         }
 -        #[cfg(not(windows))]
 -        {
 -            let (cmd, args) = action.command_args();
@@ -527,11 +538,7 @@ index 45218a6..b160b67 100644
 -            std::process::Command::new(&command_path)
 -                .args(&normalized_args)
 -                .status()?
-+    match action {
-+        UpdateAction::StandaloneUnix => {
-+            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
-+            self_update::run().await?;
-         }
+-        }
 -    };
 -    if !status.success() {
 -        anyhow::bail!("`{cmd_str}` failed with status {status}");
@@ -541,12 +548,29 @@ index 45218a6..b160b67 100644
      Ok(())
  }
  
+-#[cfg(windows)]
+-fn resolve_windows_update_command_from_path(
+-    command: &str,
+-    path_env: &std::ffi::OsStr,
+-) -> anyhow::Result<PathBuf> {
+-    let path_env =
+-        std::env::join_paths(std::env::split_paths(path_env).filter(|path| path.is_absolute()))?;
+-    if path_env.is_empty() {
+-        anyhow::bail!(
+-            "Could not find an absolute update command `{command}` on PATH. Please update manually: https://developers.openai.com/codex/cli/"
+-        );
+-    }
+-    which::which_in_global(command, Some(&path_env))?
+-        .next()
+-        .ok_or_else(|| anyhow::anyhow!("could not find update command `{command}` on PATH"))
+-}
+-
 -fn run_update_command() -> anyhow::Result<()> {
 +async fn run_update_command() -> anyhow::Result<()> {
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -892,10 +865,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -890,10 +839,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -559,7 +583,7 @@ index 45218a6..b160b67 100644
      }
  }
  
-@@ -1139,7 +1112,7 @@ async fn cli_main(
+@@ -1139,7 +1088,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -568,7 +592,7 @@ index 45218a6..b160b67 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1423,7 +1396,7 @@ async fn cli_main(
+@@ -1423,7 +1372,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -577,7 +601,7 @@ index 45218a6..b160b67 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1510,7 +1483,7 @@ async fn cli_main(
+@@ -1510,7 +1459,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -586,7 +610,7 @@ index 45218a6..b160b67 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1582,7 +1555,7 @@ async fn cli_main(
+@@ -1582,7 +1531,7 @@ async fn cli_main(
                  root_remote_auth_token_env.as_deref(),
                  "update",
              )?;
@@ -595,7 +619,7 @@ index 45218a6..b160b67 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -3497,6 +3470,23 @@ mod tests {
+@@ -3563,6 +3512,23 @@ mod tests {
          assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
      }
  
@@ -1053,7 +1077,7 @@ index b90dc1e..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index f1affa8..abe8bbb 100644
+index bd68c83..478c073 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -1,6 +1,7 @@
@@ -1062,9 +1086,9 @@ index f1affa8..abe8bbb 100644
  use super::*;
 +use codex_utils_cli::FORK_REPO;
  
- #[cfg_attr(debug_assertions, allow(dead_code))]
- #[derive(Debug)]
-@@ -23,12 +24,14 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+ #[cfg_attr(not(test), allow(dead_code))]
+ const RECAP_HEADING: &str = "Conversation recap";
+@@ -26,12 +27,14 @@ impl HistoryCell for UpdateAvailableHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          use ratatui_macros::line;
          use ratatui_macros::text;
@@ -1082,7 +1106,7 @@ index f1affa8..abe8bbb 100644
                  " for installation options."
              ]
          };
-@@ -43,7 +46,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -46,7 +49,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
              update_instruction,
              "",
              "See full release notes:",
@@ -1091,7 +1115,7 @@ index f1affa8..abe8bbb 100644
                  .cyan()
                  .underlined(),
          ];
-@@ -57,10 +60,10 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -60,10 +63,10 @@ impl HistoryCell for UpdateAvailableHistoryCell {
      }
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
@@ -1105,7 +1129,7 @@ index f1affa8..abe8bbb 100644
          };
          vec![
              Line::from("Update available!"),
-@@ -68,7 +71,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -71,7 +74,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
              Line::from(update_instruction),
              Line::from(""),
              Line::from("See full release notes:"),
@@ -1132,7 +1156,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..b5ab7e3 100644
+index ad0fc4b..412ef67 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -1143,12 +1167,12 @@ index ad0fc4b..b5ab7e3 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ codEx (v0.149.1)                 │
++│ >_ codEx (v0.151.0)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..45d0b92 100644
+index c8f352d..8d17e94 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -1163,7 +1187,7 @@ index c8f352d..45d0b92 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.149.1 -> 9.9.9            │
++│ ✨ Update available! 0.151.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -1188,10 +1212,10 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 47403c1..983751a 100644
+index 5890c3e..74a41c3 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1198,24 +1198,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1445,24 +1445,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -1374,7 +1398,7 @@ index 0fe4408..0ba771a 100644
      }
  }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index ae83031..f2b518b 100644
+index 688d113..e749b63 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
 @@ -26,7 +26,8 @@ use ratatui::widgets::Clear;

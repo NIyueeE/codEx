@@ -1,10 +1,10 @@
-From e38cce22449e5bc3d74309f95ea552a83a2f6f34 Mon Sep 17 00:00:00 2001
+From 3bbb7521eaff1b149b29d4dd22d74bd8ef3e1b72 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: input: single Esc is a no-op, double Esc interrupts
 
 ---
- codex-rs/tui/src/app/input.rs                 |  71 ++------
+ codex-rs/tui/src/app/input.rs                 |  70 ++------
  codex-rs/tui/src/bottom_pane/chat_composer.rs | 167 ++++++++++--------
  .../bottom_pane/chat_composer/footer_state.rs |   2 +-
  codex-rs/tui/src/bottom_pane/footer.rs        | 148 +++-------------
@@ -30,7 +30,6 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ..._details_and_queued_messages_snapshot.snap |   3 +-
  codex-rs/tui/src/chatwidget/constructor.rs    |   1 +
  codex-rs/tui/src/chatwidget/interaction.rs    |  63 ++++++-
- codex-rs/tui/src/chatwidget/settings.rs       |   2 +-
  ..._review_denied_renders_denied_request.snap |   2 +-
  ...w_timed_out_renders_timed_out_request.snap |   2 +-
  ...exec_and_status_layout_vt100_snapshot.snap |   2 +-
@@ -42,6 +41,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ...goal_continuation_drops_stale_reviews.snap |   2 +-
  ...allel_reviews_render_aggregate_status.snap |   2 +-
  ...renders_warning_and_timed_out_request.snap |   2 +-
+ ...s__guardian_write_stdin_review_status.snap |   2 +-
  ...ts__hidden_shell_paste_queued_preview.snap |   4 +-
  ...eration_begin_restores_working_status.snap |   2 +-
  ...et__tests__mcp_startup_header_booting.snap |   2 +-
@@ -58,7 +58,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  .../src/chatwidget/tests/status_and_layout.rs |   8 +-
  codex-rs/tui/src/chatwidget/turn_runtime.rs   |   1 +
  codex-rs/tui/src/keymap.rs                    |  16 +-
- codex-rs/tui/src/keymap_setup.rs              |   8 +-
+ codex-rs/tui/src/keymap_setup.rs              |   2 +
  codex-rs/tui/src/lib.rs                       |   5 +-
  ...rejection_reports_unavailable_message.snap |   5 -
  ...__tests__keymap_picker_all_tab_search.snap |   2 +-
@@ -89,7 +89,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ...hly_credit_details_in_narrow_terminal.snap |   2 +-
  ...ipt_overlay_status_rate_limit_refresh.snap |   4 +-
  codex-rs/tui/src/status_indicator_widget.rs   |  25 ++-
- 85 files changed, 450 insertions(+), 446 deletions(-)
+ 85 files changed, 445 insertions(+), 444 deletions(-)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_then_esc_hint.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_hint_survives_esc.snap} (93%)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_backtrack.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_closes_shortcut_overlay.snap} (89%)
  delete mode 100644 codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_from_overlay.snap
@@ -99,7 +99,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__app__tests__side_backtrack_rejection_reports_unavailable_message.snap
 
 diff --git a/codex-rs/tui/src/app/input.rs b/codex-rs/tui/src/app/input.rs
-index 814f8be..6c53cd9 100644
+index 814f8be..a0b218b 100644
 --- a/codex-rs/tui/src/app/input.rs
 +++ b/codex-rs/tui/src/app/input.rs
 @@ -4,8 +4,6 @@
@@ -121,7 +121,7 @@ index 814f8be..6c53cd9 100644
                  self.chat_widget.set_footer_hint_override(Some(vec![
                      (
                          format!("{} …", prefix.display_label()),
-@@ -370,19 +365,21 @@ impl App {
+@@ -370,19 +365,20 @@ impl App {
              return;
          }
  
@@ -141,13 +141,12 @@ index 814f8be..6c53cd9 100644
 +            // codEx: a single Esc is a no-op in the main UI. A second Esc
 +            // within the interrupt window stops a running reply. Contexts that
 +            // already own Esc (modals, popups, overlays, vim insert mode, the
-+            // `?` shortcut overlay, bash-mode prompts, plan-mode nudge) keep
-+            // their existing behavior and receive the key directly.
++            // `?` shortcut overlay, bash-mode prompts) keep their existing
++            // behavior and receive the key directly.
 +            if self.overlay.is_some()
 +                || !self.chat_widget.no_modal_or_popup_active()
 +                || self.chat_widget.should_handle_vim_insert_escape(key_event)
 +                || self.chat_widget.composer_owns_esc_key()
-+                || self.chat_widget.should_show_plan_mode_nudge()
 +            {
                  self.chat_widget.handle_key_event(key_event);
 +            } else if key_event.kind == KeyEventKind::Press {
@@ -155,7 +154,7 @@ index 814f8be..6c53cd9 100644
              }
              return;
          }
-@@ -404,30 +401,10 @@ impl App {
+@@ -404,30 +400,10 @@ impl App {
                      tui.frame_requester().schedule_frame();
                  }
              }
@@ -186,7 +185,7 @@ index 814f8be..6c53cd9 100644
                  self.chat_widget.handle_key_event(key_event);
              }
              _ => {
-@@ -436,26 +413,6 @@ impl App {
+@@ -436,26 +412,6 @@ impl App {
          };
      }
  
@@ -214,10 +213,10 @@ index 814f8be..6c53cd9 100644
          self.overlay.is_none() && self.chat_widget.no_modal_or_popup_active()
      }
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index ec1b00c..3b57682 100644
+index c2f24cd..e5fedfb 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -231,7 +231,6 @@ use super::footer::GoalStatusIndicator;
+@@ -238,7 +238,6 @@ use super::footer::GoalStatusIndicator;
  use super::footer::SummaryLeft;
  use super::footer::can_show_left_with_context;
  use super::footer::context_window_line;
@@ -225,7 +224,7 @@ index ec1b00c..3b57682 100644
  use super::footer::footer_height;
  use super::footer::footer_hint_items_width;
  use super::footer::footer_line_width;
-@@ -513,6 +512,10 @@ pub(crate) struct ChatComposer {
+@@ -521,6 +520,10 @@ pub(crate) struct ChatComposer {
      personality_command_enabled: bool,
      windows_degraded_sandbox_active: bool,
      side_conversation_active: bool,
@@ -236,7 +235,7 @@ index ec1b00c..3b57682 100644
      history_search: Option<HistorySearchSession>,
      submit_keys: Vec<KeyBinding>,
      queue_keys: Vec<KeyBinding>,
-@@ -635,7 +638,7 @@ impl ChatComposer {
+@@ -630,7 +633,7 @@ impl ChatComposer {
              footer: FooterState {
                  quit_shortcut_expires_at: None,
                  quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
@@ -245,7 +244,7 @@ index ec1b00c..3b57682 100644
                  use_shift_enter_hint,
                  mode: FooterMode::ComposerEmpty,
                  hint_override: None,
-@@ -699,6 +702,8 @@ impl ChatComposer {
+@@ -694,6 +697,8 @@ impl ChatComposer {
              personality_command_enabled: false,
              windows_degraded_sandbox_active: false,
              side_conversation_active: false,
@@ -254,7 +253,7 @@ index ec1b00c..3b57682 100644
              history_search: None,
              submit_keys: vec![key_hint::plain(KeyCode::Enter)],
              queue_keys: vec![key_hint::plain(KeyCode::Tab)],
-@@ -1890,6 +1895,40 @@ impl ChatComposer {
+@@ -1909,6 +1914,40 @@ impl ChatComposer {
              .is_some_and(|expires_at| Instant::now() < expires_at)
      }
  
@@ -295,7 +294,7 @@ index ec1b00c..3b57682 100644
      fn next_large_paste_placeholder(&self, char_count: usize) -> String {
          let base = format!("[Pasted Content {char_count} chars]");
          let prefix = format!("{base} #");
-@@ -2064,14 +2103,12 @@ impl ChatComposer {
+@@ -2083,14 +2122,12 @@ impl ChatComposer {
          if self.handle_shortcut_overlay_key(&key_event) {
              return (InputResult::None, true);
          }
@@ -315,7 +314,7 @@ index ec1b00c..3b57682 100644
          }
          let ActivePopup::File(popup) = &mut self.popups.active else {
              unreachable!();
-@@ -3441,13 +3478,14 @@ impl ChatComposer {
+@@ -3490,13 +3527,14 @@ impl ChatComposer {
              return (InputResult::None, true);
          }
          if key_event.code == KeyCode::Esc {
@@ -336,7 +335,7 @@ index ec1b00c..3b57682 100644
          } else {
              self.footer.mode = reset_mode_after_activity(self.footer.mode);
          }
-@@ -3761,20 +3799,10 @@ impl ChatComposer {
+@@ -3810,20 +3848,10 @@ impl ChatComposer {
  
      fn footer_props(&self) -> FooterProps {
          let mode = self.footer_mode();
@@ -358,7 +357,7 @@ index ec1b00c..3b57682 100644
              use_shift_enter_hint: self.footer.use_shift_enter_hint,
              is_task_running: self.is_task_running,
              queue_submissions: self.queue_submissions,
-@@ -3788,7 +3816,6 @@ impl ChatComposer {
+@@ -3837,7 +3865,6 @@ impl ChatComposer {
                  queue: self.footer.queue_key,
                  insert_newline: self.footer.insert_newline_key,
                  external_editor: self.footer.external_editor_key,
@@ -366,7 +365,7 @@ index ec1b00c..3b57682 100644
                  show_transcript: self.footer.show_transcript_key,
                  history_search: self.footer.history_search_key,
                  reasoning_down: self.footer.reasoning_down_key,
-@@ -3798,6 +3825,28 @@ impl ChatComposer {
+@@ -3847,6 +3874,28 @@ impl ChatComposer {
          }
      }
  
@@ -395,7 +394,7 @@ index ec1b00c..3b57682 100644
      /// Resolve the effective footer mode via a small priority waterfall.
      ///
      /// The base mode is derived solely from whether the composer is empty:
-@@ -3817,16 +3866,24 @@ impl ChatComposer {
+@@ -3866,16 +3915,24 @@ impl ChatComposer {
  
          match self.footer.mode {
              FooterMode::HistorySearch => FooterMode::HistorySearch,
@@ -421,7 +420,7 @@ index ec1b00c..3b57682 100644
              FooterMode::QuitShortcutReminder => base_mode,
              FooterMode::ComposerEmpty | FooterMode::ComposerHasDraft => base_mode,
          }
-@@ -4301,15 +4358,6 @@ impl ChatComposer {
+@@ -4352,15 +4409,6 @@ impl ChatComposer {
          self.footer.context_window_pending = pending;
      }
  
@@ -437,7 +436,7 @@ index ec1b00c..3b57682 100644
      pub(crate) fn set_status_line(&mut self, status_line: Option<Line<'static>>) -> bool {
          if self.footer.status_line_value == status_line {
              return false;
-@@ -4569,16 +4617,16 @@ impl ChatComposer {
+@@ -4620,16 +4668,16 @@ impl ChatComposer {
                      FooterMode::ComposerHasDraft => false,
                      FooterMode::HistorySearch
                      | FooterMode::QuitShortcutReminder
@@ -458,7 +457,7 @@ index ec1b00c..3b57682 100644
                  };
                  let custom_height = self.custom_footer_height();
                  let footer_hint_height =
-@@ -4723,17 +4771,17 @@ impl ChatComposer {
+@@ -4763,17 +4811,17 @@ impl ChatComposer {
                                      footer_props.key_hints,
                                  ))
                              }
@@ -480,7 +479,7 @@ index ec1b00c..3b57682 100644
                              | FooterMode::ShortcutOverlay
                      ) {
                          false
-@@ -5002,6 +5050,7 @@ mod tests {
+@@ -5042,6 +5090,7 @@ mod tests {
              "footer_mode_configured_key_chords",
              /*enhanced_keys_supported*/ false,
              |composer| {
@@ -488,7 +487,7 @@ index ec1b00c..3b57682 100644
                  composer.set_keymap_bindings(&keymap);
                  composer.footer.mode = FooterMode::ShortcutOverlay;
              },
-@@ -5236,7 +5285,7 @@ mod tests {
+@@ -5299,7 +5348,7 @@ mod tests {
              "footer_mode_shortcut_overlay",
              /*enhanced_keys_supported*/ true,
              |composer| {
@@ -497,7 +496,7 @@ index ec1b00c..3b57682 100644
                  let _ = composer
                      .handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
              },
-@@ -5246,6 +5295,7 @@ mod tests {
+@@ -5309,6 +5358,7 @@ mod tests {
              "footer_mode_shortcut_overlay_queue_submissions",
              /*enhanced_keys_supported*/ true,
              |composer| {
@@ -505,7 +504,7 @@ index ec1b00c..3b57682 100644
                  composer.set_queue_submissions(/*queue_submissions*/ true);
                  let _ = composer
                      .handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
-@@ -5276,7 +5326,7 @@ mod tests {
+@@ -5339,7 +5389,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -514,7 +513,7 @@ index ec1b00c..3b57682 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  composer.show_quit_shortcut_hint(
-@@ -5288,7 +5338,7 @@ mod tests {
+@@ -5351,7 +5401,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -523,7 +522,7 @@ index ec1b00c..3b57682 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  let _ = composer
-@@ -5297,25 +5347,6 @@ mod tests {
+@@ -5360,25 +5410,6 @@ mod tests {
              },
          );
  
@@ -549,7 +548,7 @@ index ec1b00c..3b57682 100644
          snapshot_composer_state(
              "footer_mode_hidden_while_typing",
              /*enhanced_keys_supported*/ true,
-@@ -5932,7 +5963,6 @@ mod tests {
+@@ -5995,7 +6026,6 @@ mod tests {
          let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
  
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
@@ -557,7 +556,7 @@ index ec1b00c..3b57682 100644
      }
  
      #[test]
-@@ -5970,7 +6000,6 @@ mod tests {
+@@ -6033,7 +6063,6 @@ mod tests {
              Some("Vim: Normal".magenta())
          );
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
@@ -566,7 +565,7 @@ index ec1b00c..3b57682 100644
  
      #[test]
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
-index fd63d2d..91169bf 100644
+index 09ceb5f..c889e17 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer/footer_state.rs
 @@ -15,7 +15,7 @@ use std::time::Duration;
@@ -1053,7 +1052,7 @@ index 1bb3c7a..2970173 100644
                  queue_submissions: false,
                  is_wsl,
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index d286981..f13cd76 100644
+index 592c835..fe76232 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
 @@ -172,6 +172,8 @@ pub(crate) use selection_tabs::SelectionTab;
@@ -1081,7 +1080,7 @@ index d286981..f13cd76 100644
              animations_enabled,
              context_window_percent: None,
              context_window_used_tokens: None,
-@@ -1021,11 +1021,51 @@ impl BottomPane {
+@@ -1027,11 +1027,51 @@ impl BottomPane {
          self.request_redraw();
      }
  
@@ -1133,7 +1132,7 @@ index d286981..f13cd76 100644
      #[cfg(test)]
      pub(crate) fn status_indicator_visible(&self) -> bool {
          self.status.is_some()
-@@ -1036,22 +1076,6 @@ impl BottomPane {
+@@ -1042,22 +1082,6 @@ impl BottomPane {
          self.composer.status_line_text()
      }
  
@@ -1156,7 +1155,7 @@ index d286981..f13cd76 100644
      pub fn set_task_running(&mut self, running: bool) {
          let was_running = self.is_task_running;
          self.is_task_running = running;
-@@ -1432,6 +1456,7 @@ impl BottomPane {
+@@ -1457,6 +1481,7 @@ impl BottomPane {
      /// Return true when the pane is in the regular composer state without any
      /// overlays or popups and not running a task. This is the safe context to
      /// use Esc-Esc for backtracking from the main view.
@@ -1164,7 +1163,7 @@ index d286981..f13cd76 100644
      pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
          !self.is_task_running && self.view_stack.is_empty() && !self.composer.popup_active()
      }
-@@ -2880,7 +2905,7 @@ mod tests {
+@@ -2942,7 +2967,7 @@ mod tests {
      }
  
      #[test]
@@ -1173,7 +1172,7 @@ index d286981..f13cd76 100644
          let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
          let tx = AppEventSender::new(tx_raw);
          let mut pane = BottomPane::new(BottomPaneParams {
-@@ -2898,9 +2923,20 @@ mod tests {
+@@ -2960,9 +2985,20 @@ mod tests {
  
          pane.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
  
@@ -1196,7 +1195,7 @@ index d286981..f13cd76 100644
      }
  
 diff --git a/codex-rs/tui/src/bottom_pane/pending_input_preview.rs b/codex-rs/tui/src/bottom_pane/pending_input_preview.rs
-index e4a49a5..6d3628f 100644
+index 8700323..ab2c67a 100644
 --- a/codex-rs/tui/src/bottom_pane/pending_input_preview.rs
 +++ b/codex-rs/tui/src/bottom_pane/pending_input_preview.rs
 @@ -89,12 +89,24 @@ impl PendingInputPreview {
@@ -1530,10 +1529,10 @@ index 4e8763c..36adc0e 100644
      Second detail line                          
                                                  
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index e772e5f..592819a 100644
+index c4fa4c9..6fe0f6f 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -219,6 +219,7 @@ impl ChatWidget {
+@@ -220,6 +220,7 @@ impl ChatWidget {
              pending_notification: None,
              quit_shortcut_expires_at: None,
              quit_shortcut_key: None,
@@ -1542,7 +1541,7 @@ index e772e5f..592819a 100644
              last_rendered_width: std::cell::Cell::new(None),
              feedback,
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index dffb1e3..0551d54 100644
+index b38e33b..efe497c 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
 @@ -40,6 +40,7 @@ impl ChatWidget {
@@ -1579,7 +1578,7 @@ index dffb1e3..0551d54 100644
              && self.review.is_review_mode
              && (!self.input_queue.pending_steers.is_empty()
                  || !self.input_queue.rejected_steers_queue.is_empty())
-@@ -510,6 +514,63 @@ impl ChatWidget {
+@@ -611,6 +615,63 @@ impl ChatWidget {
          self.bottom_pane.show_quit_shortcut_hint(key);
      }
  
@@ -1643,19 +1642,6 @@ index dffb1e3..0551d54 100644
      // Review mode counts as cancellable work so Ctrl+C interrupts instead of quitting.
      fn is_cancellable_work_active(&self) -> bool {
          self.bottom_pane.is_task_running() || self.review.is_review_mode
-diff --git a/codex-rs/tui/src/chatwidget/settings.rs b/codex-rs/tui/src/chatwidget/settings.rs
-index 8ef38ec..aea179c 100644
---- a/codex-rs/tui/src/chatwidget/settings.rs
-+++ b/codex-rs/tui/src/chatwidget/settings.rs
-@@ -396,7 +396,7 @@ impl ChatWidget {
-     /// availability, interaction state, and thread-scoped dismissal. `ChatComposer` only renders
-     /// the resulting visibility bit. Keeping slash and shell drafts out here avoids advertising a
-     /// mode switch while the user is intentionally composing another local command.
--    pub(super) fn should_show_plan_mode_nudge(&self) -> bool {
-+    pub(crate) fn should_show_plan_mode_nudge(&self) -> bool {
-         let text = self.bottom_pane.composer_text();
-         let trimmed = text.trim_start();
-         self.collaboration_modes_enabled()
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__app_server_guardian_review_denied_renders_denied_request.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__app_server_guardian_review_denied_renders_denied_request.snap
 index 6bbd8a6..0b8d373 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__app_server_guardian_review_denied_renders_denied_request.snap
@@ -1799,6 +1785,19 @@ index 748a3f8..b3e47bc 100644
  
  
  › Ask Codex to do anything
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_write_stdin_review_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_write_stdin_review_status.snap
+index e805f92..db2b689 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_write_stdin_review_status.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__guardian_write_stdin_review_status.snap
+@@ -2,7 +2,7 @@
+ source: tui/src/chatwidget/tests/guardian.rs
+ expression: "normalize_snapshot_paths(render_bottom_popup(&chat, 80))"
+ ---
+-• Reviewing approval request (0s • esc to interrupt)
++• Reviewing approval request (0s • esc esc to stop reply)
+   └ send input to terminal 42: "confirm\n"
+ 
+ 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__hidden_shell_paste_queued_preview.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__hidden_shell_paste_queued_preview.snap
 index 6a631ff..3adc65a 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__hidden_shell_paste_queued_preview.snap
@@ -1932,10 +1931,10 @@ index e76f552..e371fe8 100644
  
  
 diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-index 04b876a..0bd3c4e 100644
+index e79c0d3..87bb691 100644
 --- a/codex-rs/tui/src/chatwidget/status_surfaces.rs
 +++ b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-@@ -733,7 +733,7 @@ impl ChatWidget {
+@@ -730,7 +730,7 @@ impl ChatWidget {
                  let label = limit_label_for_window(window.window_minutes, is_secondary);
                  self.status_line_limit_display(Some(window), &label)
              }
@@ -1945,7 +1944,7 @@ index 04b876a..0bd3c4e 100644
                  .status_line_context_window_size()
                  .map(|cws| format!("{} window", format_tokens_compact(cws))),
 diff --git a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
-index c8fe64d..d14a700 100644
+index 17a52f8..498a5f2 100644
 --- a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
 @@ -3246,6 +3246,15 @@ async fn personality_selection_popup_snapshot() {
@@ -2032,10 +2031,10 @@ index ff3828a..03f81b6 100644
  async fn ctrl_c_cleared_prompt_is_recoverable_via_history() {
      let (mut chat, _rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index b28bc6a..fc7cbba 100644
+index a283433..3382da9 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -2061,13 +2061,15 @@ async fn ctrl_c_interrupt_pauses_active_goal_turn() {
+@@ -2079,13 +2079,15 @@ async fn ctrl_c_interrupt_pauses_active_goal_turn() {
  
  #[tokio::test]
  async fn esc_interrupt_pauses_active_goal_turn() {
@@ -2055,10 +2054,10 @@ index b28bc6a..fc7cbba 100644
  
      update_thread_goal(&mut chat, thread_id, AppThreadGoalStatus::Paused);
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index 2864dc1..c21b0b6 100644
+index dcf29f8..971aafe 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-@@ -82,6 +82,7 @@ impl ChatWidget {
+@@ -81,6 +81,7 @@ impl ChatWidget {
          self.bottom_pane.clear_quit_shortcut_hint();
          self.quit_shortcut_expires_at = None;
          self.quit_shortcut_key = None;
@@ -2067,10 +2066,10 @@ index 2864dc1..c21b0b6 100644
          self.status_state.retry_status_header = None;
          self.clear_active_hook_cell();
 diff --git a/codex-rs/tui/src/keymap.rs b/codex-rs/tui/src/keymap.rs
-index 7ba6d09..b289da5 100644
+index 1e4438b..bfea1a3 100644
 --- a/codex-rs/tui/src/keymap.rs
 +++ b/codex-rs/tui/src/keymap.rs
-@@ -1202,7 +1202,9 @@ impl RuntimeKeymap {
+@@ -1400,7 +1400,9 @@ impl RuntimeKeymap {
              },
              chords: Arc::default(),
              chat: ChatKeymap {
@@ -2081,7 +2080,7 @@ index 7ba6d09..b289da5 100644
                  decrease_reasoning_effort: default_bindings![
                      alt(KeyCode::Char(',')),
                      shift(KeyCode::Down)
-@@ -2570,10 +2572,7 @@ mod tests {
+@@ -2890,10 +2892,7 @@ mod tests {
              vec![key_hint::ctrl(KeyCode::Char('l'))]
          );
          assert_eq!(runtime.app.toggle_fast_mode, Vec::new());
@@ -2093,7 +2092,7 @@ index 7ba6d09..b289da5 100644
          assert_eq!(
              runtime.chat.decrease_reasoning_effort,
              vec![
-@@ -3308,13 +3307,10 @@ mod tests {
+@@ -3686,13 +3685,10 @@ mod tests {
      }
  
      #[test]
@@ -2110,34 +2109,30 @@ index 7ba6d09..b289da5 100644
          keymap.chat.interrupt_turn = Some(one("f12"));
          let runtime = RuntimeKeymap::from_config(&keymap).expect("remapped keymap should parse");
 diff --git a/codex-rs/tui/src/keymap_setup.rs b/codex-rs/tui/src/keymap_setup.rs
-index 0b7da69..42ced24 100644
+index 57528f4..8b63f5a 100644
 --- a/codex-rs/tui/src/keymap_setup.rs
 +++ b/codex-rs/tui/src/keymap_setup.rs
-@@ -1059,13 +1059,17 @@ mod tests {
+@@ -1060,6 +1060,7 @@ mod tests {
          let params = build_keymap_picker_params(&runtime, &TuiKeymap::default());
          let unbound_tab = selection_tab(&params, KEYMAP_UNBOUND_TAB_ID);
  
--        assert_eq!(unbound_tab.items.len(), 2);
 +        // codEx unbinds interrupt_turn by default (double Esc stops replies).
-+        assert_eq!(unbound_tab.items.len(), 3);
-         assert_eq!(unbound_tab.items[0].name, "Toggle Vim Mode");
-         assert_eq!(unbound_tab.items[0].description.as_deref(), Some("unbound"));
-         assert!(!unbound_tab.items[0].is_disabled);
--        assert_eq!(unbound_tab.items[1].name, "Kill Whole Line");
-+        assert_eq!(unbound_tab.items[1].name, "Interrupt Turn");
-         assert_eq!(unbound_tab.items[1].description.as_deref(), Some("unbound"));
-         assert!(!unbound_tab.items[1].is_disabled);
-+        assert_eq!(unbound_tab.items[2].name, "Kill Whole Line");
-+        assert_eq!(unbound_tab.items[2].description.as_deref(), Some("unbound"));
-+        assert!(!unbound_tab.items[2].is_disabled);
-     }
- 
-     #[test]
+         assert_eq!(
+             unbound_tab
+                 .items
+@@ -1072,6 +1073,7 @@ mod tests {
+                 .collect::<Vec<_>>(),
+             vec![
+                 ("Toggle Vim Mode", Some("unbound"), false),
++                ("Interrupt Turn", Some("unbound"), false),
+                 ("Previous Permission Mode", Some("unbound"), false),
+                 ("Next Permission Mode", Some("unbound"), false),
+                 ("Kill Whole Line", Some("unbound"), false),
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 490c069..78f2c4f 100644
+index 0cd2d7e..226ece0 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -155,8 +155,6 @@ mod motion;
+@@ -160,8 +160,6 @@ mod motion;
  mod multi_agents;
  mod named_session_lookup;
  mod notifications;
@@ -2146,7 +2141,7 @@ index 490c069..78f2c4f 100644
  pub(crate) mod onboarding;
  mod oss_selection;
  mod pager_overlay;
-@@ -164,6 +162,7 @@ pub(crate) mod public_widgets;
+@@ -169,6 +167,7 @@ pub(crate) mod public_widgets;
  mod render;
  mod resize_reflow_cap;
  mod resume_picker;
@@ -2154,7 +2149,7 @@ index 490c069..78f2c4f 100644
  mod selection_list;
  mod service_tier_resolution;
  mod session_archive_commands;
-@@ -974,8 +973,6 @@ async fn run_ratatui_app(
+@@ -982,8 +981,6 @@ async fn run_ratatui_app(
      let workload_identity_selected = is_workload_identity_selected();
      color_eyre::install()?;
  
@@ -2175,7 +2170,7 @@ index 841e0c0..0000000
 ----
 -■ Editing previous prompts is unavailable in side conversations.
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap
-index ccdb70a..954732e 100644
+index 6b2c671..bd58a31 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_all_tab_search.snap
 @@ -10,7 +10,7 @@ Clear Terminal | ctrl-l | Global clear_terminal Clear Terminal Clear the termina
@@ -2186,50 +2181,50 @@ index ccdb70a..954732e 100644
 +Interrupt Turn | unbound | Chat interrupt_turn Interrupt Turn Interrupt the active turn. unbound Default
  Decrease Reasoning Effort | alt-,, shift-down | Chat decrease_reasoning_effort Decrease Reasoning Effort Decrease reasoning effort. alt-,, shift-down Default
  Increase Reasoning Effort | alt-., shift-up | Chat increase_reasoning_effort Increase Reasoning Effort Increase reasoning effort. alt-., shift-up Default
- Edit Queued Message | alt-up, shift-left | Chat edit_queued_message Edit Queued Message Edit the most recently queued message. alt-up, shift-left Default
+ Previous Permission Mode | unbound | Chat previous_permission_mode Previous Permission Mode Switch to the previous available permission mode. unbound Default
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
-index be89127..4ae37ff 100644
+index 5ed3c66..ddd9d71 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  116 actions, 1 customized, 2 unbound.
-+  116 actions, 1 customized, 3 unbound.
+-  131 actions, 1 customized, 4 unbound.
++  131 actions, 1 customized, 5 unbound.
  
--  [All]  Common  Customized (1)  Unbound (2)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
-+  [All]  Common  Customized (1)  Unbound (3)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
+-  [All]  Common  Customized (1)  Unbound (4)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
++  [All]  Common  Customized (1)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
  › Global         Open Agents                alt-a
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
-index dbe9302..4299d0c 100644
+index 6689f44..d6bdcae 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  117 actions, 0 customized, 3 unbound.
-+  117 actions, 0 customized, 4 unbound.
+-  132 actions, 0 customized, 5 unbound.
++  132 actions, 0 customized, 6 unbound.
  
--  [All]  Common  Customized (0)  Unbound (3)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
-+  [All]  Common  Customized (0)  Unbound (4)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
+-  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
++  [All]  Common  Customized (0)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
  › Global         Open Agents                alt-a
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
-index 1e7bc25..b96ac17 100644
+index e2ff90f..b77ec7f 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
 @@ -5,7 +5,7 @@ expression: snapshot
- tab: All (116 selectable)
+ tab: All (131 selectable)
  tab: Common (20 selectable)
  tab: Customized (0) (0 selectable)
--tab: Unbound (2) (2 selectable)
-+tab: Unbound (3) (3 selectable)
- tab: App (12 selectable)
+-tab: Unbound (4) (4 selectable)
++tab: Unbound (5) (5 selectable)
+ tab: App (14 selectable)
  tab: Composer (5 selectable)
  tab: Editor (17 selectable)
 @@ -22,7 +22,7 @@ Clear Terminal | ctrl-l | Global clear_terminal Clear Terminal Clear the termina
@@ -2240,57 +2235,57 @@ index 1e7bc25..b96ac17 100644
 +Interrupt Turn | unbound | Chat interrupt_turn Interrupt Turn Interrupt the active turn. unbound Default
  Decrease Reasoning Effort | alt-,, shift-down | Chat decrease_reasoning_effort Decrease Reasoning Effort Decrease reasoning effort. alt-,, shift-down Default
  Increase Reasoning Effort | alt-., shift-up | Chat increase_reasoning_effort Increase Reasoning Effort Increase reasoning effort. alt-., shift-up Default
- Edit Queued Message | alt-up, shift-left | Chat edit_queued_message Edit Queued Message Edit the most recently queued message. alt-up, shift-left Default
+ Previous Permission Mode | unbound | Chat previous_permission_mode Previous Permission Mode Switch to the previous available permission mode. unbound Default
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
-index 5a43aec..068c50e 100644
+index 4f822ff..239045f 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  116 actions, 1 customized, 2 unbound.
-+  116 actions, 1 customized, 3 unbound.
+-  131 actions, 1 customized, 4 unbound.
++  131 actions, 1 customized, 5 unbound.
  
--  [All]  Common  Customized (1)  Unbound (2)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
-+  [All]  Common  Customized (1)  Unbound (3)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
+-  [All]  Common  Customized (1)  Unbound (4)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
++  [All]  Common  Customized (1)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
  › Global         Open Agents                alt-a
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
-index d5b2c4b..9018485 100644
+index e8099d1..3edb29d 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 78)"
  
    Keymap
    All configurable shortcuts.
--  116 actions, 0 customized, 2 unbound.
-+  116 actions, 0 customized, 3 unbound.
+-  131 actions, 0 customized, 4 unbound.
++  131 actions, 0 customized, 5 unbound.
  
--  [All]  Common  Customized (0)  Unbound (2)  App  Composer  Editor  Vim
-+  [All]  Common  Customized (0)  Unbound (3)  App  Composer  Editor  Vim
+-  [All]  Common  Customized (0)  Unbound (4)  App  Composer  Editor  Vim
++  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim
    Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
-index 86b85db..f0dc979 100644
+index 95a5448..7417e85 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  116 actions, 0 customized, 2 unbound.
-+  116 actions, 0 customized, 3 unbound.
+-  131 actions, 0 customized, 4 unbound.
++  131 actions, 0 customized, 5 unbound.
  
--  [All]  Common  Customized (0)  Unbound (2)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
-+  [All]  Common  Customized (0)  Unbound (3)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
+-  [All]  Common  Customized (0)  Unbound (4)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
++  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
  › Global         Open Agents                alt-a
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
-index c7d89b1..c79c637 100644
+index c7d89b1..7a5bbcd 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_cached_limits_hide_credits_without_flag.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2298,12 +2293,12 @@ index c7d89b1..c79c637 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
-index c1636b6..2f6aa4c 100644
+index c1636b6..e888225 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_credits_and_limits.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2311,12 +2306,12 @@ index c1636b6..2f6aa4c 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
-index 765ad8d..94e32a9 100644
+index 765ad8d..3dbbe99 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_enterprise_monthly_credit_limit.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2324,12 +2319,12 @@ index 765ad8d..94e32a9 100644
  
  ╭───────────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                         │
-+│  >_ codEx (v0.149.1)                                                              │
++│  >_ codEx (v0.151.0)                                                              │
  │                                                                                   │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date                     │
  │ information on rate limits and credits                                            │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
-index 1525751..9524373 100644
+index 1525751..5dfdfa2 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_forked_from.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2337,12 +2332,12 @@ index 1525751..9524373 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
-index 7a4f58a..7dc24ac 100644
+index 7a4f58a..44ab72b 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_monthly_limit.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2350,12 +2345,12 @@ index 7a4f58a..7dc24ac 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
-index 96b2ed1..a69e470 100644
+index 96b2ed1..36298ab 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_includes_reasoning_details.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2363,12 +2358,12 @@ index 96b2ed1..a69e470 100644
  
  ╭───────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                 │
-+│  >_ codEx (v0.149.1)                                                      │
++│  >_ codEx (v0.151.0)                                                      │
  │                                                                           │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
  │ information on rate limits and credits                                    │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
-index 4604b26..4c5f822 100644
+index 4604b26..2607318 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_active_user_defined_profile.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2376,12 +2371,12 @@ index 4604b26..4c5f822 100644
  
  ╭───────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                             │
-+│  >_ codEx (v0.149.1)                                                  │
++│  >_ codEx (v0.151.0)                                                  │
  │                                                                       │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date         │
  │ information on rate limits and credits                                │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
-index c739d55..f087218 100644
+index c739d55..9723e3c 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_auto_review_permissions.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2389,12 +2384,12 @@ index c739d55..f087218 100644
  
  ╭───────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                             │
-+│  >_ codEx (v0.149.1)                                                  │
++│  >_ codEx (v0.151.0)                                                  │
  │                                                                       │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date         │
  │ information on rate limits and credits                                │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
-index 0aba51f..f7bd5fc 100644
+index 0aba51f..634c227 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_chatgpt_plan_without_email.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2402,12 +2397,12 @@ index 0aba51f..f7bd5fc 100644
  
  ╭──────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                │
-+│  >_ codEx (v0.149.1)                                                     │
++│  >_ codEx (v0.151.0)                                                     │
  │                                                                          │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date            │
  │ information on rate limits and credits                                   │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
-index 533be27..bae5f11 100644
+index 533be27..0039b09 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_missing_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2415,12 +2410,12 @@ index 533be27..bae5f11 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
-index 631982b..11282c2 100644
+index 631982b..55c2a0c 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_refreshing_limits_notice.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2428,12 +2423,12 @@ index 631982b..11282c2 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
-index 8facd56..1b0c51a 100644
+index 8facd56..c16a2d0 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_stale_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2441,12 +2436,12 @@ index 8facd56..1b0c51a 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
-index d46a483..6fc257d 100644
+index d46a483..fc6966a 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_shows_unavailable_limits_message.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2454,12 +2449,12 @@ index d46a483..6fc257d 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
-index d46a483..6fc257d 100644
+index d46a483..fc6966a 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_treats_refreshing_empty_limits_as_unavailable.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2467,12 +2462,12 @@ index d46a483..6fc257d 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
-index 17442d7..6bf9d4b 100644
+index 17442d7..eb6848d 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_halfwidth_kana_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2480,12 +2475,12 @@ index 17442d7..6bf9d4b 100644
  
  ╭────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)              │
-+│  >_ codEx (v0.149.1)                   │
++│  >_ codEx (v0.151.0)                   │
  │                                        │
  │ Visit                                  │
  │ https://chatgpt.com/codex/settings/usa │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
-index 6b28b53..6d6ce6b 100644
+index 6b28b53..5cd1792 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_truncates_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2493,12 +2488,12 @@ index 6b28b53..6d6ce6b 100644
  
  ╭────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                          │
-+│  >_ codEx (v0.149.1)                                               │
++│  >_ codEx (v0.151.0)                                               │
  │                                                                    │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date      │
  │ information on rate limits and credits                             │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
-index 9683bee..3503ae0 100644
+index 9683bee..88ce1f0 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_default_reasoning_when_config_empty.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2506,12 +2501,12 @@ index 9683bee..3503ae0 100644
  
  ╭─────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                   │
-+│  >_ codEx (v0.149.1)                                                        │
++│  >_ codEx (v0.151.0)                                                        │
  │                                                                             │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date               │
  │ information on rate limits and credits                                      │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
-index 6b6fad6..09aea01 100644
+index 6b6fad6..73b64ec 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_uses_generic_limit_labels_for_unsupported_windows.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2519,12 +2514,12 @@ index 6b6fad6..09aea01 100644
  
  ╭──────────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                    │
-+│  >_ codEx (v0.149.1)                                                         │
++│  >_ codEx (v0.151.0)                                                         │
  │                                                                              │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date                │
  │ information on rate limits and credits                                       │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
-index cf6fa2c..66b0485 100644
+index cf6fa2c..ada5b0d 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__status_snapshot_wraps_enterprise_monthly_credit_details_in_narrow_terminal.snap
 @@ -5,7 +5,7 @@ expression: sanitized
@@ -2532,12 +2527,12 @@ index cf6fa2c..66b0485 100644
  
  ╭────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                  │
-+│  >_ codEx (v0.149.1)                       │
++│  >_ codEx (v0.151.0)                       │
  │                                            │
  │ Visit                                      │
  │ https://chatgpt.com/codex/settings/usage   │
 diff --git a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
-index e2f12c8..8975bd5 100644
+index e2f12c8..6556231 100644
 --- a/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
 +++ b/codex-rs/tui/src/status/snapshots/codex_tui__status__tests__transcript_overlay_status_rate_limit_refresh.snap
 @@ -7,7 +7,7 @@ before:
@@ -2545,7 +2540,7 @@ index e2f12c8..8975bd5 100644
  
  ╭──────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                │
-+│  >_ codEx (v0.149.1)                                                     │
++│  >_ codEx (v0.151.0)                                                     │
  │                                                                          │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date            │
  │ information on rate limits and credits                                   │
@@ -2554,7 +2549,7 @@ index e2f12c8..8975bd5 100644
  
  ╭───────────────────────────────────────────────────────────────────────────╮
 -│  >_ OpenAI Codex (v0.0.0)                                                 │
-+│  >_ codEx (v0.149.1)                                                      │
++│  >_ codEx (v0.151.0)                                                      │
  │                                                                           │
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
  │ information on rate limits and credits                                    │

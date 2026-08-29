@@ -1,4 +1,4 @@
-From c452d4119819dbd0393e5d9327afeebacdfddd3b Mon Sep 17 00:00:00 2001
+From d2bf495a16e35a8d811ecac9e815dee547ba9e74 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: branding: codEx name and version output
@@ -84,10 +84,10 @@ index ba6071b..5ee6210 100644
      ));
  }
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 23c2fe7..b9ef897 100644
+index 285b21c..c441b63 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -1024,14 +1024,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -2128,14 +2128,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          };
          let partial = render_overlay(overlay);
          assert!(partial.contains("Earlier messages are available — scroll up to load them"));
@@ -105,10 +105,10 @@ index 23c2fe7..b9ef897 100644
      } else {
          panic!("expected transcript overlay");
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index e3cf4ab..5614006 100644
+index beac194..61bb077 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-@@ -102,7 +102,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+@@ -169,7 +169,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
  
      insta::assert_snapshot!(header.replace(&cwd, &normalized_cwd), @r"
      ╭───────────────────────────────────────╮
