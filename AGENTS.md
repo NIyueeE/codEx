@@ -10,7 +10,7 @@ from `BASE_TAG` and applies `patches/` via `git am`.
 - `patches/` — one `git format-patch` per feature module, applied in order:
   `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
   `identity` (see `scripts/patch-modules.conf`)
-- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.149.1`)
+- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.151.0`)
 - `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
   `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
@@ -70,13 +70,35 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
   upstream `.snap` side, run the suite with `INSTA_UPDATE=always`, then
   review the regenerated diff to confirm it only contains fork-intended
   deltas (bindings, branding, versions).
+- **Lockfile conflicts take upstream verbatim.** The fork's only planned
+  `Cargo.lock` delta is the workspace member-version sync, and nothing in
+  the fork's CI or release workflows builds with `--locked`. Resolve by
+  taking upstream's lockfile and letting the build regenerate whatever
+  entries fork features need (e.g. `self_update`'s tar/flate2/sha2/ignore);
+  the regenerated lock lands in the `[infra]` commit at export time.
+- **Upstream deletions win, then scrub the fork.** When upstream removes a
+  whole feature the fork's code references (the plan-mode nudge in 0.151.0),
+  take upstream's side and delete every fork reference to it, including
+  comment mentions -- the queue then applies but the tree must still
+  compile. When upstream rewrote machinery the fork had deleted (the
+  npm/brew/windows update dispatch in `cli/src/main.rs`), keep the fork's
+  replacement, drop upstream's new helpers for the removed variants, and
+  grep the merged tree for stale references before continuing.
+- **Delete/modify conflicts on fork-deleted files accept the deletion.**
+  Upstream edits to files the fork removes (its CI replacement deletes
+  upstream workflows and bazel patch files) are irrelevant to the fork;
+  resolve with `git rm` and move on.
 
-Operational experience from the rust-v0.149.1 upgrade:
+Operational experience from the rust-v0.149.1 and rust-v0.151.0 upgrades:
 
 - `git am --3way` needs the previous base tag's blobs to build its fake
   ancestor; a shallow clone of the new tag alone fails with "sha1
   information is lacking or useless". `update.sh` fetches the old `BASE_TAG`
-  into the shallow clone -- keep that behavior when changing it.
+  into the shallow clone; the fetch must name the `origin` remote
+  explicitly -- a bare `git fetch <refspec>` parses the refspec as a
+  repository URL and always fails (this shipped as a silent bug once, so
+  the "could not fetch" warning can mean the queue is about to fail with
+  missing blobs; fetch the tag manually before retrying `git am`).
 - Module order must keep every intermediate revision of the queue
   compilable: `[updates]` precedes `[input]` because the input module
   removes `mod npm_registry;` from lib.rs only after the updates module
@@ -85,11 +107,31 @@ Operational experience from the rust-v0.149.1 upgrade:
 - New fork-delta files introduced by an upgrade (regenerated snapshots,
   newly touched upstream files such as the app-server-daemon updater) must
   be added to `scripts/patch-modules.conf` before `gen-patches.sh` will
-  export the queue.
+  export the queue. Brand-new upstream test snapshots whose rendered
+  content changes under fork patches count too (the 0.151.0 upgrade had to
+  claim a new footer-text snapshot for `[input]`).
+- Mid-upgrade the module checks need the tree's `BASE_TAG` bumped first.
+  `check-patch-modules.sh` derives the base from the tree, and during an
+  upgrade `old-base..HEAD` counts every upstream commit in between -- on a
+  clean bootstrap the old base is HEAD's direct parent, so only conflict
+  upgrades hit this (mass bogus "touches a file it does not own" notes,
+  then an `order[$i]: unbound variable` crash). After `git am --continue`
+  finishes the queue: write the new tag into the tree's `BASE_TAG`, fold
+  it together with any `[infra]` script/manifest changes into the infra
+  commit via fixup commits and `git rebase -i --autosquash rust-vX.Y.Z`,
+  and only then run the check and `gen-patches.sh`. Amending `[infra]` is
+  also what makes the regenerated patch 0001 carry the new base, so a
+  fresh bootstrap records the right `BASE_TAG`.
+- History rewrites must not change content. After the autosquash rebase,
+  `git diff <pre-rebase-sha> HEAD` has to be empty; a targeted rerun of
+  the touched snapshot families confirms nothing shifted.
 - After resolving conflicts: grep for leftover conflict markers, run
-  `cargo fmt`, build, run the TUI suite (snapshots) and core unit tests,
-  then re-bootstrap a fresh tree from the regenerated patches as the final
-  proof that the queue applies cleanly.
+  `cargo fmt`, build, run the TUI suite with `INSTA_UPDATE=always`
+  (regenerates snapshots in one pass; review the resulting `git diff` by
+  category -- version strings, fork footer text, unbound-count deltas --
+  so surprises stand out), then run core unit tests, then re-bootstrap a
+  fresh tree from the regenerated patches as the final proof that the
+  queue applies cleanly.
 - Upstream files the fork does not need (e.g. CLA/issue-bot workflows that
   only make sense on openai/codex) stay inert inside the bootstrapped tree;
   the slim repo only runs its own four workflows, so they need no cleanup.
@@ -101,6 +143,19 @@ Operational experience from the rust-v0.149.1 upgrade:
   cargo work while the final link runs. Run long builds detached
   (`setsid nohup ... &`) and poll the log, so an outer tool timeout never
   kills a half-finished compile or link.
+- A deterministic single-test failure is not automatically an upgrade
+  regression. Before treating it as one, check in order: which assert
+  actually fired (read the panic, not just the test name), whether the
+  code under test differs between the old and new tags, whether upstream
+  `main` already fixed it, and whether the fork touches that area at all.
+  The 0.151.0 upgrade hit
+  `session::tests::managed_network_proxy_decider_survives_full_access_start`:
+  it fails deterministically on hosts whose `/etc/hosts` maps
+  `example.com` into the 198.18.0.0/15 fake-IP range, because the network
+  proxy's baseline policy blocks the request as a local address before
+  the policy decider is consulted (`"source":"baseline_policy"` in the
+  response body; the decider counter stays 0). Environmental -- ignore it
+  on such hosts, everything else still gates the upgrade.
 
 ## Coding Style & Naming Conventions
 
@@ -133,6 +188,27 @@ also runs the `codex_package` Python unit tests and the `codex-tui`/
 
 TUI snapshot tests are environment-independent: the footer shortcuts pin a
 test-only WSL flag, so the full suite passes on WSL hosts and Linux CI alike.
+
+## Publishing a Release
+
+Upgrades (and other `main` changes) ship through CI, in this order:
+
+1. Push `main`, then wait for `blocking-ci` to finish green:
+   `gh run list --commit <sha>` followed by
+   `gh run watch <run-id> --exit-status`. Never tag before CI concludes.
+2. Tag the upgrade commit and push the tag:
+   `git tag rust-v<version> <commit> && git push origin rust-v<version>`.
+   `rust-release.yml` validates the tag against the workspace version in
+   `codex-rs/Cargo.toml`, builds the musl target (~45 min on CI), and
+   publishes `codex-<target>.tar.gz` plus its `.sha256`.
+3. Verify end to end: download the asset, compare the checksum, and run
+   `codex --version` -- expect
+   `codEx <version> (codEx fork, https://github.com/NIyueeE/codEx)`.
+
+Pushes to GitHub from this workstation can fail with intermittent
+"GnuTLS, handshake failed" errors while `api.github.com` (and `gh`) keep
+working; retry the same push several times before investigating anything
+else.
 
 ## Commit & Pull Request Guidelines
 
