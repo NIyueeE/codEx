@@ -1,12 +1,15 @@
-# Release workflow for the codEx fork (Linux only, CLI only).
+# Release workflow for the codEx fork (Linux musl and Windows MSVC, CLI only).
 #
 # Works both in the full fork checkout (codex-rs/ present) and in the slim
 # patch-queue repo (patches/ + scripts/ only): when codex-rs/ is missing the
 # tree is bootstrapped from upstream via scripts/bootstrap.sh.
 #
-# Publishes standalone Linux x86_64 (MUSL) binaries from a `rust-v<semver>` or
-# `v<semver>` tag. Each release ships:
-#   codex-<target>.tar.gz        (contains `codex` and `bwrap`)
+# Publishes standalone binaries from a `rust-v<semver>` or `v<semver>` tag.
+# Each target ships:
+#   codex-<target>.tar.gz        (contains `codex` at the archive root, plus
+#                                 `bwrap` for the Linux sandbox helper and the
+#                                 Windows helper binaries under
+#                                 `codex-resources/`)
 #   codex-<target>.tar.gz.sha256 (sha256 of the archive)
 # which `codex update` downloads and verifies.
 
@@ -67,7 +70,9 @@ jobs:
   build:
     needs: tag-check
     name: Build - ${{ matrix.target }}
-    runs-on: ubuntu-24.04
+    # Windows release builds can exceed an hour, so the timeout matches the
+    # Linux budget rather than dropping back to the default.
+    runs-on: ${{ matrix.runs_on }}
     timeout-minutes: 120
     permissions:
       contents: read
@@ -81,8 +86,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - x86_64-unknown-linux-musl
+        include:
+          - target: x86_64-unknown-linux-musl
+            runs_on: ubuntu-24.04
+            platform: linux
+          - target: x86_64-pc-windows-msvc
+            runs_on: windows-2022
+            platform: windows
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -90,6 +100,7 @@ jobs:
           persist-credentials: false
 
       - name: Bootstrap tree if needed
+        shell: bash
         run: |
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
@@ -101,18 +112,42 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # ---- Linux musl toolchain -------------------------------------------
       - name: Install Zig
+        if: matrix.platform == 'linux'
         uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
         with:
           version: 0.14.0
           use-cache: false
 
       - name: Install musl build tools
+        if: matrix.platform == 'linux'
         env:
           TARGET: ${{ matrix.target }}
         run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
 
+      # ---- Windows MSVC toolchain -----------------------------------------
+      # Reuse upstream's MSVC helper, which resolves the Visual Studio
+      # installation for the target architecture and exports the LIB/INCLUDE/
+      # PATH variables the linker needs. It is invoked through TREE_DIR
+      # instead of `uses:` because the helper only exists inside the
+      # bootstrapped tree, while the workflow may also run from the full fork
+      # checkout where the tree is the repository root.
+      - name: Expose MSVC SDK environment
+        if: matrix.platform == 'windows'
+        shell: pwsh
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
+
+      # ---- rusty_v8 prebuilt artifacts (both platforms) --------------------
+      # The fork reuses the upstream openai/codex rusty-v8 release assets: the
+      # inline Linux step below keeps the musl flow byte-for-byte as it was,
+      # and Windows goes through upstream's action, which knows the `.lib.gz`
+      # archive naming for MSVC targets.
       - name: Configure rusty_v8 artifact overrides and verify checksums
+        if: matrix.platform == 'linux'
         env:
           TARGET: ${{ matrix.target }}
         run: |
@@ -141,7 +176,50 @@ jobs:
           echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
           echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
 
+      - name: Configure rusty_v8 artifact overrides (Windows)
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          release_tag="rusty-v8-v${version}"
+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
+          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          profile="ptrcomp_sandbox_release"
+          # MSVC artifacts are static libraries, hence the `.lib.gz` naming.
+          archive_name="rusty_v8_${profile}_${TARGET}.lib.gz"
+          binding_name="src_binding_${profile}_${TARGET}.rs"
+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
+          archive_path="${binding_dir}/${archive_name}"
+          binding_path="${binding_dir}/${binding_name}"
+          checksums_path="${binding_dir}/${checksums_name}"
+          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
+          mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          # Windows-built release manifests use CRLF line endings, so verify the
+          # original manifest bytes against the trusted checksum list first.
+          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
+          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
+          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
+            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
+            exit 1
+          fi
+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
+          if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
+            echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
+            exit 1
+          fi
+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
+
+      # ---- Build -----------------------------------------------------------
       - name: Build bwrap and export digest
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -165,11 +243,29 @@ jobs:
 
       - name: Build codex
         shell: bash
+        env:
+          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
         run: |
           cd "${CODE_DIR}"
           cargo build --target "${{ matrix.target }}" --release --bin codex
 
-      - name: Stage archive
+      # Windows launches helpers such as the sandbox setup out of
+      # `codex-resources/`; without them a packaged codEx cannot start a
+      # sandboxed session. The Linux archive carries bwrap for the same reason.
+      - name: Build Windows helper binaries
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          cd "${CODE_DIR}"
+          cargo build --target "${{ matrix.target }}" --release \
+            --bin codex-windows-sandbox-setup \
+            --bin codex-command-runner \
+            --bin codex-code-mode-host
+
+      # ---- Stage -----------------------------------------------------------
+      - name: Stage archive (Linux)
+        if: matrix.platform == 'linux'
         shell: bash
         run: |
           set -euo pipefail
@@ -188,6 +284,33 @@ jobs:
           # The archive layout is consumed by `codex update`: `codex` and
           # `bwrap` at the archive root.
           tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
+          sha256sum "$dest/codex-${target}.tar.gz" | \
+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
+            > "$dest/codex-${target}.tar.gz.sha256"
+
+      - name: Stage archive (Windows)
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "${CODE_DIR}"
+          target="${{ matrix.target }}"
+          release_dir="target/${target}/release"
+          [[ -f "${release_dir}/codex.exe" ]] || { echo "codex.exe not found"; exit 1; }
+
+          dest="dist/${target}"
+          resources="$dest/codex-resources"
+          mkdir -p "$resources"
+          # `codex update` expects the same `codex-<target>.tar.gz` name and
+          # root-level `codex.exe`; the helper binaries mirror the install
+          # layout the managed standalone release uses.
+          cp "${release_dir}/codex.exe" "$dest/codex.exe"
+          for helper in codex-windows-sandbox-setup codex-command-runner codex-code-mode-host; do
+            [[ -f "${release_dir}/${helper}.exe" ]] || { echo "${helper}.exe not found"; exit 1; }
+            cp "${release_dir}/${helper}.exe" "$resources/${helper}.exe"
+          done
+
+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex.exe codex-resources
           sha256sum "$dest/codex-${target}.tar.gz" | \
             awk '{print $1 "  codex-'${target}'.tar.gz"}' \
             > "$dest/codex-${target}.tar.gz.sha256"
