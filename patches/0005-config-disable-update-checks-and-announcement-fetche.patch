@@ -1,4 +1,4 @@
-From cb135b7084fe2c612438b589cdca803cabb7728e Mon Sep 17 00:00:00 2001
+From 7b46eb25282b286894fd34fad10a6719a5cb95e6 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: config: disable update checks and announcement fetches by default
@@ -171,7 +171,7 @@ index 61ff242..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index f659ae7..5b236ba 100644
+index 9ea7912..689bfe7 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
 @@ -3,9 +3,6 @@ use codex_protocol::account::PlanType;

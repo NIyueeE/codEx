@@ -1,4 +1,4 @@
-From d2bf495a16e35a8d811ecac9e815dee547ba9e74 Mon Sep 17 00:00:00 2001
+From 353b6617e3d33e1fca6a3cc5922ca45446e0d119 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: branding: codEx name and version output
@@ -10,6 +10,8 @@ Subject: branding: codEx name and version output
  codex-rs/login/src/device_code_auth_tests.rs         |  2 +-
  .../tui/src/app/tests/session_lifecycle_requests.rs  |  4 ++--
  codex-rs/tui/src/chatwidget/rendering_tests.rs       |  2 +-
+ ...dget__tests__slash_copy_picker_status_fields.snap |  3 +--
+ ...__chatwidget__tests__slash_copy_whole_status.snap |  2 +-
  codex-rs/tui/src/history_cell/session.rs             |  6 +++---
  ...tests__session_header_clamps_to_narrow_width.snap |  2 +-
  ...l__tests__session_header_halfwidth_directory.snap |  4 ++--
@@ -23,7 +25,7 @@ Subject: branding: codEx name and version output
  ...__tests__startup_draft_onboarding_transition.snap |  2 +-
  codex-rs/tui/src/status/card.rs                      |  2 +-
  codex-rs/tui/tests/suite/focus_palette.rs            |  2 +-
- 19 files changed, 40 insertions(+), 38 deletions(-)
+ 21 files changed, 42 insertions(+), 41 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
 index 81fbf07..f43276f 100644
@@ -41,7 +43,7 @@ index 81fbf07..f43276f 100644
          );
      }
 diff --git a/codex-rs/exec/src/event_processor_with_human_output.rs b/codex-rs/exec/src/event_processor_with_human_output.rs
-index e3463d7..c6f230c 100644
+index 6aba261..8addee3 100644
 --- a/codex-rs/exec/src/event_processor_with_human_output.rs
 +++ b/codex-rs/exec/src/event_processor_with_human_output.rs
 @@ -215,7 +215,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
@@ -84,10 +86,10 @@ index ba6071b..5ee6210 100644
      ));
  }
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 285b21c..c441b63 100644
+index 3333f43..eb2d97e 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2128,14 +2128,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -2357,14 +2357,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          };
          let partial = render_overlay(overlay);
          assert!(partial.contains("Earlier messages are available — scroll up to load them"));
@@ -105,10 +107,10 @@ index 285b21c..c441b63 100644
      } else {
          panic!("expected transcript overlay");
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index beac194..61bb077 100644
+index 2d7abb9..56993b4 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-@@ -169,7 +169,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+@@ -223,7 +223,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
  
      insta::assert_snapshot!(header.replace(&cwd, &normalized_cwd), @r"
      ╭───────────────────────────────────────╮
@@ -117,11 +119,41 @@ index beac194..61bb077 100644
      │                                       │
      │ model:     loading   /model to change │
      │ directory: /tmp/project               │
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
+index 4a4416a..8cbd432 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
+@@ -1,11 +1,10 @@
+ ---
+ source: tui/src/chatwidget/tests/slash_commands.rs
+-assertion_line: 2032
+ expression: "render_bottom_popup(&chat,\n100).replace(&directory,\n\"[[workspace]]\").replace(crate::version::CODEX_CLI_VERSION, \"VERSION\")"
+ ---
+   Copy to clipboard
+ 
+-› 1. Whole status  >_ OpenAI Codex (vVERSION)
++› 1. Whole status  >_ codEx (vVERSION)
+   2. Model         gpt-5.4
+   3. Directory     [[workspace]]
+   4. Thread name   Clipboard example
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
+index 4da4b62..0d32a12 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
+@@ -2,7 +2,7 @@
+ source: tui/src/chatwidget/tests/slash_commands.rs
+ expression: "whole_status.replace(&directory,\n\"[[workspace]]\").replace(crate::version::CODEX_CLI_VERSION, \"VERSION\")"
+ ---
+->_ OpenAI Codex (vVERSION)
++>_ codEx (vVERSION)
+ 
+ Visit https://chatgpt.com/codex/settings/usage for up-to-date
+ information on rate limits and credits
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 03df014..05c9723 100644
+index 4af9a17..f159463 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
-@@ -317,10 +317,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -322,10 +322,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
  
          let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
  
@@ -134,7 +166,7 @@ index 03df014..05c9723 100644
              Span::from(" ").dim(),
              Span::from(format!("(v{})", self.version)).dim(),
          ];
-@@ -391,7 +391,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -396,7 +396,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
          let mut lines = vec![
@@ -384,10 +416,10 @@ index 6284b07..edeaf03 100644
  │ model:     loading   /model to change │
  │ directory: loading                    │
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 93f959c..1037a50 100644
+index 86437fe..311a6f0 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -727,7 +727,7 @@ impl HistoryCell for StatusHistoryCell {
+@@ -742,7 +742,7 @@ impl StatusHistoryCell {
          let mut lines: Vec<Line<'static>> = Vec::new();
          lines.push(Line::from(vec![
              Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
@@ -397,10 +429,10 @@ index 93f959c..1037a50 100644
              Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
          ]));
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index 5b96726..1bbf1e4 100644
+index bdf5ade..bbddcc6 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
-@@ -126,7 +126,7 @@ impl PtyCodex {
+@@ -233,7 +233,7 @@ impl PtyCodex {
              self.read_output(Duration::from_millis(/*millis*/ 50))?;
              self.answer_startup_queries()?;
  

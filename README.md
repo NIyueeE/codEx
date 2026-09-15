@@ -1,15 +1,15 @@
 # codEx
 
 codEx is a community fork of [openai/codex](https://github.com/openai/codex)
-that keeps the CLI happy-path for standalone Linux users: fewer moving parts,
-no phone-home update checks, and a built-in `codex update` that downloads
-verified binaries from this fork's releases.
+that keeps the CLI happy-path for standalone Linux and Windows users: fewer
+moving parts, no phone-home update checks, and a built-in `codex update` that
+downloads verified binaries from this fork's releases.
 
 This repository follows a **patch-queue model**: instead of vendoring the
 upstream tree, it stores only the fork's changes as a `git format-patch`
 series plus the scripts that rebuild a full codex tree from an upstream tag.
 The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
-patch queue applies to (currently `rust-v0.149.1`).
+patch queue applies to (currently `rust-v0.154.0`).
 
 ## Installing from a release
 
@@ -26,9 +26,14 @@ under `~/.codex/packages/standalone/releases/<version>-<target>/` (with the
 bundled `bwrap` under `codex-resources/`) so `codex update` keeps working
 afterwards. It then links `codex` into `~/.local/bin` (or `CODEX_INSTALL_DIR`).
 
+Windows users install from the release archive directly: download
+`codex-x86_64-pc-windows-msvc.tar.gz`, verify it against the published
+`.sha256`, and unpack `codex.exe` plus `codex-resources/` into the standalone
+release directory described under [`codex update`](#codex-update-pure-rust-self-update).
+
 Environment overrides:
 
-- `CODEX_RELEASE` - version to install, e.g. `0.149.1` (default: `latest`)
+- `CODEX_RELEASE` - version to install, e.g. `0.154.0` (default: `latest`)
 - `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 - `CODEX_HOME` - codex home (default: `~/.codex`)
 
@@ -44,8 +49,8 @@ drops into existing workflows, but changes the surrounding experience:
 - **Updates**: `codex update` is a pure-Rust downloader with checksum
   verification; no `curl | sh`, npm, or brew.
 - **Privacy**: no update checks or announcement fetches on startup by default.
-- **Distribution**: Linux-only standalone archives (`codex` + `bwrap`), no
-  macOS/Windows/app-server bundles.
+- **Distribution**: standalone archives for Linux (`codex` + `bwrap`) and
+  Windows (`codex.exe` + `codex-resources/`), no macOS/app-server bundles.
 - **Identity**: the CLI and TUI brand themselves as codEx, and
   `codex --version` points at this fork's repository.
 
@@ -183,15 +188,18 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 - `codex update` no longer shells out to `curl | sh`, npm, or brew. It is a
   self-contained Rust implementation:
   1. Maps the host architecture to the fork's release target
-     (`x86_64-unknown-linux-musl`).
+     (`x86_64-unknown-linux-musl` or `x86_64-pc-windows-msvc`).
   2. Downloads `codex-<target>.tar.gz` and its `.sha256` asset from this
      fork's latest GitHub release.
   3. Verifies the sha256 checksum **before** touching anything.
-  4. Extracts, then atomically replaces the running `codex` binary and the
-     bundled `bwrap` resource (`codex-resources/bwrap`), keeping a `.old`
+  4. Extracts, then replaces the running `codex` binary and its bundled
+     resources (`bwrap`, `codex-resources/*` on Windows), keeping a `.old`
      backup during the swap.
 - Because the archive is built by the fork's release workflow, the new
   binary's embedded bwrap digest always matches the new bwrap it ships with.
+- Windows cannot replace a running executable, so the update is staged beside
+  the install and handed to a detached copy of the new binary. That helper
+  waits for codEx to exit, swaps the binaries, and relaunches codEx.
 - Non-standalone installs (npm/brew/... ) get a clear message pointing at the
   fork releases for manual download.
 
@@ -207,20 +215,23 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 ### Branding
 
 - `codex --version` prints
-  `codEx 0.149.1 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
+  `codEx 0.154.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
   bar shows `codEx <version>`.
 - The TUI welcome screen, session header, and status header display `codEx`;
   tips reference `codEx` as well.
-- The version number itself **matches the upstream base tag** (e.g. `0.149.1`),
+- The version number itself **matches the upstream base tag** (e.g. `0.154.0`),
   so version parsing stays plain semver and fork release tags stay clean.
 
-### Release & CI (Linux + CLI only)
+### Release & CI (Linux CI; Linux + Windows releases)
 
-- **Release matrix**: `x86_64-unknown-linux-musl` only (upstream ships
-  macOS/Windows/ARM64/app-server bundles; this fork does not). Each release
-  publishes exactly two assets:
+- **Release matrix**: `x86_64-unknown-linux-musl` and
+  `x86_64-pc-windows-msvc` (upstream ships macOS/ARM64/app-server bundles;
+  this fork does not). Each release publishes two assets per target:
   - `codex-x86_64-unknown-linux-musl.tar.gz` (contains `codex` + `bwrap`)
   - `codex-x86_64-unknown-linux-musl.tar.gz.sha256`
+  - `codex-x86_64-pc-windows-msvc.tar.gz` (contains `codex.exe` +
+    `codex-resources/` with the Windows sandbox helpers)
+  - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
 - **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners:
   `cargo build --release --bin codex`, `cargo fmt --check`,
   `codex-tui` full test suite, `codex-core` unit tests, codespell, repo-checks.
@@ -239,7 +250,7 @@ per commit):
 
 | Piece | Purpose |
 | --- | --- |
-| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.149.1`) |
+| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.154.0`) |
 | `patches/` | one `git format-patch` per feature module, in fixed order |
 | `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
 | `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
@@ -250,7 +261,7 @@ per commit):
 The seven modules are `infra` (patch-queue tooling, lockfile, README),
 `rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
 interrupt), `privacy` (no startup network chatter), `distribution`
-(Linux-only CI/release), and `identity` (branding). Every file changed by the
+(Linux-only CI, Linux + Windows releases), and `identity` (branding). Every file changed by the
 fork is owned by exactly one module; `check-patch-modules.sh` enforces the
 partition at export time (gen-patches), during upgrades (update.sh), in CI
 (repo-checks), and locally (pre-commit).
@@ -287,20 +298,20 @@ cargo build --release --bin codex
 ## Upgrading to a new upstream tag
 
 ```sh
-bash scripts/update.sh rust-v0.149.1
+bash scripts/update.sh rust-v0.154.0
 ```
 
 `update.sh` clones the new tag into `update-work/`, applies the patch queue
 with `git am --3way`, then runs the same checks as CI (build, `cargo fmt
 --check`, and the `codex-tui`/`codex-core` nextest runs) from the `codex-rs`
 workspace. It accepts the tag with or without the `rust-v` prefix
-(`rust-v0.149.1` or `0.149.1`). If a patch conflicts, resolve it in
+(`rust-v0.154.0` or `0.154.0`). If a patch conflicts, resolve it in
 `update-work/` (`git am --continue`), then regenerate with
-`bash scripts/gen-patches.sh rust-v0.149.1` from inside the bootstrapped tree
+`bash scripts/gen-patches.sh rust-v0.154.0` from inside the bootstrapped tree
 (the slim repo has no upstream history, so the script refuses to run there).
 The patch queue never changes version numbers; fork releases keep the
 upstream semver and are tagged `rust-v<version>` (for example
-`rust-v0.149.1`), and the release workflow publishes
+`rust-v0.154.0`), and the release workflow publishes
 `codex-<target>.tar.gz` + sha256 checksums.
 
 ## License

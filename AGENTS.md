@@ -1,16 +1,17 @@
 # Repository Guidelines
 
-Contributor guide for codEx, a Linux-only community fork of `openai/codex`
-maintained as a **patch-queue repository**: upstream code is not vendored.
-Only the fork's delta lives here; `bootstrap.sh` rebuilds a full codex tree
-from `BASE_TAG` and applies `patches/` via `git am`.
+Contributor guide for codEx, a community fork of `openai/codex` for
+standalone Linux and Windows users, maintained as a **patch-queue
+repository**: upstream code is not vendored. Only the fork's delta lives
+here; `bootstrap.sh` rebuilds a full codex tree from `BASE_TAG` and applies
+`patches/` via `git am`.
 
 ## Project Structure & Module Organization
 
 - `patches/` — one `git format-patch` per feature module, applied in order:
   `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
   `identity` (see `scripts/patch-modules.conf`)
-- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.151.0`)
+- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.154.0`)
 - `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
   `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
@@ -56,8 +57,8 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
 - **Only fork core features are re-implemented.** Keep the fork's side when
   the conflict touches behavior the fork exists to change: `/rewind`
   snapshot/restore logic, single-Esc/double-Esc semantics, update-source
-  redirection, and the Linux-only CI/release replacement. Everything else
-  follows upstream.
+  redirection, and the Linux-CI/Linux+Windows-release replacement.
+  Everything else follows upstream.
 - **Independent additions coexist.** When both sides added separate items
   at the same spot (an enum vs a struct, two unrelated calls), keep both.
   When both sides rewrote the same logic block, prefer upstream's rewrite
@@ -89,7 +90,8 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
   upstream workflows and bazel patch files) are irrelevant to the fork;
   resolve with `git rm` and move on.
 
-Operational experience from the rust-v0.149.1 and rust-v0.151.0 upgrades:
+Operational experience from the rust-v0.149.1, rust-v0.151.0, and
+rust-v0.154.0 upgrades:
 
 - `git am --3way` needs the previous base tag's blobs to build its fake
   ancestor; a shallow clone of the new tag alone fails with "sha1
@@ -156,6 +158,53 @@ Operational experience from the rust-v0.149.1 and rust-v0.151.0 upgrades:
   the policy decider is consulted (`"source":"baseline_policy"` in the
   response body; the decider counter stays 0). Environmental -- ignore it
   on such hosts, everything else still gates the upgrade.
+- Resolve conflicts at the *file* level, not with `-X theirs`. A 3-way
+  merge can silently splice one upstream test's tail into the neighbouring
+  test when the fork deletes the lines in between: the 0.154.0 upgrade's
+  `[input]` commit left `bottom_pane::tests::
+  esc_is_noop_at_pane_level_and_remapped_binding_interrupts` asserting the
+  pre-fork `esc -> Op::Interrupt` behaviour, because the next test's tail
+  was appended to it. Read the merged function, not just the conflict
+  markers -- orphaned code without markers fails only at test time.
+- After a conflict-heavy module, diff the fork's own test *keys* against
+  the snapshot files it ships. The `[input]` module renames snapshot tests
+  (`footer_mode_ctrl_c_hint_survives_esc`,
+  `footer_mode_esc_closes_shortcut_overlay`) and deletes two upstream
+  ones; taking upstream's source wholesale resurrects the upstream names,
+  which then regenerate upstream-named `.snap` files while the fork-named
+  ones linger as untracked duplicates. Re-apply the fork renames in the
+  source and delete the stale files.
+- Snapshot regeneration is terminal-sensitive. Run the suite as
+  `env -u NO_COLOR TERM=xterm-256color ... INSTA_UPDATE=always cargo
+  nextest run`; under the default `TERM=dumb`/`NO_COLOR=1` the
+  `custom_terminal::tests::cursor::*` tests fail on style escapes and
+  `INSTA_UPDATE=always` then *accepts* those corrupted frames into the
+  snapshots. When cursor snapshots show up in the diff, revert
+  `codex-rs/tui/src/custom_terminal/` and rerun with a real `TERM`.
+- The `[distribution]` module conflicts are *hard failures*, not markers:
+  upstream deletes workflows the fork also replaced, so the non-`.snap`
+  files surface as `patch does not apply` / "modify/delete" rather than
+  content conflicts. Take the upstream side for `rust-release.yml` and
+  `git rm` the workflows the fork's CI replacement deletes, then confirm
+  the fork's own four workflows still exist.
+- `scripts/patch-modules.conf` exists in two places and both must agree:
+  the bootstrapped tree's copy is what `gen-patches.sh` reads, while
+  `check-patch-modules.sh` in the slim repo reads its own sibling. A
+  manifest change belongs to `[infra]`; when folding it, remember that
+  `git commit --fixup` silently drops an *empty* diff, so a fixup that
+  appears to succeed can be a no-op. Verify with
+  `git log --oneline <base>..HEAD -- scripts/patch-modules.conf` that
+  exactly the infra commit touches the file, and diff the two copies
+  afterwards.
+- Upstream 0.154.0 added workspace members that need system headers the
+  fork's CI never builds (`voice-host` pulls gstreamer/glib through
+  `pkg-config`). A bare `cargo check --workspace` therefore fails on a
+  host without `libglib2.0-dev`; the CI-equivalent gate is
+  `cargo check -p codex-cli --bin codex -p codex-tui -p codex-core
+  --all-targets`. `liblzma-dev`/`libbz2-dev` *are* required for the
+  `codex-tui` test binaries (the `zip` dev-dependency chain), so install
+  those rather than treating the link error as a regression.
+
 
 ## Coding Style & Naming Conventions
 
@@ -199,9 +248,10 @@ Upgrades (and other `main` changes) ship through CI, in this order:
 2. Tag the upgrade commit and push the tag:
    `git tag rust-v<version> <commit> && git push origin rust-v<version>`.
    `rust-release.yml` validates the tag against the workspace version in
-   `codex-rs/Cargo.toml`, builds the musl target (~45 min on CI), and
-   publishes `codex-<target>.tar.gz` plus its `.sha256`.
-3. Verify end to end: download the asset, compare the checksum, and run
+   `codex-rs/Cargo.toml`, builds the Linux musl and Windows MSVC targets
+   (~45 min on CI), and publishes `codex-<target>.tar.gz` plus its `.sha256`
+   for each target.
+3. Verify end to end: download an asset, compare the checksum, and run
    `codex --version` -- expect
    `codEx <version> (codEx fork, https://github.com/NIyueeE/codEx)`.
 

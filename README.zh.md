@@ -1,13 +1,13 @@
 # codEx
 
 codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向 Linux
-独立用户保持 CLI 的顺滑体验:更少的组件、默认不进行联网更新检查,内置的
-`codex update` 会从本分支的 release 下载经过校验的二进制。
+与 Windows 独立用户保持 CLI 的顺滑体验:更少的组件、默认不进行联网更新检查,
+内置的 `codex update` 会从本分支的 release 下载经过校验的二进制。
 
 本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
 `git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
 真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.149.1`)。
+`rust-v0.154.0`)。
 
 ## 从 Release 安装
 
@@ -23,9 +23,13 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 (捆绑的 `bwrap` 位于 `codex-resources/`),这样之后 `codex update` 仍能正常
 工作。随后将 `codex` 链接到 `~/.local/bin`(或 `CODEX_INSTALL_DIR`)。
 
+Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
+对照随附的 `.sha256` 校验后,将 `codex.exe` 与 `codex-resources/` 解压到
+[`codex update`](#codex-update-pure-rust-self-update)一节所述的独立安装目录。
+
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.149.1`(默认:`latest`)
+- `CODEX_RELEASE` - 要安装的版本,如 `0.154.0`(默认:`latest`)
 - `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
 
@@ -39,8 +43,8 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
 - **更新**:`codex update` 是纯 Rust 实现的下载器,带校验和验证;不再依赖
   `curl | sh`、npm 或 brew。
 - **隐私**:默认启动时不检查更新、不拉取公告。
-- **发行**:仅提供 Linux 独立归档(`codex` + `bwrap`),没有
-  macOS/Windows/app-server 包。
+- **发行**:提供 Linux(`codex` + `bwrap`)与 Windows(`codex.exe` +
+  `codex-resources/`)独立归档,没有 macOS/app-server 包。
 - **身份**:CLI 和 TUI 以 codEx 自居,`codex --version` 指向本分支的仓库。
 
 详见下文。
@@ -146,14 +150,17 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 ### `codex update`:纯 Rust 自更新
 
 - `codex update` 不再调用 `curl | sh`、npm 或 brew。它是自包含的 Rust 实现:
-  1. 将主机架构映射到分支的发布目标(`x86_64-unknown-linux-musl`)。
+  1. 将主机架构映射到分支的发布目标(`x86_64-unknown-linux-musl` 或
+     `x86_64-pc-windows-msvc`)。
   2. 从本分支最新的 GitHub release 下载 `codex-<target>.tar.gz` 及其
      `.sha256` 资产。
   3. 在改动任何内容**之前**校验 sha256 校验和。
-  4. 解压后原子替换正在运行的 `codex` 二进制和捆绑的 `bwrap` 资源
-     (`codex-resources/bwrap`),替换期间保留 `.old` 备份。
+  4. 解压后替换正在运行的 `codex` 二进制及其捆绑资源(`bwrap`,Windows 上
+     还有 `codex-resources/*`),替换期间保留 `.old` 备份。
 - 由于归档由分支的 release 工作流构建,新二进制内嵌的 bwrap 摘要始终与
   随附的新 bwrap 匹配。
+- Windows 无法替换正在运行的可执行文件,因此更新会先暂存到安装目录旁,再交给
+  新二进制的分离副本:它等待 codEx 退出后完成替换并重新启动 codEx。
 - 非独立安装(npm/brew/...)会得到明确提示,指向分支 release 供手动下载。
 
 ### 无更新打扰、无公告
@@ -167,19 +174,22 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.149.1 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.154.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.149.1`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.154.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
-### 发布与 CI(仅 Linux + CLI)
+### 发布与 CI(CI 仅 Linux;release 含 Linux + Windows)
 
-- **发布矩阵**:仅 `x86_64-unknown-linux-musl`(上游发布
-  macOS/Windows/ARM64/app-server 包;本分支不发布)。每个 release 恰好发布
-  两个资产:
+- **发布矩阵**:`x86_64-unknown-linux-musl` 与 `x86_64-pc-windows-msvc`
+  (上游发布 macOS/ARM64/app-server 包;本分支不发布)。每个目标各发布两个
+  资产:
   - `codex-x86_64-unknown-linux-musl.tar.gz`(包含 `codex` + `bwrap`)
   - `codex-x86_64-unknown-linux-musl.tar.gz.sha256`
+  - `codex-x86_64-pc-windows-msvc.tar.gz`(包含 `codex.exe` 与
+    `codex-resources/` 下的 Windows 沙箱辅助程序)
+  - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
 - **CI**(`blocking-ci.yml`)在托管 runner 上使用纯 Cargo:
   `cargo build --release --bin codex`、`cargo fmt --check`、`codex-tui`
   完整测试套件、`codex-core` 单元测试、codespell、repo-checks。依赖沙箱的
@@ -196,7 +206,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.149.1`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.154.0`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -206,7 +216,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
 `updates`(纯 Rust 自更新)、`input`(双击 Esc 中断)、`privacy`(启动无网络
-请求)、`distribution`(仅 Linux 的 CI/release)与 `identity`(品牌标识)。
+请求)、`distribution`(CI 仅 Linux,release 含 Linux + Windows)与 `identity`(品牌标识)。
 分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
 (gen-patches)、升级(update.sh)、CI(repo-checks)和本地提交(pre-commit)
 四处强制校验这一划分。
@@ -240,17 +250,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.149.1
+bash scripts/update.sh rust-v0.154.0
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.149.1` 或 `0.149.1`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.154.0` 或 `0.154.0`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.149.1` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.154.0` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.149.1`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.154.0`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证

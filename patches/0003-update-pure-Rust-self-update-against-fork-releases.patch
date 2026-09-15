@@ -1,30 +1,30 @@
-From 8d5d52742b0f6da5dc5f7f9efb531818993f616c Mon Sep 17 00:00:00 2001
+From 6f3a9fe3cacf44d3c8c74f91f76e246bc8d2a10d Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
 
 ---
- codex-rs/app-server-daemon/src/lib.rs         |   2 +-
- codex-rs/app-server-daemon/src/update_loop.rs | 111 +-----
- .../src/update_loop_tests.rs                  |  63 ---
- codex-rs/cli/Cargo.toml                       |   3 +
- codex-rs/cli/src/doctor/updates.rs            |  53 +--
- codex-rs/cli/src/main.rs                      | 114 ++----
- codex-rs/cli/src/self_update.rs               | 362 ++++++++++++++++++
- codex-rs/cli/src/wsl_paths.rs                 |  59 ---
+ codex-rs/app-server-daemon/src/lib.rs         |   7 +-
+ codex-rs/app-server-daemon/src/update_loop.rs | 124 +---
+ .../src/update_loop_tests.rs                  |  84 ---
+ codex-rs/cli/Cargo.toml                       |   4 +
+ codex-rs/cli/src/doctor/updates.rs            |  60 +-
+ codex-rs/cli/src/main.rs                      | 140 ++---
+ codex-rs/cli/src/self_update.rs               | 547 ++++++++++++++++++
+ codex-rs/cli/src/wsl_paths.rs                 |  59 --
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
  ...pdate_available_history_cell_snapshot.snap |  11 -
  ...nfo_availability_nux_tooltip_snapshot.snap |   4 +-
  ...pdate_available_history_cell_snapshot.snap |  14 +-
  ...pdate_available_history_cell_snapshot.snap |  12 -
- codex-rs/tui/src/history_cell/tests.rs        |  18 -
- codex-rs/tui/src/update_action.rs             | 105 +----
+ codex-rs/tui/src/history_cell/tests.rs        |  29 -
+ codex-rs/tui/src/update_action.rs             | 106 +---
  codex-rs/tui/src/update_prompt.rs             |   7 +-
  codex-rs/tui/src/update_versions.rs           |  23 +-
- codex-rs/tui/src/updates.rs                   |  52 +--
+ codex-rs/tui/src/updates.rs                   |  53 +-
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 20 files changed, 517 insertions(+), 532 deletions(-)
+ 20 files changed, 735 insertions(+), 585 deletions(-)
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
@@ -32,64 +32,69 @@ Subject: update: pure-Rust self-update against fork releases
  create mode 100644 codex-rs/utils/cli/src/fork.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index c909788..8f6d26b 100644
+index a9cd34f..1c08b1f 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
-@@ -674,7 +674,7 @@ impl Daemon {
+@@ -701,16 +701,11 @@ impl Daemon {
+         }
+ 
+         let managed_codex_path = self.managed_codex_bin.display();
+-        let install_command = if cfg!(windows) {
+-            "irm https://chatgpt.com/codex/install.ps1 | iex"
+-        } else {
+-            "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
+-        };
+         Err(anyhow!(
              "managed standalone Codex install not found at {managed_codex_path}\n\n\
               This command requires the standalone install managed by the Codex installer, because \
               the daemon starts and updates app-server from that fixed path.\n\n\
--             Install it with:\n  curl -fsSL https://chatgpt.com/codex/install.sh | sh\n\n\
+-             Install it with:\n  {install_command}\n\n\
 +             Install it from the codEx fork releases:\n  https://github.com/NIyueeE/codEx/releases\n\n\
               Then rerun the command you just tried."
          ))
      }
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 76fd948..2257234 100644
+index 06c9b01..039180b 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -1,8 +1,6 @@
- #[cfg(unix)]
- use std::process::Command as StdCommand;
- #[cfg(unix)]
--use std::process::Stdio;
--#[cfg(unix)]
- use std::time::Duration;
+@@ -2,19 +2,14 @@
  
  #[cfg(unix)]
-@@ -10,20 +8,12 @@ use anyhow::Context;
+ use std::process::Command as StdCommand;
+-use std::process::Stdio;
+ use std::time::Duration;
+ 
+ use anyhow::Context;
  use anyhow::Result;
- #[cfg(not(unix))]
- use anyhow::bail;
--#[cfg(unix)]
 -use codex_http_client::ClientRouteClass;
  use codex_http_client::HttpClientFactory;
- #[cfg(unix)]
 -use codex_http_client::RouteAwareClientPool;
--#[cfg(unix)]
  use futures::FutureExt;
  #[cfg(unix)]
  use std::os::unix::process::CommandExt;
- #[cfg(unix)]
 -use tokio::io::AsyncWriteExt;
--#[cfg(unix)]
 -use tokio::process::Command;
--#[cfg(unix)]
+ #[cfg(unix)]
  use tokio::signal::unix::Signal;
  #[cfg(unix)]
- use tokio::signal::unix::SignalKind;
-@@ -54,22 +44,15 @@ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
- #[cfg(unix)]
+@@ -34,12 +29,8 @@ use crate::managed_install::resolved_managed_codex_bin;
+ const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
+ const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
  const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
- #[cfg(unix)]
--const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
--
 -#[cfg(unix)]
+-const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
+-#[cfg(windows)]
+-const INSTALL_URL: &str = "https://chatgpt.com/codex/install.ps1";
+ 
 -pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
 +pub(crate) async fn run(_http_client_factory: HttpClientFactory) -> Result<()> {
+     #[cfg(unix)]
      let mut terminate =
          signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
+@@ -59,10 +50,6 @@ pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
      let running_updater_identity = current_updater_identity().await?;
+     #[cfg(windows)]
+     updater.mark_ready().await?;
 -    let http = RouteAwareClientPool::new_without_request_logging(
 -        http_client_factory,
 -        ClientRouteClass::Other,
@@ -97,21 +102,30 @@ index 76fd948..2257234 100644
      if sleep_or_terminate(INITIAL_UPDATE_DELAY, &mut terminate).await {
          return Ok(());
      }
-     loop {
+@@ -71,7 +58,7 @@ pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
+         // must stop instead of installing again without ownership.
+         #[cfg(windows)]
+         updater.wait_for_ownership().await?;
 -        match update_once(&http, &running_updater_identity, &mut terminate).await {
 +        match update_once(&running_updater_identity, &mut terminate).await {
              Ok(UpdateLoopControl::Continue) | Err(_) => {}
              Ok(UpdateLoopControl::Stop) => return Ok(()),
          }
-@@ -100,12 +83,14 @@ enum UpdateLoopControl {
+@@ -94,18 +81,14 @@ enum UpdateLoopControl {
+ }
  
- #[cfg(unix)]
  async fn update_once(
 -    http: &RouteAwareClientPool,
      running_updater_identity: &ExecutableIdentity,
      terminate: &mut Signal,
  ) -> Result<UpdateLoopControl> {
+-    #[cfg(unix)]
 -    install_latest_standalone(http).await?;
+-    #[cfg(windows)]
+-    tokio::select! {
+-        result = install_latest_standalone(http) => result?,
+-        _ = terminate.recv() => return Ok(UpdateLoopControl::Stop),
+-    }
 -
 +    // The codEx fork never auto-installs from a remote script: upstream's
 +    // loop piped https://chatgpt.com/codex/install.sh into /bin/sh, which
@@ -121,16 +135,29 @@ index 76fd948..2257234 100644
      let daemon = Daemon::from_environment()?;
      let managed_codex_bin = resolved_managed_codex_bin(&daemon.managed_codex_bin).await?;
      let managed_identity = executable_identity(&managed_codex_bin).await?;
-@@ -165,88 +150,6 @@ pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Res
+@@ -172,98 +155,7 @@ pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Res
      })
  }
  
--#[cfg(unix)]
--async fn install_latest_standalone(http: &RouteAwareClientPool) -> Result<()> {
+-async fn install_latest_standalone(http: &impl InstallerHttp) -> Result<()> {
 -    let script = fetch_installer_script(http).await?;
 -
--    let mut child = Command::new("/bin/sh")
--        .arg("-s")
+-    #[cfg(unix)]
+-    let mut command = {
+-        let mut command = Command::new("/bin/sh");
+-        command.arg("-s");
+-        command
+-    };
+-    #[cfg(windows)]
+-    let mut command = {
+-        let mut command = Command::new("powershell.exe");
+-        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
+-        command.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "try { Invoke-Expression ([Console]::In.ReadToEnd()) } catch { Write-Error $_; exit 1 }"])
+-            .env("CODEX_NON_INTERACTIVE", "1")
+-            .kill_on_drop(true);
+-        command
+-    };
+-    let mut child = command
 -        .stdin(Stdio::piped())
 -        .stdout(Stdio::null())
 -        .stderr(Stdio::null())
@@ -157,7 +184,6 @@ index 76fd948..2257234 100644
 -    }
 -}
 -
--#[cfg(unix)]
 -async fn fetch_installer_script(http: &impl InstallerHttp) -> Result<Vec<u8>> {
 -    match http.get(INSTALL_URL).await? {
 -        InstallerResponse::Success(body) => Ok(body),
@@ -167,14 +193,12 @@ index 76fd948..2257234 100644
 -    }
 -}
 -
--#[cfg(unix)]
 -#[derive(Clone, Debug, PartialEq, Eq)]
 -enum InstallerResponse {
 -    Success(Vec<u8>),
 -    Unsuccessful { status: u16 },
 -}
 -
--#[cfg(unix)]
 -/// HTTP boundary used to download the standalone installer.
 -///
 -/// Implementations must issue a GET for the supplied URL, return exact response bytes for a
@@ -186,7 +210,6 @@ index 76fd948..2257234 100644
 -    ) -> impl std::future::Future<Output = Result<InstallerResponse>> + Send + 'a;
 -}
 -
--#[cfg(unix)]
 -impl InstallerHttp for RouteAwareClientPool {
 -    async fn get(&self, url: &str) -> Result<InstallerResponse> {
 -        let response = RouteAwareClientPool::get(self, url)
@@ -207,11 +230,13 @@ index 76fd948..2257234 100644
 -    }
 -}
 -
- #[cfg(all(test, unix))]
+-#[cfg(test)]
++#[cfg(all(test, unix))]
  #[path = "update_loop_tests.rs"]
  mod tests;
+ 
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 8c94f91..cf27069 100644
+index bb2a87f..cf27069 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
 @@ -1,11 +1,5 @@
@@ -226,7 +251,7 @@ index 8c94f91..cf27069 100644
  use super::update_modes_for_identities;
  use crate::RestartMode;
  use crate::UpdaterRefreshMode;
-@@ -35,60 +29,3 @@ fn changed_updater_forces_refresh_even_when_version_may_match() {
+@@ -35,81 +29,3 @@ fn changed_updater_forces_refresh_even_when_version_may_match() {
          )
      );
  }
@@ -287,11 +312,32 @@ index 8c94f91..cf27069 100644
 -        Ok(self.response.clone())
 -    }
 -}
+-
+-#[cfg(windows)]
+-#[tokio::test]
+-async fn powershell_installer_is_noninteractive_and_reports_script_failure() {
+-    let valid = FakeInstallerHttp::new(InstallerResponse::Success(
+-        br#"
+-function Test-Installer {
+-    if ($env:CODEX_NON_INTERACTIVE -ne '1') { throw 'interactive installer' }
+-}
+-Test-Installer
+-"#
+-        .to_vec(),
+-    ));
+-    super::install_latest_standalone(&valid)
+-        .await
+-        .expect("installer succeeds");
+-    let failing = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"throw 'installer failed'".to_vec(),
+-    ));
+-    assert!(super::install_latest_standalone(&failing).await.is_err());
+-}
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index 2640c96..8fbb301 100644
+index 67e54b7..c4daece 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
-@@ -73,6 +73,7 @@ codex-tui = { workspace = true }
+@@ -74,6 +74,7 @@ codex-tui = { workspace = true }
  codex-utils-absolute-path = { workspace = true }
  codex-utils-path = { workspace = true }
  crossterm = { workspace = true }
@@ -299,7 +345,7 @@ index 2640c96..8fbb301 100644
  http = { workspace = true }
  libc = { workspace = true }
  os_info = { workspace = true }
-@@ -80,8 +81,10 @@ owo-colors = { workspace = true }
+@@ -81,8 +82,10 @@ owo-colors = { workspace = true }
  regex-lite = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -310,20 +356,28 @@ index 2640c96..8fbb301 100644
  tempfile = { workspace = true }
  tokio = { workspace = true, features = [
      "io-std",
+@@ -108,6 +111,7 @@ tikv-jemallocator = { workspace = true }
+ codex_windows_sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
+ windows-sys = { version = "0.52", features = [
+     "Win32_Foundation",
++    "Win32_Storage_FileSystem",
+     "Win32_Storage_Packaging_Appx",
+     "Win32_System_Console",
+     "Win32_System_Threading",
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
-index 7c2add2..ec67709 100644
+index fbad7d9..f8f2889 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
 +++ b/codex-rs/cli/src/doctor/updates.rs
-@@ -19,6 +19,7 @@ use codex_http_client::ClientRouteClass;
+@@ -14,6 +14,7 @@ use codex_http_client::ClientRouteClass;
  use codex_http_client::RouteAwareClientPool;
  use codex_install_context::InstallContext;
  use codex_install_context::InstallMethod;
 +use codex_utils_cli::latest_release_url;
- #[cfg(any(target_os = "macos", target_os = "windows"))]
  use http::Method;
  use serde::Deserialize;
-@@ -40,8 +41,6 @@ use super::npm_global_root_check;
- use super::run_command;
+ #[cfg(target_os = "macos")]
+@@ -33,8 +34,6 @@ use super::network;
+ const MAX_VERSION_RESPONSE_BYTES: usize = 1024 * 1024;
  
  const VERSION_FILE_NAME: &str = "version.json";
 -const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
@@ -331,52 +385,62 @@ index 7c2add2..ec67709 100644
  #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
  const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
  #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
-@@ -112,7 +111,7 @@ pub(super) fn updates_check(config: &Config) -> DoctorCheck {
-         }
-     }
+@@ -75,7 +74,7 @@ pub(super) async fn updates_check(config: &Config) -> DoctorCheck {
+         ClientRouteClass::Other,
+     );
  
--    match fetch_latest_version(&install_context) {
-+    match fetch_latest_version() {
+-    match fetch_latest_version(&client, &install_context).await {
++    match fetch_latest_version(&client).await {
          Ok(latest_version) => {
              details.push(format!("latest version: {latest_version}"));
              if is_newer(&latest_version, env!("CARGO_PKG_VERSION")) == Some(true) {
-@@ -430,48 +429,29 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
+@@ -389,31 +388,22 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
  
  fn update_action_label(context: &InstallContext) -> &'static str {
      match &context.method {
 -        InstallMethod::Npm => "npm install -g @openai/codex",
 -        InstallMethod::Bun => "bun install -g @openai/codex",
+-        InstallMethod::VitePlus => "vp install -g @openai/codex",
 -        InstallMethod::Pnpm => "pnpm add -g @openai/codex",
 -        InstallMethod::Brew => "brew upgrade --cask codex",
 -        InstallMethod::Standalone { .. } => "standalone installer",
-+        InstallMethod::Npm | InstallMethod::Bun | InstallMethod::Pnpm | InstallMethod::Brew => {
-+            "unsupported update channel (manual download from fork releases)"
-+        }
-+        InstallMethod::Standalone { .. } => "fork standalone binary (codex update)",
-         InstallMethod::Other => "manual or unknown",
-     }
- }
- 
--fn fetch_latest_version(context: &InstallContext) -> Result<String, String> {
--    match &context.method {
--        InstallMethod::Brew => fetch_homebrew_cask_version(),
--        InstallMethod::Npm
--        | InstallMethod::Bun
--        | InstallMethod::Pnpm
--        | InstallMethod::Standalone { .. }
--        | InstallMethod::Other => fetch_latest_github_release_version(),
+-        InstallMethod::Other => "manual or unknown",
 -    }
 -}
 -
--fn fetch_latest_github_release_version() -> Result<String, String> {
-+fn fetch_latest_version() -> Result<String, String> {
-     #[derive(Deserialize)]
-     struct ReleaseInfo {
+-async fn fetch_latest_version(
+-    client: &RouteAwareClientPool,
+-    context: &InstallContext,
+-) -> Result<String, String> {
+-    match &context.method {
+-        InstallMethod::Brew => fetch_homebrew_cask_version(client).await,
+         InstallMethod::Npm
+         | InstallMethod::Bun
+         | InstallMethod::VitePlus
+         | InstallMethod::Pnpm
+-        | InstallMethod::Standalone { .. }
+-        | InstallMethod::Other => fetch_latest_github_release_version(client).await,
++        | InstallMethod::Brew => "unsupported update channel (manual download from fork releases)",
++        InstallMethod::Standalone { .. } => "fork standalone binary (codex update)",
++        InstallMethod::Other => "manual or unknown",
+     }
+ }
+ 
++async fn fetch_latest_version(client: &RouteAwareClientPool) -> Result<String, String> {
++    // The codEx fork publishes only from its own release feed, so every
++    // install channel resolves its latest version there.
++    fetch_latest_github_release_version(client).await
++}
++
+ async fn fetch_latest_github_release_version(
+     client: &RouteAwareClientPool,
+ ) -> Result<String, String> {
+@@ -422,24 +412,15 @@ async fn fetch_latest_github_release_version(
          tag_name: String,
      }
  
--    let info = http_get_json::<ReleaseInfo>(GITHUB_LATEST_RELEASE_URL)?;
-+    let info = http_get_json::<ReleaseInfo>(&latest_release_url())?;
+-    let info = http_get_json::<ReleaseInfo>(client, GITHUB_LATEST_RELEASE_URL).await?;
++    let info = http_get_json::<ReleaseInfo>(client, &latest_release_url()).await?;
      info.tag_name
          .strip_prefix("rust-v")
 +        .or_else(|| info.tag_name.strip_prefix('v'))
@@ -385,28 +449,30 @@ index 7c2add2..ec67709 100644
          .ok_or_else(|| format!("failed to parse latest tag {}", info.tag_name))
  }
  
--fn fetch_homebrew_cask_version() -> Result<String, String> {
+-async fn fetch_homebrew_cask_version(client: &RouteAwareClientPool) -> Result<String, String> {
 -    #[derive(Deserialize)]
 -    struct HomebrewCaskInfo {
 -        version: String,
 -    }
 -
--    http_get_json::<HomebrewCaskInfo>(HOMEBREW_CASK_API_URL).map(|info| info.version)
+-    http_get_json::<HomebrewCaskInfo>(client, HOMEBREW_CASK_API_URL)
+-        .await
+-        .map(|info| info.version)
 -}
 -
- fn http_get_json<T>(url: &str) -> Result<T, String>
+ async fn http_get_json<T>(client: &RouteAwareClientPool, url: &str) -> Result<T, String>
  where
      T: for<'de> Deserialize<'de>,
-@@ -507,6 +487,8 @@ struct VersionInfo {
+@@ -497,6 +478,8 @@ struct VersionInfo {
  #[cfg(test)]
  mod tests {
      use super::*;
 +    use codex_install_context::StandalonePlatform;
 +    use codex_utils_absolute_path::AbsolutePathBuf;
+     use pretty_assertions::assert_eq;
  
-     #[cfg(target_os = "macos")]
-     #[test]
-@@ -633,14 +615,19 @@ mod tests {
+     #[tokio::test]
+@@ -691,14 +674,19 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -430,10 +496,10 @@ index 7c2add2..ec67709 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 0bfea04..1a1c65d 100644
+index 50aa973..0ece1cf 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -58,9 +58,8 @@ mod queue_cmd;
+@@ -73,9 +73,8 @@ mod queue_cmd;
  mod remote_control_cmd;
  #[cfg(target_os = "windows")]
  mod sandbox_setup;
@@ -444,7 +510,7 @@ index 0bfea04..1a1c65d 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -96,13 +95,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -111,13 +110,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -464,16 +530,33 @@ index 0bfea04..1a1c65d 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -168,7 +171,7 @@ enum Subcommand {
+@@ -143,6 +146,14 @@ struct MultitoolCli {
+     subcommand: Option<Subcommand>,
+ }
+ 
++#[derive(Debug, clap::Args)]
++struct UpdateCommand {
++    /// Windows only: internal. Apply the staged update once the codEx process
++    /// with this PID exits, then relaunch codEx.
++    #[arg(long, hide = true, value_name = "PID")]
++    windows_apply_after_exit: Option<u32>,
++}
++
+ #[derive(Debug, clap::Subcommand)]
+ enum Subcommand {
+     /// Browse all agent sessions on the shared local app-server daemon.
+@@ -180,8 +191,8 @@ enum Subcommand {
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
 -    /// Update Codex to the latest version.
+-    Update,
 +    /// Update codEx to the latest fork release.
-     Update,
++    Update(UpdateCommand),
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
-@@ -784,7 +787,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+     Doctor(DoctorCommand),
+@@ -864,7 +875,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -482,7 +565,7 @@ index 0bfea04..1a1c65d 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -806,79 +809,25 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -886,79 +897,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -522,11 +605,7 @@ index 0bfea04..1a1c65d 100644
 -                .args(args)
 -                .current_dir(update_cwd.path())
 -                .status()?
-+    match action {
-+        UpdateAction::StandaloneUnix => {
-+            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
-+            self_update::run().await?;
-         }
+-        }
 -        #[cfg(not(windows))]
 -        {
 -            let (cmd, args) = action.command_args();
@@ -538,7 +617,11 @@ index 0bfea04..1a1c65d 100644
 -            std::process::Command::new(&command_path)
 -                .args(&normalized_args)
 -                .status()?
--        }
++    match action {
++        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
++            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
++            self_update::run().await?;
+         }
 -    };
 -    if !status.success() {
 -        anyhow::bail!("`{cmd_str}` failed with status {status}");
@@ -559,18 +642,30 @@ index 0bfea04..1a1c65d 100644
 -        anyhow::bail!(
 -            "Could not find an absolute update command `{command}` on PATH. Please update manually: https://developers.openai.com/codex/cli/"
 -        );
--    }
++async fn run_update_command(update: UpdateCommand) -> anyhow::Result<()> {
++    // The Windows in-place swap runs after the parent process exits, so it
++    // must be reachable without the release-build and install-detection gates
++    // that guard a user-initiated update: the staged binary lives outside the
++    // managed install tree and never runs `codex update` itself.
++    #[cfg(target_os = "windows")]
++    if let Some(parent_pid) = update.windows_apply_after_exit {
++        return self_update::run_windows_apply_after_exit(parent_pid).await;
+     }
 -    which::which_in_global(command, Some(&path_env))?
 -        .next()
 -        .ok_or_else(|| anyhow::anyhow!("could not find update command `{command}` on PATH"))
 -}
--
+ 
 -fn run_update_command() -> anyhow::Result<()> {
-+async fn run_update_command() -> anyhow::Result<()> {
++    // The deferred-swap flags only carry meaning on Windows, so other targets
++    // never read the parsed arguments.
++    #[cfg(not(target_os = "windows"))]
++    let _ = &update;
++
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -890,10 +839,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -970,10 +941,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -583,7 +678,7 @@ index 0bfea04..1a1c65d 100644
      }
  }
  
-@@ -1139,7 +1088,7 @@ async fn cli_main(
+@@ -1221,7 +1192,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -592,7 +687,7 @@ index 0bfea04..1a1c65d 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1423,7 +1372,7 @@ async fn cli_main(
+@@ -1489,7 +1460,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -601,7 +696,7 @@ index 0bfea04..1a1c65d 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1510,7 +1459,7 @@ async fn cli_main(
+@@ -1576,7 +1547,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -610,19 +705,39 @@ index 0bfea04..1a1c65d 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1582,7 +1531,7 @@ async fn cli_main(
+@@ -1642,13 +1613,13 @@ async fn cli_main(
+             )?;
+             print_completion(completion_cli);
+         }
+-        Some(Subcommand::Update) => {
++        Some(Subcommand::Update(update)) => {
+             reject_remote_mode_for_subcommand(
+                 root_remote.as_deref(),
                  root_remote_auth_token_env.as_deref(),
                  "update",
              )?;
 -            run_update_command()?;
-+            run_update_command().await?;
++            run_update_command(update).await?;
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -3563,6 +3512,23 @@ mod tests {
-         assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
-     }
- 
+@@ -2565,7 +2536,7 @@ fn unsupported_subcommand_name_for_strict_config(
+         Some(Subcommand::Login(_)) => Some("login"),
+         Some(Subcommand::Logout(_)) => Some("logout"),
+         Some(Subcommand::Completion(_)) => Some("completion"),
+-        Some(Subcommand::Update) => Some("update"),
++        Some(Subcommand::Update(_)) => Some("update"),
+         Some(Subcommand::Cloud(_)) => Some("cloud"),
+         Some(Subcommand::Sandbox(_)) => Some("sandbox"),
+         Some(Subcommand::Debug(_)) => Some("debug"),
+@@ -3758,7 +3729,24 @@ mod tests {
+     #[test]
+     fn update_parses_as_update_subcommand() {
+         let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
+-        assert!(matches!(cli.subcommand, Some(Subcommand::Update)));
++        assert!(matches!(cli.subcommand, Some(Subcommand::Update(_))));
++    }
++
 +    #[test]
 +    fn version_string_identifies_codex_fork() {
 +        let command = MultitoolCli::command();
@@ -638,17 +753,15 @@ index 0bfea04..1a1c65d 100644
 +            command.get_about().unwrap().to_string().contains("codEx"),
 +            "about should mention codEx"
 +        );
-+    }
-+
+     }
+ 
      #[test]
-     fn archive_merges_scoped_tui_flags() {
-         let (target, interactive, remote) = finalize_archive_from_args(
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..645d24b
+index 0000000..34d5167
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,362 @@
+@@ -0,0 +1,547 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -668,7 +781,6 @@ index 0000000..645d24b
 +use codex_http_client::RouteAwareClientPool;
 +use codex_install_context::InstallContext;
 +use codex_install_context::InstallMethod;
-+use codex_install_context::StandalonePlatform;
 +use codex_utils_cli::FORK_REPO;
 +use codex_utils_cli::latest_release_url;
 +use flate2::read::GzDecoder;
@@ -680,7 +792,15 @@ index 0000000..645d24b
 +
 +/// Executable name inside the release archive.
 +const CODEX_BINARY_NAME: &str = "codex";
-+/// Bubblewrap binary name inside the release archive.
++/// Windows executable name inside the release archive.
++#[cfg(target_os = "windows")]
++const CODEX_BINARY_NAME_WINDOWS: &str = "codex.exe";
++/// Directory beside the running binary that holds a pending update.
++const STAGING_DIR_NAME: &str = "codex-update-staging";
++/// Bundled helper directory inside a release archive and an install.
++#[cfg(target_os = "windows")]
++const RESOURCES_DIR_NAME: &str = "codex-resources";
++/// Bubblewrap binary name inside the release archive (Unix sandbox helper).
 +const BWRAP_BINARY_NAME: &str = "bwrap";
 +/// HTTP timeout for a single release asset download.
 +const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
@@ -697,12 +817,13 @@ index 0000000..645d24b
 +
 +/// The platform triple codEx publishes binaries for this architecture.
 +///
-+/// The fork currently ships `x86_64-unknown-linux-musl` builds only.
++/// The fork ships `x86_64-unknown-linux-musl` and `x86_64-pc-windows-msvc`.
 +pub fn target_triple() -> Result<&'static str, String> {
 +    match (std::env::consts::ARCH, std::env::consts::OS) {
 +        ("x86_64", "linux") => Ok("x86_64-unknown-linux-musl"),
++        ("x86_64", "windows") => Ok("x86_64-pc-windows-msvc"),
 +        (arch, os) => Err(format!(
-+            "unsupported platform {arch}-{os}; codEx currently publishes Linux x86_64 binaries only"
++            "unsupported platform {arch}-{os}; codEx publishes Linux and Windows x86_64 binaries only"
 +        )),
 +    }
 +}
@@ -738,24 +859,14 @@ index 0000000..645d24b
 +        .map_err(anyhow::Error::msg)
 +        .context("cannot update codEx")?;
 +    let context = InstallContext::current();
-+    let resources_dir = match &context.method {
-+        InstallMethod::Standalone {
-+            resources_dir,
-+            platform: StandalonePlatform::Unix,
-+            ..
-+        } => resources_dir.clone(),
-+        InstallMethod::Standalone { .. } => {
-+            anyhow::bail!(
-+                "Windows standalone installs are not supported by the codEx fork; please update manually from https://github.com/{FORK_REPO}/releases"
-+            );
-+        }
-+        _ => anyhow::bail!(
-+            "codEx update only supports standalone installs. Please update manually from https://github.com/{FORK_REPO}/releases"
-+        ),
-+    };
-+    let Some(resources_dir) = resources_dir else {
++    let InstallMethod::Standalone {
++        release_dir,
++        resources_dir,
++        platform: _,
++    } = &context.method
++    else {
 +        anyhow::bail!(
-+            "standalone install has no resources directory; cannot replace bundled bwrap. Please update manually from https://github.com/{FORK_REPO}/releases"
++            "codEx update only supports standalone installs. Please update manually from https://github.com/{FORK_REPO}/releases"
 +        );
 +    };
 +
@@ -791,29 +902,168 @@ index 0000000..645d24b
 +    }
 +    println!("sha256 verified ({expected_checksum})");
 +
-+    let temp_dir = tempfile::tempdir().context("failed to create temporary directory")?;
-+    extract_archive(&archive_bytes, temp_dir.path())
-+        .context("failed to extract release archive")?;
-+    let new_codex = temp_dir.path().join(CODEX_BINARY_NAME);
-+    let new_bwrap = temp_dir.path().join(BWRAP_BINARY_NAME);
-+    if !new_codex.is_file() || !new_bwrap.is_file() {
-+        anyhow::bail!("release archive is missing {CODEX_BINARY_NAME} or {BWRAP_BINARY_NAME}");
-+    }
-+
 +    let current_exe = std::env::current_exe().context("failed to resolve current executable")?;
 +
-+    // Keep a copy of the current codex so a failed bwrap swap can roll codex
-+    // back: the binary embeds the digest of the bundled bwrap, and a mismatched
-+    // pair would break sandbox startup until the next update.
-+    let codex_backup = temp_dir.path().join("codex.previous");
-+    std::fs::copy(&current_exe, &codex_backup)
-+        .context("failed to back up the current codex binary")?;
-+
-+    replace_binary(&new_codex, &current_exe)?;
-+    if let Err(err) = replace_binary(&new_bwrap, &resources_dir.join(BWRAP_BINARY_NAME)) {
-+        let _ = replace_binary(&codex_backup, &current_exe);
-+        return Err(err);
++    // The archive is extracted into a staging directory beside the running
++    // binary so both the Unix swap and the deferred Windows swap stay on one
++    // filesystem.
++    let staging_dir = staging_dir(&current_exe)?;
++    if staging_dir.exists() {
++        std::fs::remove_dir_all(&staging_dir)
++            .context("failed to clear a stale update staging directory")?;
 +    }
++    std::fs::create_dir_all(&staging_dir)
++        .context("failed to create the update staging directory")?;
++
++    if let Err(err) = extract_archive(&archive_bytes, &staging_dir) {
++        let _ = std::fs::remove_dir_all(&staging_dir);
++        return Err(err).context("failed to extract release archive");
++    }
++
++    #[cfg(target_os = "windows")]
++    {
++        return stage_windows_update(&staging_dir).await;
++    }
++
++    #[cfg(not(target_os = "windows"))]
++    {
++        let new_codex = staging_dir.join(CODEX_BINARY_NAME);
++        let new_bwrap = staging_dir.join(BWRAP_BINARY_NAME);
++        if !new_codex.is_file() || !new_bwrap.is_file() {
++            anyhow::bail!("release archive is missing {CODEX_BINARY_NAME} or {BWRAP_BINARY_NAME}");
++        }
++        let Some(resources_dir) = resources_dir else {
++            anyhow::bail!(
++                "standalone install has no resources directory; cannot replace bundled bwrap. Please update manually from https://github.com/{FORK_REPO}/releases"
++            );
++        };
++
++        // Keep a copy of the current codex so a failed bwrap swap can roll codex
++        // back: the binary embeds the digest of the bundled bwrap, and a mismatched
++        // pair would break sandbox startup until the next update.
++        let codex_backup = staging_dir.join("codex.previous");
++        std::fs::copy(&current_exe, &codex_backup)
++            .context("failed to back up the current codex binary")?;
++
++        replace_binary(&new_codex, &current_exe)?;
++        if let Err(err) = replace_binary(&new_bwrap, &resources_dir.join(BWRAP_BINARY_NAME)) {
++            let _ = replace_binary(&codex_backup, &current_exe);
++            return Err(err);
++        }
++        let _ = std::fs::remove_dir_all(&staging_dir);
++        let _ = release_dir;
++        return Ok(());
++    }
++}
++
++/// Staging directory beside the running binary that holds the extracted
++/// release until it is swapped in.
++fn staging_dir(current_exe: &Path) -> anyhow::Result<std::path::PathBuf> {
++    let parent = current_exe
++        .parent()
++        .context("current executable has no parent directory")?;
++    Ok(parent.join(STAGING_DIR_NAME))
++}
++
++/// Windows cannot replace a running executable. The update is handed to a
++/// detached copy of the new binary, which waits for the current process to
++/// exit, swaps the install, and relaunches codEx.
++#[cfg(target_os = "windows")]
++async fn stage_windows_update(staging_dir: &Path) -> anyhow::Result<()> {
++    use std::os::windows::process::CommandExt;
++    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
++
++    let new_codex = staging_dir.join(CODEX_BINARY_NAME_WINDOWS);
++    if !new_codex.is_file() {
++        anyhow::bail!("release archive is missing {CODEX_BINARY_NAME_WINDOWS}");
++    }
++
++    let parent_pid = std::process::id();
++    let mut command = std::process::Command::new(&new_codex);
++    command
++        .arg("update")
++        .arg("--windows-apply-after-exit")
++        .arg(parent_pid.to_string())
++        .creation_flags(CREATE_NO_WINDOW)
++        .stdin(std::process::Stdio::null())
++        .stdout(std::process::Stdio::null())
++        .stderr(std::process::Stdio::null());
++    command
++        .spawn()
++        .with_context(|| format!("failed to start the staged updater {}", new_codex.display()))?;
++    println!("Update staged. codEx will close, finish updating, and restart.");
++    Ok(())
++}
++
++/// Waits for the codEx process that staged the update to exit, swaps the
++/// staged executable into the install directory, and relaunches codEx.
++///
++/// This runs from the staged binary, so it is only reachable through the
++/// hidden `codex update --windows-apply-after-exit <pid>` flag.
++#[cfg(target_os = "windows")]
++pub async fn run_windows_apply_after_exit(parent_pid: u32) -> anyhow::Result<()> {
++    use std::os::windows::process::CommandExt;
++    use windows_sys::Win32::Foundation::CloseHandle;
++    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
++    use windows_sys::Win32::System::Threading::INFINITE;
++    use windows_sys::Win32::System::Threading::OpenProcess;
++    use windows_sys::Win32::System::Threading::PROCESS_SYNCHRONIZE;
++    use windows_sys::Win32::System::Threading::WaitForSingleObject;
++
++    let current_exe =
++        std::env::current_exe().context("failed to resolve the staged updater path")?;
++    let staging_dir = staging_dir(&current_exe)?;
++    let target_dir = staging_dir
++        .parent()
++        .context("update staging directory has no parent")?
++        .to_path_buf();
++    let new_codex = staging_dir.join(CODEX_BINARY_NAME_WINDOWS);
++    if !new_codex.is_file() {
++        anyhow::bail!(
++            "staged update is missing {}; rerun `codex update`",
++            new_codex.display()
++        );
++    }
++
++    // Wait on the process handle rather than polling so a slow shutdown cannot
++    // race the swap; the handle closes on exit even when the process fails.
++    unsafe {
++        let handle = OpenProcess(PROCESS_SYNCHRONIZE, /*bInheritHandle*/ 0, parent_pid);
++        if !handle.is_null() {
++            WaitForSingleObject(handle, INFINITE);
++            let _ = CloseHandle(handle);
++        }
++    }
++
++    let target = target_dir.join(CODEX_BINARY_NAME_WINDOWS);
++    // Bundled helper binaries ship under `codex-resources/` in the archive and
++    // must live beside the install's resources directory, which the install
++    // context only reports when it already exists.
++    let staged_resources = staging_dir.join(RESOURCES_DIR_NAME);
++    if staged_resources.is_dir() {
++        let target_resources = target_dir.join(RESOURCES_DIR_NAME);
++        std::fs::create_dir_all(&target_resources)
++            .with_context(|| format!("failed to create {}", target_resources.display()))?;
++        for entry in std::fs::read_dir(&staged_resources)
++            .context("failed to list the staged resources directory")?
++        {
++            let entry = entry.context("failed to read a staged resource entry")?;
++            if entry.file_type().is_ok_and(|kind| kind.is_file()) {
++                replace_binary(&entry.path(), &target_resources.join(entry.file_name()))?;
++            }
++        }
++    }
++
++    // Swap the entrypoint last: a partially applied update then still runs the
++    // previous codEx, which can retry, instead of a new binary with stale
++    // helpers.
++    replace_binary(&new_codex, &target).context("failed to replace the installed codEx binary")?;
++    let _ = std::fs::remove_dir_all(&staging_dir);
++
++    std::process::Command::new(&target)
++        .creation_flags(CREATE_NO_WINDOW)
++        .spawn()
++        .with_context(|| format!("failed to relaunch {}", target.display()))?;
 +    Ok(())
 +}
 +
@@ -902,16 +1152,47 @@ index 0000000..645d24b
 +    std::fs::copy(source, &staged)
 +        .with_context(|| format!("failed to stage {}", target.display()))?;
 +    set_executable(&staged)?;
-+    // POSIX rename atomically replaces the destination, so the canonical
-+    // path always exists (old or new) at every instant.
-+    if let Err(err) = std::fs::rename(&staged, target) {
++    // POSIX rename - and MoveFileEx with MOVEFILE_REPLACE_EXISTING on Windows -
++    // atomically replaces the destination, so the canonical path always exists
++    // (old or new) at every instant.
++    if let Err(err) = replace_file(&staged, target) {
 +        if backup.exists() {
-+            let _ = std::fs::rename(&backup, target);
++            let _ = replace_file(&backup, target);
 +        }
 +        return Err(err).with_context(|| format!("failed to replace {}", target.display()));
 +    }
 +    let _ = std::fs::remove_file(&backup);
 +    Ok(())
++}
++
++/// Moves `source` onto `target`, replacing an existing target.
++///
++/// `std::fs::rename` refuses to overwrite on Windows, so the Windows path goes
++/// through `MoveFileEx` with `MOVEFILE_REPLACE_EXISTING`; Unix rename already
++/// replaces atomically.
++fn replace_file(source: &Path, target: &Path) -> std::io::Result<()> {
++    #[cfg(target_os = "windows")]
++    {
++        use std::os::windows::ffi::OsStrExt;
++        use windows_sys::Win32::Storage::FileSystem::MOVEFILE_REPLACE_EXISTING;
++        use windows_sys::Win32::Storage::FileSystem::MOVEFILE_WRITE_THROUGH;
++        use windows_sys::Win32::Storage::FileSystem::MoveFileExW;
++
++        let source: Vec<u16> = source.as_os_str().encode_wide().chain([0]).collect();
++        let target: Vec<u16> = target.as_os_str().encode_wide().chain([0]).collect();
++        let flags = MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH;
++        // SAFETY: both paths are NUL-terminated UTF-16 buffers that live for
++        // the duration of the call.
++        if unsafe { MoveFileExW(source.as_ptr(), target.as_ptr(), flags) } == 0 {
++            return Err(std::io::Error::last_os_error());
++        }
++        return Ok(());
++    }
++
++    #[cfg(not(target_os = "windows"))]
++    {
++        std::fs::rename(source, target)
++    }
 +}
 +
 +fn set_executable(path: &Path) -> anyhow::Result<()> {
@@ -938,9 +1219,26 @@ index 0000000..645d24b
 +    fn target_triple_maps_supported_arches() {
 +        // The mapping is static per build target; assert the current host is
 +        // handled and that the naming scheme matches the release assets.
++        let expected = if cfg!(target_os = "windows") {
++            "x86_64-pc-windows-msvc"
++        } else {
++            "x86_64-unknown-linux-musl"
++        };
 +        let triple = target_triple().expect("host should be supported");
-+        assert!(triple.ends_with("-unknown-linux-musl"));
++        if cfg!(target_arch = "x86_64") {
++            assert_eq!(triple, expected);
++        }
 +        assert_eq!(archive_asset_name(triple), format!("codex-{triple}.tar.gz"));
++    }
++
++    #[test]
++    fn staging_directory_sits_beside_the_running_binary() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let exe = temp.path().join("codex");
++        assert_eq!(
++            staging_dir(&exe).expect("staging dir"),
++            temp.path().join(STAGING_DIR_NAME)
++        );
 +    }
 +
 +    #[test]
@@ -1077,7 +1375,7 @@ index b90dc1e..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index bd68c83..478c073 100644
+index 749f78c..9c44c12 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -1,6 +1,7 @@
@@ -1156,7 +1454,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..412ef67 100644
+index ad0fc4b..ebed8db 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -1167,12 +1465,12 @@ index ad0fc4b..412ef67 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ codEx (v0.151.0)                 │
++│ >_ codEx (v0.154.0)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..8d17e94 100644
+index c8f352d..635e86f 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -1187,7 +1485,7 @@ index c8f352d..8d17e94 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.151.0 -> 9.9.9            │
++│ ✨ Update available! 0.154.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -1212,10 +1510,10 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 5890c3e..74a41c3 100644
+index 785ff02..008a5b8 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1445,24 +1445,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1233,35 +1233,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -1237,14 +1535,25 @@ index 5890c3e..74a41c3 100644
 -    insta::assert_snapshot!(rendered);
 -}
 -
+-#[test]
+-fn vite_plus_update_available_history_cell_snapshot() {
+-    let cell = UpdateAvailableHistoryCell::new(
+-        "9.9.9".to_string(),
+-        Some(UpdateAction::VitePlusGlobalLatest),
+-    );
+-    let rendered = render_lines(&cell.display_lines(/*width*/ 110)).join("\n");
+-
+-    insta::assert_snapshot!(rendered);
+-}
+-
  #[test]
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
-index 0fe4408..0ba771a 100644
+index 225c457..eb4c3c2 100644
 --- a/codex-rs/tui/src/update_action.rs
 +++ b/codex-rs/tui/src/update_action.rs
-@@ -8,68 +8,31 @@ use codex_install_context::StandalonePlatform;
+@@ -8,19 +8,12 @@ use codex_install_context::StandalonePlatform;
  /// Update action the CLI should perform after the TUI exits.
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
  pub enum UpdateAction {
@@ -1252,6 +1561,8 @@ index 0fe4408..0ba771a 100644
 -    NpmGlobalLatest,
 -    /// Update via `bun install -g @openai/codex@latest`.
 -    BunGlobalLatest,
+-    /// Update via `vp install -g @openai/codex@latest`.
+-    VitePlusGlobalLatest,
 -    /// Update via `pnpm add -g @openai/codex@latest`.
 -    PnpmGlobalLatest,
 -    /// Update via `brew upgrade codex`.
@@ -1260,36 +1571,34 @@ index 0fe4408..0ba771a 100644
 +    /// Update a Unix standalone install from the codEx fork releases.
      StandaloneUnix,
 -    /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex`.
--    StandaloneWindows,
++    /// Update a Windows standalone install from the codEx fork releases.
++    ///
++    /// Windows cannot replace a running executable in place, so this action
++    /// hands the staged binary a deferred swap that runs after codEx exits.
+     StandaloneWindows,
  }
  
- impl UpdateAction {
+@@ -28,52 +21,20 @@ impl UpdateAction {
      #[cfg(any(not(debug_assertions), test))]
      pub(crate) fn from_install_context(context: &InstallContext) -> Option<Self> {
          match &context.method {
 -            InstallMethod::Npm => Some(UpdateAction::NpmGlobalLatest),
 -            InstallMethod::Bun => Some(UpdateAction::BunGlobalLatest),
+-            InstallMethod::VitePlus => Some(UpdateAction::VitePlusGlobalLatest),
 -            InstallMethod::Pnpm => Some(UpdateAction::PnpmGlobalLatest),
 -            InstallMethod::Brew => Some(UpdateAction::BrewUpgrade),
--            InstallMethod::Standalone { platform, .. } => Some(match platform {
--                StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
--                StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
--            }),
+             InstallMethod::Standalone { platform, .. } => Some(match platform {
+                 StandalonePlatform::Unix => UpdateAction::StandaloneUnix,
+                 StandalonePlatform::Windows => UpdateAction::StandaloneWindows,
+             }),
 -            InstallMethod::Other => None,
-+            InstallMethod::Standalone {
-+                platform: StandalonePlatform::Unix,
-+                ..
-+            } => Some(UpdateAction::StandaloneUnix),
-+            // The codEx fork only publishes standalone Linux binaries. Other
-+            // install methods must update manually from the fork releases.
++            // The codEx fork publishes standalone binaries only. Other install
++            // methods must update manually from the fork releases.
 +            InstallMethod::Npm
 +            | InstallMethod::Bun
++            | InstallMethod::VitePlus
 +            | InstallMethod::Pnpm
 +            | InstallMethod::Brew
-+            | InstallMethod::Standalone {
-+                platform: StandalonePlatform::Windows,
-+                ..
-+            }
 +            | InstallMethod::Other => None,
          }
      }
@@ -1299,6 +1608,7 @@ index 0fe4408..0ba771a 100644
 -        match self {
 -            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
 -            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
+-            UpdateAction::VitePlusGlobalLatest => ("vp", &["install", "-g", "@openai/codex"]),
 -            UpdateAction::PnpmGlobalLatest => ("pnpm", &["add", "-g", "@openai/codex"]),
 -            UpdateAction::BrewUpgrade => ("brew", &["upgrade", "--cask", "codex"]),
 -            UpdateAction::StandaloneUnix => (
@@ -1329,7 +1639,7 @@ index 0fe4408..0ba771a 100644
  }
  
  #[cfg(not(debug_assertions))]
-@@ -101,28 +64,28 @@ mod tests {
+@@ -105,28 +66,35 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -1342,6 +1652,13 @@ index 0fe4408..0ba771a 100644
                  package_layout: None,
              }),
 -            Some(UpdateAction::BunGlobalLatest)
++            None
++        );
++        assert_eq!(
++            UpdateAction::from_install_context(&InstallContext {
++                method: InstallMethod::VitePlus,
++                package_layout: None,
++            }),
 +            None
          );
          assert_eq!(
@@ -1362,13 +1679,10 @@ index 0fe4408..0ba771a 100644
          );
          assert_eq!(
              UpdateAction::from_install_context(&InstallContext {
-@@ -144,33 +107,7 @@ mod tests {
-                 },
-                 package_layout: None,
-             }),
--            Some(UpdateAction::StandaloneWindows)
--        );
--    }
+@@ -151,30 +119,4 @@ mod tests {
+             Some(UpdateAction::StandaloneWindows)
+         );
+     }
 -
 -    #[test]
 -    fn standalone_update_commands_rerun_latest_installer() {
@@ -1393,9 +1707,8 @@ index 0fe4408..0ba771a 100644
 -                    "$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex"
 -                ][..],
 -            )
-+            None
-         );
-     }
+-        );
+-    }
  }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
 index 688d113..e749b63 100644
@@ -1475,7 +1788,7 @@ index 29ff043..5f02ff9 100644
  
      #[test]
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index 948551a..a8dc0d9 100644
+index b801426..a8dc0d9 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -1,10 +1,6 @@
@@ -1538,7 +1851,7 @@ index 948551a..a8dc0d9 100644
      http_client_factory: HttpClientFactory,
  ) -> anyhow::Result<()> {
      let client_pool = RouteAwareClientPool::with_chatgpt_cloudflare_cookies(
-@@ -81,37 +67,7 @@ async fn check_for_update(
+@@ -81,38 +67,7 @@ async fn check_for_update(
          ClientRouteClass::Other,
      )
      .with_legacy_custom_ca_fallback();
@@ -1556,6 +1869,7 @@ index 948551a..a8dc0d9 100644
 -        }
 -        Some(UpdateAction::NpmGlobalLatest)
 -        | Some(UpdateAction::BunGlobalLatest)
+-        | Some(UpdateAction::VitePlusGlobalLatest)
 -        | Some(UpdateAction::PnpmGlobalLatest) => {
 -            let latest_version = fetch_latest_github_release_version(&client_pool).await?;
 -            let package_info = client_pool
@@ -1577,7 +1891,7 @@ index 948551a..a8dc0d9 100644
  
      // Preserve any previously dismissed version if present.
      let prev_info = read_version_info(version_file).ok();
-@@ -135,7 +91,7 @@ async fn fetch_latest_github_release_version(
+@@ -136,7 +91,7 @@ async fn fetch_latest_github_release_version(
      let ReleaseInfo {
          tag_name: latest_tag_name,
      } = client_pool

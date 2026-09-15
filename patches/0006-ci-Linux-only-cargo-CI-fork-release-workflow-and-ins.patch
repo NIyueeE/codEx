@@ -1,11 +1,11 @@
-From 689b686299b45a6f1a5ccc73c399c45e02104896 Mon Sep 17 00:00:00 2001
+From 4e228de977fadc2c91e2107b7772465ce0b1d722 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux-only cargo CI, fork release workflow, and installer
 
 ---
  .github/scripts/install-musl-build-tools.sh   |   12 +-
- .github/workflows/bazel.yml                   |  554 ------
+ .github/workflows/bazel.yml                   |  554 -----
  .github/workflows/blob-size-policy.yml        |   53 -
  .github/workflows/blocking-ci.yml             |  140 +-
  .github/workflows/cargo-deny.yml              |   31 -
@@ -16,39 +16,39 @@ Subject: ci: Linux-only cargo CI, fork release workflow, and installer
  .github/workflows/python-sdk-release.yml      |  237 ---
  .github/workflows/r2-release.yml              |   53 -
  .github/workflows/repo-checks.yml             |   71 +-
- .../rust-ci-full-nextest-platform.yml         |  439 -----
+ .../rust-ci-full-nextest-platform.yml         |  439 ----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  263 ---
- .../rust-release-argument-comment-lint.yml    |  113 --
+ .../rust-release-argument-comment-lint.yml    |  113 -
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1684 ++---------------
- .github/workflows/rusty-v8-release.yml        |  477 -----
+ .github/workflows/rust-release.yml            | 1815 +++--------------
+ .github/workflows/rusty-v8-release.yml        |  479 -----
  .github/workflows/sdk.yml                     |  166 --
- .github/workflows/v8-canary.yml               |  448 -----
+ .github/workflows/v8-canary.yml               |  444 ----
  install.sh                                    |  198 ++
- patches/BUILD.bazel                           |   23 -
+ patches/BUILD.bazel                           |   28 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
- patches/llvm_rusty_v8_custom_libcxx.patch     |  108 --
+ patches/llvm_rusty_v8_custom_libcxx.patch     |  108 -
  patches/llvm_windows_arm64_powl.patch         |   25 -
  patches/llvm_windows_mingw_compat.patch       |   50 -
  patches/ring_windows_msvc_include_dirs.patch  |   98 -
  patches/rules_cc_rusty_v8_custom_libcxx.patch |   44 -
  ...ules_rs_build_script_deps_annotation.patch |   58 -
  ...s_rust_build_script_tools_transition.patch |   19 -
- ...s_rust_windows_msvc_direct_link_args.patch |  109 --
+ ...s_rust_windows_msvc_direct_link_args.patch |  109 -
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
  patches/v8_bazel_rules.patch                  |  502 -----
  patches/v8_module_deps.patch                  |  285 ---
- patches/v8_source_portability.patch           |  316 ----
+ patches/v8_source_portability.patch           |  316 ---
  .../webrtc-sys_hermetic_darwin_sysroot.patch  |   75 -
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 44 files changed, 469 insertions(+), 7848 deletions(-)
+ 44 files changed, 579 insertions(+), 7872 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -1635,7 +1635,7 @@ index be2b9aa..3ce7027 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index b8540e8..0000000
+index 4745352..0000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
 @@ -1,439 +0,0 @@
@@ -1723,7 +1723,7 @@ index b8540e8..0000000
 -          set -euo pipefail
 -          if command -v apt-get >/dev/null 2>&1; then
 -            sudo apt-get update -y
--            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev bubblewrap
+-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap
 -          fi
 -
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -1938,7 +1938,7 @@ index b8540e8..0000000
 -          set -euo pipefail
 -          if command -v apt-get >/dev/null 2>&1; then
 -            sudo apt-get update -y
--            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev bubblewrap
+-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev libasound2-dev bubblewrap
 -          fi
 -
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -2080,7 +2080,7 @@ index b8540e8..0000000
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
 deleted file mode 100644
-index 7be29ba..0000000
+index 0ad68df..0000000
 --- a/.github/workflows/rust-ci-full.yml
 +++ /dev/null
 @@ -1,574 +0,0 @@
@@ -2342,7 +2342,7 @@ index 7be29ba..0000000
 -          set -euo pipefail
 -          if command -v apt-get >/dev/null 2>&1; then
 -            sudo apt-get update -y
--            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev
+-            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev
 -          fi
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -        with:
@@ -2660,7 +2660,7 @@ index 7be29ba..0000000
 -          echo "Per-job sccache stats are attached to each matrix job's Step Summary."
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
 deleted file mode 100644
-index 3702bec..0000000
+index 81d7d73..0000000
 --- a/.github/workflows/rust-ci.yml
 +++ /dev/null
 @@ -1,263 +0,0 @@
@@ -2670,7 +2670,7 @@ index 3702bec..0000000
 -  workflow_dispatch:
 -
 -jobs:
--  # --- Detect what changed so the fast PR workflow only runs relevant jobs ----
+-  # --- Detect changed paths so the fast PR workflow only runs relevant jobs ---
 -  changed:
 -    name: Detect changed areas
 -    runs-on: ubuntu-24.04
@@ -3717,17 +3717,17 @@ index e814ec3..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index e07c23b..5328069 100644
+index a3dd6c8..8c60d19 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,229 +1,153 @@
+@@ -1,229 +1,231 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
 -# git tag -a rust-v0.1.0 -m "Release 0.1.0"
 -# git push origin rust-v0.1.0
 -# ```
-+# Release workflow for the codEx fork (Linux only, CLI only).
++# Release workflow for the codEx fork (Linux musl and Windows MSVC, CLI only).
  #
 -# Tag releases sign macOS binaries and DMGs through the protected `codesigning`
 -# GitHub environment and Azure Key Vault before final verification on macOS.
@@ -3735,9 +3735,12 @@ index e07c23b..5328069 100644
 +# patch-queue repo (patches/ + scripts/ only): when codex-rs/ is missing the
 +# tree is bootstrapped from upstream via scripts/bootstrap.sh.
 +#
-+# Publishes standalone Linux x86_64 (MUSL) binaries from a `rust-v<semver>` or
-+# `v<semver>` tag. Each release ships:
-+#   codex-<target>.tar.gz        (contains `codex` and `bwrap`)
++# Publishes standalone binaries from a `rust-v<semver>` or `v<semver>` tag.
++# Each target ships:
++#   codex-<target>.tar.gz        (contains `codex` at the archive root, plus
++#                                 `bwrap` for the Linux sandbox helper and the
++#                                 Windows helper binaries under
++#                                 `codex-resources/`)
 +#   codex-<target>.tar.gz.sha256 (sha256 of the archive)
 +# which `codex update` downloads and verifies.
  
@@ -3823,7 +3826,9 @@ index e07c23b..5328069 100644
 -    # having to restart the full workflow due to a timeout.
 -    timeout-minutes: 90
 +    name: Build - ${{ matrix.target }}
-+    runs-on: ubuntu-24.04
++    # Windows release builds can exceed an hour, so the timeout matches the
++    # Linux budget rather than dropping back to the default.
++    runs-on: ${{ matrix.runs_on }}
 +    timeout-minutes: 120
      permissions:
        contents: read
@@ -3846,7 +3851,7 @@ index e07c23b..5328069 100644
      strategy:
        fail-fast: false
        matrix:
--        include:
+         include:
 -          - runner: macos-15-xlarge
 -            target: aarch64-apple-darwin
 -            bundle: primary
@@ -3896,8 +3901,12 @@ index e07c23b..5328069 100644
 -            artifact_name: aarch64-unknown-linux-musl-app-server
 -            binaries: "codex-app-server codex-code-mode-host"
 -            build_dmg: "false"
-+        target:
-+          - x86_64-unknown-linux-musl
++          - target: x86_64-unknown-linux-musl
++            runs_on: ubuntu-24.04
++            platform: linux
++          - target: x86_64-pc-windows-msvc
++            runs_on: windows-2022
++            platform: windows
  
      steps:
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -3934,9 +3943,9 @@ index e07c23b..5328069 100644
 -          df -h .
 -      - name: Install Linux bwrap build dependencies
 -        if: ${{ runner.os == 'Linux' }}
--        shell: bash
 +
 +      - name: Bootstrap tree if needed
+         shell: bash
          run: |
 -          set -euo pipefail
 -          sudo apt-get update -y
@@ -3964,7 +3973,9 @@ index e07c23b..5328069 100644
 -
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Install Zig
++      # ---- Linux musl toolchain -------------------------------------------
 +      - name: Install Zig
++        if: matrix.platform == 'linux'
          uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2.2.1
          with:
            version: 0.14.0
@@ -3973,15 +3984,37 @@ index e07c23b..5328069 100644
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Install musl build tools
 +      - name: Install musl build tools
++        if: matrix.platform == 'linux'
++        env:
++          TARGET: ${{ matrix.target }}
++        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
++
++      # ---- Windows MSVC toolchain -----------------------------------------
++      # Reuse upstream's MSVC helper, which resolves the Visual Studio
++      # installation for the target architecture and exports the LIB/INCLUDE/
++      # PATH variables the linker needs. It is invoked through TREE_DIR
++      # instead of `uses:` because the helper only exists inside the
++      # bootstrapped tree, while the workflow may also run from the full fork
++      # checkout where the tree is the repository root.
++      - name: Expose MSVC SDK environment
++        if: matrix.platform == 'windows'
++        shell: pwsh
          env:
            TARGET: ${{ matrix.target }}
 -        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
-+        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
++        run: |
++          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
  
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Disable aws-lc jitter entropy (musl)
 -        shell: bash
++      # ---- rusty_v8 prebuilt artifacts (both platforms) --------------------
++      # The fork reuses the upstream openai/codex rusty-v8 release assets: the
++      # inline Linux step below keeps the musl flow byte-for-byte as it was,
++      # and Windows goes through upstream's action, which knows the `.lib.gz`
++      # archive naming for MSVC targets.
 +      - name: Configure rusty_v8 artifact overrides and verify checksums
++        if: matrix.platform == 'linux'
 +        env:
 +          TARGET: ${{ matrix.target }}
          run: |
@@ -3991,11 +4024,6 @@ index e07c23b..5328069 100644
 -          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
 -          target_no_jitter="${target_no_jitter//-/_}"
 -          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
--
--      - name: Configure rusty_v8 artifact overrides and verify checksums
--        uses: ./.github/actions/setup-rusty-v8
--        with:
--          target: ${{ matrix.target }}
 +          cd "${TREE_DIR}"
 +          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
 +          release_tag="rusty-v8-v${version}"
@@ -4020,9 +4048,56 @@ index e07c23b..5328069 100644
 +          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
 +          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
  
+-      - name: Configure rusty_v8 artifact overrides and verify checksums
+-        uses: ./.github/actions/setup-rusty-v8
+-        with:
+-          target: ${{ matrix.target }}
++      - name: Configure rusty_v8 artifact overrides (Windows)
++        if: matrix.platform == 'windows'
++        shell: bash
++        env:
++          TARGET: ${{ matrix.target }}
++        run: |
++          set -euo pipefail
++          cd "${TREE_DIR}"
++          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
++          release_tag="rusty-v8-v${version}"
++          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
++          binding_dir="${RUNNER_TEMP}/rusty_v8"
++          profile="ptrcomp_sandbox_release"
++          # MSVC artifacts are static libraries, hence the `.lib.gz` naming.
++          archive_name="rusty_v8_${profile}_${TARGET}.lib.gz"
++          binding_name="src_binding_${profile}_${TARGET}.rs"
++          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
++          archive_path="${binding_dir}/${archive_name}"
++          binding_path="${binding_dir}/${binding_name}"
++          checksums_path="${binding_dir}/${checksums_name}"
++          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
++          mkdir -p "${binding_dir}"
++          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
++          # Windows-built release manifests use CRLF line endings, so verify the
++          # original manifest bytes against the trusted checksum list first.
++          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
++          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
++          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
++            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
++            exit 1
++          fi
++          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
++          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
++          if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
++            echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
++            exit 1
++          fi
++          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
++          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
++          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
+ 
 -      - if: ${{ contains(matrix.target, 'linux') }}
 -        name: Build bwrap and export digest
++      # ---- Build -----------------------------------------------------------
 +      - name: Build bwrap and export digest
++        if: matrix.platform == 'linux'
          shell: bash
          run: |
            set -euo pipefail
@@ -4033,7 +4108,7 @@ index e07c23b..5328069 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -239,1430 +163,80 @@ jobs:
+@@ -239,1464 +241,125 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4053,6 +4128,8 @@ index e07c23b..5328069 100644
 -            fi
 -            build_args+=(--bin "$binary")
 -          done
+-          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+-          export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
 -
 -      - name: Upload Cargo timings
@@ -4166,11 +4243,14 @@ index e07c23b..5328069 100644
 -
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
--        shell: bash
--        env:
++      - name: Build codex
+         shell: bash
+         env:
 -          TARGET: ${{ matrix.target }}
 -          BUNDLE: ${{ matrix.bundle }}
--        run: |
++          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
 -          set -euo pipefail
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
 -            --target "$TARGET" \
@@ -4178,11 +4258,18 @@ index e07c23b..5328069 100644
 -            --entrypoint-dir "target/${TARGET}/release" \
 -            --archive-dir "dist/${TARGET}" \
 -            --zsh-manifest "${RUNNER_TEMP}/codex-zsh"
--
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release --bin codex
+ 
 -      - name: Build Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
--        shell: bash
--        run: |
++      # Windows launches helpers such as the sandbox setup out of
++      # `codex-resources/`; without them a packaged codEx cannot start a
++      # sandboxed session. The Linux archive carries bwrap for the same reason.
++      - name: Build Windows helper binaries
++        if: matrix.platform == 'windows'
+         shell: bash
+         run: |
 -          set -euo pipefail
 -
 -          case "${{ matrix.target }}" in
@@ -4208,7 +4295,12 @@ index e07c23b..5328069 100644
 -          # Do not install into the runner's system Python; macOS runners mark
 -          # the Homebrew Python as externally managed under PEP 668.
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m pip install build
--
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release \
++            --bin codex-windows-sandbox-setup \
++            --bin codex-command-runner \
++            --bin codex-code-mode-host
+ 
 -          stage_dir="${RUNNER_TEMP}/openai-codex-cli-bin-${{ matrix.target }}"
 -          wheel_dir="${GITHUB_WORKSPACE}/python-runtime-dist/${{ matrix.target }}"
 -          stage_runtime_args=(
@@ -4336,14 +4428,13 @@ index e07c23b..5328069 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign and notarize macOS binaries
-+      - name: Build codex
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          BINARIES: ${{ matrix.binaries }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -
 -          input_dir="${RUNNER_TEMP}/unsigned-macos"
@@ -4361,9 +4452,7 @@ index e07c23b..5328069 100644
 -
 -            zstd -d --stdout "$unsigned_path" >"$signed_path"
 -            chmod 0755 "$signed_path"
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-
 -            entitlements="${GITHUB_WORKSPACE}/.github/scripts/macos-signing/${binary}.entitlements.plist"
 -            if [[ ! -f "$entitlements" ]]; then
 -              echo "Entitlements file $entitlements not found"
@@ -4390,14 +4479,13 @@ index e07c23b..5328069 100644
 -
 -      - name: Fetch, sign, and notarize pinned macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
-+      - name: Stage archive
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -
 -          signed_root="${GITHUB_WORKSPACE}/signed-resources/${TARGET}"
 -          zsh_manifest="${RUNNER_TEMP}/codex-zsh-${TARGET}"
@@ -4541,9 +4629,12 @@ index e07c23b..5328069 100644
 -
 -      - name: Build unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
--        shell: bash
--        run: |
--          set -euo pipefail
++      # ---- Stage -----------------------------------------------------------
++      - name: Stage archive (Linux)
++        if: matrix.platform == 'linux'
+         shell: bash
+         run: |
+           set -euo pipefail
 -
 +          cd "${CODE_DIR}"
            target="${{ matrix.target }}"
@@ -4563,9 +4654,7 @@ index e07c23b..5328069 100644
 -            fi
 -            ditto "$binary_path" "${dmg_root}/${binary}"
 -          done
-+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
- 
+-
 -          rm -f "$dmg_path"
 -          hdiutil create \
 -            -volname "$volname" \
@@ -4578,7 +4667,9 @@ index e07c23b..5328069 100644
 -            echo "DMG $dmg_path not found after build"
 -            exit 1
 -          fi
--
++          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
++          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+ 
 -      - name: Upload unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4730,13 +4821,26 @@ index e07c23b..5328069 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign, notarize, and staple macOS DMG
--        shell: bash
++          cp "${release_dir}/codex" "$dest/codex"
++          cp "${release_dir}/bwrap" "$dest/bwrap"
++          chmod +x "$dest/codex" "$dest/bwrap"
++
++          # The archive layout is consumed by `codex update`: `codex` and
++          # `bwrap` at the archive root.
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
++
++      - name: Stage archive (Windows)
++        if: matrix.platform == 'windows'
+         shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
--        run: |
--          set -euo pipefail
+         run: |
+           set -euo pipefail
 -
 -          dmg_path="${RUNNER_TEMP}/unsigned-dmg/codex-${TARGET}.dmg"
 -          report_dir="${GITHUB_WORKSPACE}/macos-dmg-signing-verification/${TARGET}"
@@ -4763,26 +4867,12 @@ index e07c23b..5328069 100644
 -            >"${report_dir}/signature-info.yaml"
 -
 -      - name: Upload signed macOS DMG
-+          cp "${release_dir}/codex" "$dest/codex"
-+          cp "${release_dir}/bwrap" "$dest/bwrap"
-+          chmod +x "$dest/codex" "$dest/bwrap"
-+
-+          # The archive layout is consumed by `codex update`: `codex` and
-+          # `bwrap` at the archive root.
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "$dest/codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
-+
-+      - name: Upload archive
-         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-         with:
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
 -          name: ${{ matrix.artifact_name }}-signed-dmg
 -          path: ${{ runner.temp }}/unsigned-dmg/codex-${{ matrix.target }}.dmg
-+          name: dist-${{ matrix.target }}
-+          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
-           if-no-files-found: error
- 
+-          if-no-files-found: error
+-
 -      - name: Upload DMG signing verification
 -        if: ${{ always() }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4858,7 +4948,8 @@ index e07c23b..5328069 100644
 -        run: |
 -          set -euo pipefail
 -
--          target="${{ matrix.target }}"
++          cd "${CODE_DIR}"
+           target="${{ matrix.target }}"
 -          packaged_dir="dist/${target}"
 -          case "$target" in
 -            aarch64-apple-darwin) expected_arch="arm64" ;;
@@ -4978,8 +5069,21 @@ index e07c23b..5328069 100644
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            verify_signed_binary "${mount_dir}/${binary}" "$binary"
--          done
--
++          release_dir="target/${target}/release"
++          [[ -f "${release_dir}/codex.exe" ]] || { echo "codex.exe not found"; exit 1; }
++
++          dest="dist/${target}"
++          resources="$dest/codex-resources"
++          mkdir -p "$resources"
++          # `codex update` expects the same `codex-<target>.tar.gz` name and
++          # root-level `codex.exe`; the helper binaries mirror the install
++          # layout the managed standalone release uses.
++          cp "${release_dir}/codex.exe" "$dest/codex.exe"
++          for helper in codex-windows-sandbox-setup codex-command-runner codex-code-mode-host; do
++            [[ -f "${release_dir}/${helper}.exe" ]] || { echo "${helper}.exe not found"; exit 1; }
++            cp "${release_dir}/${helper}.exe" "$resources/${helper}.exe"
+           done
+ 
 -          cleanup_mount
 -          trap - EXIT
 -          cp "$dmg_path" "dist/${target}/codex-${target}.dmg"
@@ -5003,6 +5107,65 @@ index e07c23b..5328069 100644
 -    with:
 -      publish: true
 -
+-  stage-npm-packages:
+-    name: stage npm packages
+-    needs:
+-      - build
+-      - finalize-macos
+-      - build-windows
+-    runs-on: ubuntu-latest
+-    permissions:
+-      contents: read
+-
+-    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
+-      - name: Download target artifacts
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          path: dist
+-          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
+-
+-      - name: Setup pnpm
+-        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+-        with:
+-          run_install: false
+-
+-      - name: Setup Node.js for npm packaging
+-        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
+-        with:
+-          node-version: 22
+-
+-      - name: Install dependencies
+-        run: pnpm install --frozen-lockfile
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex.exe codex-resources
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
+ 
+-      - name: Stage npm packages
+-        run: |
+-          release_version="${GITHUB_REF_NAME#rust-v}"
+-          ./scripts/stage_npm_packages.py \
+-            --release-version "$release_version" \
+-            --artifacts-dir "${GITHUB_WORKSPACE}/dist" \
+-            --package codex \
+-            --package codex-responses-api-proxy \
+-            --package codex-sdk
+-
+-      - name: Upload staged npm packages
++      - name: Upload archive
+         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+         with:
+-          name: npm-packages
+-          path: dist/npm/*.tgz
++          name: dist-${{ matrix.target }}
++          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
+           if-no-files-found: error
+ 
    release:
 -    needs:
 -      - tag-check
@@ -5010,6 +5173,7 @@ index e07c23b..5328069 100644
 -      - finalize-macos
 -      - build-windows
 -      - argument-comment-lint-release-assets
+-      - stage-npm-packages
 -    if: >-
 -      ${{
 -        always() &&
@@ -5017,15 +5181,13 @@ index e07c23b..5328069 100644
 -        needs.build.result == 'success' &&
 -        needs.finalize-macos.result == 'success' &&
 -        needs.build-windows.result == 'success' &&
--        needs.argument-comment-lint-release-assets.result == 'success'
+-        needs.argument-comment-lint-release-assets.result == 'success' &&
+-        needs.stage-npm-packages.result == 'success'
 -      }}
 -    name: release
 -    runs-on: ubuntu-latest
-+    needs: build
-+    runs-on: ubuntu-24.04
-     permissions:
-       contents: write
--      actions: read
+-    permissions:
+-      contents: write
 -    outputs:
 -      version: ${{ steps.release_name.outputs.name }}
 -      tag: ${{ github.ref_name }}
@@ -5034,13 +5196,12 @@ index e07c23b..5328069 100644
 -      should_publish_npm: ${{ steps.npm_publish_settings.outputs.should_publish }}
 -      npm_tag: ${{ steps.npm_publish_settings.outputs.npm_tag }}
 -
-     steps:
+-    steps:
 -      - name: Checkout repository
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-           persist-credentials: false
- 
+-        with:
+-          persist-credentials: false
+-
 -      - name: Generate release notes from tag commit message
 -        id: release_notes
 -        shell: bash
@@ -5069,12 +5230,8 @@ index e07c23b..5328069 100644
 -
 -      - name: Download supplemental release artifacts
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-+      - name: Download archives
-+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
-         with:
-+          pattern: dist-*
-+          merge-multiple: true
-           path: dist
+-        with:
+-          path: dist
 -          pattern: "{*-symbols,argument-comment-lint-*,python-runtime-wheel-*}"
 -
 -      - name: List
@@ -5141,33 +5298,11 @@ index e07c23b..5328069 100644
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
 -          fi
 -
--      - name: Setup pnpm
--        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
+-      - name: Download staged npm packages
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          run_install: false
- 
--      - name: Setup Node.js for npm packaging
--        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
--        with:
--          node-version: 22
--
--      - name: Install dependencies
--        run: pnpm install --frozen-lockfile
--
--      - name: Stage npm packages
-+      - name: Create or update GitHub release
-         env:
-           GH_TOKEN: ${{ github.token }}
--          RELEASE_VERSION: ${{ steps.release_name.outputs.name }}
--        run: |
--          workflow_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}"
--          ./scripts/stage_npm_packages.py \
--            --release-version "$RELEASE_VERSION" \
--            --workflow-url "$workflow_url" \
--            --artifacts-dir "${GITHUB_WORKSPACE}/dist" \
--            --package codex \
--            --package codex-responses-api-proxy \
--            --package codex-sdk
+-          name: npm-packages
+-          path: dist/npm
 -
 -      - name: Stage installer scripts
 -        run: |
@@ -5217,14 +5352,16 @@ index e07c23b..5328069 100644
 -    name: publish-dotslash
 -    needs: release
 -    runs-on: ubuntu-latest
--    permissions:
--      contents: write
++    needs: build
++    runs-on: ubuntu-24.04
+     permissions:
+       contents: write
 -
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
+ 
 -      - uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
 -        env:
 -          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -5260,7 +5397,9 @@ index e07c23b..5328069 100644
 -    steps:
 -      - name: Setup Node.js
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
--        with:
++      - name: Download archives
++        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
+         with:
 -          # Node 24 bundles npm >= 11.5.1, which trusted publishing requires.
 -          node-version: 24
 -          registry-url: "https://registry.npmjs.org"
@@ -5290,12 +5429,17 @@ index e07c23b..5328069 100644
 -              --pattern "$pattern" \
 -              --dir dist/npm
 -          done
--
++          pattern: dist-*
++          merge-multiple: true
++          path: dist
+ 
 -      # No NODE_AUTH_TOKEN needed because we use OIDC.
 -      - name: Publish to npm
--        env:
++      - name: Create or update GitHub release
+         env:
 -          VERSION: ${{ needs.release.outputs.version }}
 -          NPM_TAG: ${{ needs.release.outputs.npm_tag }}
++          GH_TOKEN: ${{ github.token }}
 +        shell: bash
          run: |
            set -euo pipefail
@@ -5512,10 +5656,10 @@ index e07c23b..5328069 100644
 +          gh release upload "${tag}" "${assets[@]}" --clobber
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index 37c8c65..0000000
+index 32ec3af..0000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
-@@ -1,477 +0,0 @@
+@@ -1,479 +0,0 @@
 -name: rusty-v8-release
 -
 -on:
@@ -5872,22 +6016,18 @@ index 37c8c65..0000000
 -          restore-keys: |
 -            rusty-v8-source-${{ matrix.target }}-sandbox-
 -
--      - name: Install and start sccache
+-      - name: Install sccache
+-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+-        with:
+-          tool: sccache@0.8.2
+-
+-      - name: Start sccache
 -        shell: pwsh
 -        env:
 -          SCCACHE_CACHE_SIZE: 256M
 -          SCCACHE_DIR: ${{ github.workspace }}/upstream-rusty-v8/target/sccache
 -          SCCACHE_IDLE_TIMEOUT: 0
--        run: |
--          $version = "v0.8.2"
--          $platform = "x86_64-pc-windows-msvc"
--          $basename = "sccache-$version-$platform"
--          $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
--          cd ~
--          curl -LO $url
--          tar -xzvf "$basename.tar.gz"
--          . $basename/sccache --start-server
--          echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+-        run: sccache --start-server
 -
 -      - name: Install Chromium clang for ARM64 MSVC cross build
 -        if: matrix.target == 'aarch64-pc-windows-msvc'
@@ -5955,7 +6095,6 @@ index 37c8c65..0000000
 -
 -    steps:
 -      - name: Check whether release already exists
--        id: release
 -        env:
 -          GH_TOKEN: ${{ github.token }}
 -          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
@@ -5963,10 +6102,14 @@ index 37c8c65..0000000
 -        run: |
 -          set -euo pipefail
 -
--          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
--            echo "exists=true" >> "${GITHUB_OUTPUT}"
--          else
--            echo "exists=false" >> "${GITHUB_OUTPUT}"
+-          if is_draft="$(gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --json isDraft --jq '.isDraft' 2>/dev/null)"; then
+-            if [[ "${is_draft}" != "true" ]]; then
+-              echo "Refusing to replace existing published release ${RELEASE_TAG}." >&2
+-              exit 1
+-            fi
+-
+-            echo "Removing unfinished draft release for ${RELEASE_TAG}."
+-            gh release delete "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" --yes
 -          fi
 -
 -      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -5974,25 +6117,28 @@ index 37c8c65..0000000
 -          path: dist
 -
 -      - name: Create GitHub Release
--        if: ${{ steps.release.outputs.exists != 'true' }}
--        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
--        with:
--          tag_name: ${{ needs.metadata.outputs.release_tag }}
--          name: ${{ needs.metadata.outputs.release_tag }}
--          files: dist/**
--          # Keep V8 artifact releases out of Codex's normal "latest release" channel.
--          prerelease: true
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          assets=()
+-          while IFS= read -r -d '' asset; do
+-            assets+=("${asset}")
+-          done < <(find dist -type f -print0)
+-          if [[ "${#assets[@]}" -eq 0 ]]; then
+-            echo "No V8 release artifacts were found." >&2
+-            exit 1
+-          fi
 -
--      - name: Amend existing GitHub Release
--        if: ${{ steps.release.outputs.exists == 'true' }}
--        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
--        with:
--          tag_name: ${{ needs.metadata.outputs.release_tag }}
--          name: ${{ needs.metadata.outputs.release_tag }}
--          files: dist/**
--          overwrite_files: true
--          # Keep V8 artifact releases out of Codex's normal "latest release" channel.
--          prerelease: true
+-          # GitHub CLI keeps asset-bearing releases in draft until all uploads finish.
+-          gh release create "${RELEASE_TAG}" \
+-            --repo "${GITHUB_REPOSITORY}" \
+-            --title "${RELEASE_TAG}" \
+-            --verify-tag \
+-            --prerelease \
+-            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
 index f2e8fc7..0000000
@@ -6167,10 +6313,10 @@ index f2e8fc7..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index 29cb72e..0000000
+index 94f1aa0..0000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
-@@ -1,448 +0,0 @@
+@@ -1,444 +0,0 @@
 -name: v8-canary
 -
 -# Do not use trigger-level path filters here. This workflow is also called by
@@ -6545,22 +6691,18 @@ index 29cb72e..0000000
 -          restore-keys: |
 -            rusty-v8-source-${{ matrix.target }}-${{ matrix.runner }}-sandbox-
 -
--      - name: Install and start sccache
+-      - name: Install sccache
+-        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+-        with:
+-          tool: sccache@0.8.2
+-
+-      - name: Start sccache
 -        shell: pwsh
 -        env:
 -          SCCACHE_CACHE_SIZE: 256M
 -          SCCACHE_DIR: ${{ steps.setup_ci.outputs.cargo-target-dir }}/sccache
 -          SCCACHE_IDLE_TIMEOUT: 0
--        run: |
--          $version = "v0.8.2"
--          $platform = "x86_64-pc-windows-msvc"
--          $basename = "sccache-$version-$platform"
--          $url = "https://github.com/mozilla/sccache/releases/download/$version/$basename.tar.gz"
--          cd ~
--          curl -LO $url
--          tar -xzvf "$basename.tar.gz"
--          . $basename/sccache --start-server
--          echo "$(pwd)/$basename" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+-        run: sccache --start-server
 -
 -      - name: Install Chromium clang for ARM64 MSVC cross build
 -        if: matrix.target == 'aarch64-pc-windows-msvc'
@@ -6825,10 +6967,10 @@ index 0000000..834ee10
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 6238671..0000000
+index d906c20..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,23 +0,0 @@
+@@ -1,28 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -6836,11 +6978,15 @@ index 6238671..0000000
 -    "llvm_windows_arm64_powl.patch",
 -    "llvm_windows_mingw_compat.patch",
 -    "rules_rust_build_script_tools_transition.patch",
+-    "rules_rust_group_build_script_arg_files.patch",
 -    "rules_rust_windows_msvc_direct_link_args.patch",
 -    "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
 -    "rules_cc_rusty_v8_custom_libcxx.patch",
+-    "rules_foreign_cc_make_cppflags.patch",
+-    "rules_foreign_cc_make_xcompile.patch",
 -    "rules_rs_build_script_deps_annotation.patch",
 -    "rules_rs_windows_msvc_linker.patch",
+-    "rules_rs_zlib_snapshot_urls.patch",
 -    "rusty_v8_prebuilt_out_dir.patch",
 -    "ring_windows_msvc_include_dirs.patch",
 -    "v8_bazel_rules.patch",
@@ -6849,6 +6995,7 @@ index 6238671..0000000
 -    "webrtc-sys_hermetic_darwin_sysroot.patch",
 -    "windows-link.patch",
 -    "windows-support-remote-case-aliases.patch",
+-    "windows-support-native-tools.patch",
 -    "xz_windows_stack_args.patch",
 -    "zstd-sys_windows_msvc_include_dirs.patch",
 -])
