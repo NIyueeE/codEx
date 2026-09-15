@@ -45,6 +45,33 @@ cargo fmt --check                   # rustfmt check
   patch-module layout check, `cargo fmt --check`, config schema fixture
   check, patch export drift check)
 
+## Headless-only policy
+
+codEx is TUI/CLI only. The fork deliberately removes every entry point that
+pulls in OpenAI's closed-source products or vendor-run services; do not
+re-introduce them during an upgrade, and do not "fix" their absence.
+
+Removed (entry points, not just defaults):
+
+- `codex app`, its `AppCommand`, and `cli/src/desktop_app/` (macOS `.dmg`
+  download, Windows install page).
+- The `/app` slash command, `AppEvent::OpenDesktopThread`, and the `codex://`
+  handoff in `tui/src/app/history_ui.rs`.
+- `codex doctor`'s `desktop` module, the appcast / Windows Store update feeds,
+  and the Sparkle-staging probe.
+- The Desktop-app startup tooltips.
+- `codex cloud`, `codex remote-control`, and the daemon's
+  `enable-remote-control` / `disable-remote-control` toggles.
+- The remote plugin marketplace (`REMOTE_PLUGIN_CATALOG_ENABLED = false` in
+  `cli/src/plugin_cmd.rs`); local and Git marketplaces still work.
+
+When upstream adds new vendor-facing surface, prefer deleting the entry point
+and leaving the underlying implementation in place: that keeps the diff small
+and the conflict surface narrow while still denying the behaviour. Verify with
+`grep -rn 'oaistatic|appcast|\.dmg|app-landing-page' codex-rs` (pets' CDN
+sprite pack is the one intentional leftover, default-disabled) and by checking
+`codex --help` for the removed subcommands.
+
 ## Upgrading the Patch Queue
 
 Upgrades (`rust-vX.Y.Z`) routinely conflict: upstream refactors the same code

@@ -49,6 +49,10 @@ drops into existing workflows, but changes the surrounding experience:
 - **Updates**: `codex update` is a pure-Rust downloader with checksum
   verification; no `curl | sh`, npm, or brew.
 - **Privacy**: no update checks or announcement fetches on startup by default.
+- **Headless only**: the closed-source Desktop app, its launcher
+  (`codex app`), the `codex://` handoff, the Codex Cloud browser, the
+  remote-control relay, and the remote plugin marketplace are all removed.
+  codEx is TUI/CLI only; no GUI, no vendor relay.
 - **Distribution**: standalone archives for Linux (`codex` + `bwrap`) and
   Windows (`codex.exe` + `codex-resources/`), no macOS/app-server bundles.
 - **Identity**: the CLI and TUI brand themselves as codEx, and

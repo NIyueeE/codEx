@@ -1,4 +1,4 @@
-From a05772215e6de43de31eacc70ec93cb5948307bd Mon Sep 17 00:00:00 2001
+From 5f07c00fd9a30c3dfa8ef2b92f6a54d1bcddc1a1 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -10,24 +10,31 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/core/src/config/mod.rs               |   29 +-
  codex-rs/thread-manager-sample/src/main.rs    |    3 +
  codex-rs/tui/Cargo.toml                       |    1 +
- codex-rs/tui/src/app/event_dispatch.rs        |  146 +-
+ codex-rs/tui/src/app/event_dispatch.rs        |  149 +-
+ codex-rs/tui/src/app/history_ui.rs            |  123 +-
+ codex-rs/tui/src/app/history_ui_tests.rs      |   29 -
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
+ ...ts__desktop_thread_open_error_history.snap |    5 -
+ ..._tests__desktop_thread_opened_history.snap |    5 -
  codex-rs/tui/src/app/tests.rs                 |  630 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
  codex-rs/tui/src/app_backtrack.rs             |  174 ++-
- codex-rs/tui/src/app_event.rs                 |   41 +
+ codex-rs/tui/src/app_event.rs                 |   46 +-
  codex-rs/tui/src/chatwidget.rs                |   21 +-
  .../tui/src/chatwidget/input_submission.rs    |   61 +
- codex-rs/tui/src/chatwidget/slash_dispatch.rs |    4 +
+ codex-rs/tui/src/chatwidget/slash_dispatch.rs |   13 +-
  ...hatwidget__tests__rewind_scope_picker.snap |   14 +
  .../tui/src/chatwidget/tests/app_server.rs    |    3 +
  .../chatwidget/tests/composer_submission.rs   |   35 +-
- .../src/chatwidget/tests/slash_commands.rs    |    3 +-
+ .../src/chatwidget/tests/slash_commands.rs    |   34 +-
  codex-rs/tui/src/rewind/actions.rs            |  386 +++++
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
- codex-rs/tui/src/slash_command.rs             |    3 +
- 23 files changed, 4002 insertions(+), 198 deletions(-)
+ codex-rs/tui/src/slash_command.rs             |    8 +-
+ 27 files changed, 4007 insertions(+), 408 deletions(-)
+ delete mode 100644 codex-rs/tui/src/app/history_ui_tests.rs
+ delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
+ delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
  create mode 100644 codex-rs/tui/src/rewind/actions.rs
  create mode 100644 codex-rs/tui/src/rewind/mod.rs
@@ -229,7 +236,7 @@ index 040f44f..48c989e 100644
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index cc16390..2df0e13 100644
+index cc16390..9981c34 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
 @@ -286,6 +286,33 @@ impl App {
@@ -413,6 +420,200 @@ index cc16390..2df0e13 100644
                              Err(err) => {
                                  self.restore_backtrack_prompt_after_branch_error(prompt, err);
                              }
+@@ -941,9 +993,6 @@ impl App {
+             AppEvent::OpenUrlInBrowser { url } => {
+                 self.open_url_in_browser(url);
+             }
+-            AppEvent::OpenDesktopThread { thread_id } => {
+-                self.open_desktop_thread(thread_id);
+-            }
+             AppEvent::PetSelected { pet_id } => {
+                 self.handle_pet_selected(tui, pet_id);
+             }
+diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
+index 9d63c68..ee2b659 100644
+--- a/codex-rs/tui/src/app/history_ui.rs
++++ b/codex-rs/tui/src/app/history_ui.rs
+@@ -1,4 +1,4 @@
+-//! Terminal history, desktop handoff, and clear-screen UI helpers for the TUI app.
++//! Terminal history and clear-screen UI helpers for the TUI app.
+ //!
+ //! This module owns rendering the fresh session header, clearing inline or alternate-screen UI
+ //! state, and resetting transcript-related app state after `/clear` or Ctrl-L.
+@@ -7,8 +7,6 @@ use super::*;
+ use crate::terminal_hyperlinks::HyperlinkLine;
+ use std::sync::Weak;
+ 
+-const DESKTOP_THREAD_OPENED_MESSAGE: &str = "Opened this session in the Desktop app.";
+-
+ pub(super) struct RenderedHistoryTail {
+     pub(super) cell: Weak<dyn HistoryCell>,
+     pub(super) lines: Vec<HyperlinkLine>,
+@@ -230,20 +228,6 @@ impl App {
+             .add_info_message(format!("Opened {url} in your browser."), /*hint*/ None);
+     }
+ 
+-    pub(super) fn open_desktop_thread(&mut self, thread_id: ThreadId) {
+-        let url = format!("codex://threads/{thread_id}");
+-        if let Err(err) = open_desktop_thread_url(&url) {
+-            self.chat_widget
+-                .add_error_message(desktop_thread_open_error_message(&err));
+-            return;
+-        }
+-
+-        self.chat_widget.add_info_message(
+-            DESKTOP_THREAD_OPENED_MESSAGE.to_string(),
+-            /*hint*/ None,
+-        );
+-    }
+-
+     pub(super) fn clear_ui_header_lines_with_version(
+         &self,
+         width: u16,
+@@ -333,108 +317,3 @@ impl App {
+         self.skill_load_warnings.clear();
+     }
+ }
+-
+-fn desktop_thread_open_error_message(err: &str) -> String {
+-    format!(
+-        "Failed to open this session in the Desktop app: {err}. Install or launch the Desktop app and try again."
+-    )
+-}
+-
+-#[cfg(target_os = "macos")]
+-fn open_desktop_thread_url(url: &str) -> Result<(), String> {
+-    let status = std::process::Command::new("open")
+-        .arg(url)
+-        .status()
+-        .map_err(|err| format!("failed to invoke `open`: {err}"))?;
+-
+-    if status.success() {
+-        Ok(())
+-    } else {
+-        Err(format!("`open {url}` exited with {status}"))
+-    }
+-}
+-
+-#[cfg(target_os = "windows")]
+-fn open_desktop_thread_url(url: &str) -> Result<(), String> {
+-    let script = windows_desktop_app_launch_script(url);
+-    let output = std::process::Command::new("powershell.exe")
+-        .arg("-NoProfile")
+-        .arg("-Command")
+-        .arg(&script)
+-        .output()
+-        .map_err(|err| format!("failed to launch the Desktop app through PowerShell: {err}"))?;
+-
+-    if output.status.success() {
+-        return Ok(());
+-    }
+-
+-    let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+-    if stderr.is_empty() {
+-        Err(format!(
+-            "failed to launch the Desktop app through PowerShell with {}",
+-            output.status
+-        ))
+-    } else {
+-        Err(stderr)
+-    }
+-}
+-
+-#[cfg(target_os = "windows")]
+-fn windows_desktop_app_launch_script(url: &str) -> String {
+-    let url = powershell_single_quoted_string(url);
+-    format!(
+-        r#"
+-$ErrorActionPreference = 'Stop'
+-$url = {url}
+-
+-$package = Get-AppxPackage -Name OpenAI.Codex -ErrorAction SilentlyContinue
+-if ($null -eq $package) {{
+-    Write-Error 'Desktop app package is not installed'
+-    exit 1
+-}}
+-
+-$manifest = Get-AppxPackageManifest -Package $package.PackageFullName
+-$application = $manifest.Package.Applications.Application |
+-    Where-Object {{
+-        @($_.Extensions.Extension) | Where-Object {{
+-            $_.Category -eq 'windows.protocol' -and $_.Protocol.Name -eq 'codex'
+-        }}
+-    }} |
+-    Select-Object -First 1
+-if ($null -eq $application -or [string]::IsNullOrWhiteSpace($application.Executable)) {{
+-    Write-Error 'Desktop app package does not declare a codex protocol executable'
+-    exit 1
+-}}
+-
+-# Launch the package-declared protocol executable rather than an internal Electron shim.
+-# Windows can deny direct starts of internal executables under WindowsApps.
+-$exe = Join-Path $package.InstallLocation $application.Executable
+-$appDir = Split-Path -Parent $exe
+-$app = Join-Path $appDir 'resources\app.asar'
+-if (-not (Test-Path $exe)) {{
+-    Write-Error "Desktop app executable not found at $exe"
+-    exit 1
+-}}
+-if (-not (Test-Path $app)) {{
+-    Write-Error "Desktop app bundle not found at $app"
+-    exit 1
+-}}
+-
+-Start-Process -FilePath $exe -WorkingDirectory $appDir -ArgumentList @('resources\app.asar', $url)
+-"#
+-    )
+-}
+-
+-#[cfg(target_os = "windows")]
+-fn powershell_single_quoted_string(value: &str) -> String {
+-    format!("'{}'", value.replace('\'', "''"))
+-}
+-
+-#[cfg(not(any(target_os = "macos", target_os = "windows")))]
+-fn open_desktop_thread_url(_url: &str) -> Result<(), String> {
+-    Err("The Desktop app is only available on macOS and Windows".to_string())
+-}
+-
+-#[cfg(test)]
+-#[path = "history_ui_tests.rs"]
+-mod tests;
+diff --git a/codex-rs/tui/src/app/history_ui_tests.rs b/codex-rs/tui/src/app/history_ui_tests.rs
+deleted file mode 100644
+index 750c665..0000000
+--- a/codex-rs/tui/src/app/history_ui_tests.rs
++++ /dev/null
+@@ -1,29 +0,0 @@
+-use super::*;
+-use crate::history_cell;
+-use crate::history_cell::HistoryCell;
+-
+-#[test]
+-fn desktop_thread_opened_history_snapshot() {
+-    let cell = history_cell::new_info_event(
+-        DESKTOP_THREAD_OPENED_MESSAGE.to_string(),
+-        /*hint*/ None,
+-    );
+-
+-    insta::assert_snapshot!("desktop_thread_opened_history", render_cell(&cell));
+-}
+-
+-#[test]
+-fn desktop_thread_open_error_history_snapshot() {
+-    let cell = history_cell::new_error_event(desktop_thread_open_error_message("launch failed"));
+-
+-    insta::assert_snapshot!("desktop_thread_open_error_history", render_cell(&cell));
+-}
+-
+-fn render_cell(cell: &impl HistoryCell) -> String {
+-    let lines = cell.display_lines(/*width*/ 80);
+-    lines
+-        .iter()
+-        .map(ToString::to_string)
+-        .collect::<Vec<_>>()
+-        .join("\n")
+-}
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
 index 8f2a0d8..41f3c86 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
@@ -429,6 +630,28 @@ index 8f2a0d8..41f3c86 100644
          self.chat_widget
              .set_task_mentions_enabled(started.task_tools_available);
          self.chat_widget
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
+deleted file mode 100644
+index 16e3549..0000000
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
++++ /dev/null
+@@ -1,5 +0,0 @@
+----
+-source: tui/src/app/history_ui_tests.rs
+-expression: render_cell(&cell)
+----
+-■ Failed to open this session in the Desktop app: launch failed. Install or launch the Desktop app and try again.
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
+deleted file mode 100644
+index 8e34f8e..0000000
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
++++ /dev/null
+@@ -1,5 +0,0 @@
+----
+-source: tui/src/app/history_ui_tests.rs
+-expression: render_cell(&cell)
+----
+-• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
 index 64c8bda..b824f53 100644
 --- a/codex-rs/tui/src/app/tests.rs
@@ -1459,7 +1682,7 @@ index 242b021..320e15f 100644
  
  /// Find the persisted turn that contains a selected transcript prompt.
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 1df5a1a..7b3f168 100644
+index 1df5a1a..0a2b687 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
 @@ -235,6 +235,17 @@ pub(crate) enum TranscriptExportDestination {
@@ -1521,6 +1744,18 @@ index 1df5a1a..7b3f168 100644
      },
  
      /// Request to exit the application.
+@@ -729,11 +770,6 @@ pub(crate) enum AppEvent {
+         url: String,
+     },
+ 
+-    /// Open the current thread in Codex Desktop.
+-    OpenDesktopThread {
+-        thread_id: ThreadId,
+-    },
+-
+     /// Persist a pet selection and reload the ambient pet.
+     PetSelected {
+         pet_id: String,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
 index 16d4a6e..fe2a7ad 100644
 --- a/codex-rs/tui/src/chatwidget.rs
@@ -1654,20 +1889,36 @@ index 6e408aa..71c17c0 100644
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index b8db07e..2cae104 100644
+index b8db07e..a01f7ad 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -253,6 +253,9 @@ impl ChatWidget {
+@@ -253,15 +253,8 @@ impl ChatWidget {
              SlashCommand::Worktree => {
                  self.show_managed_worktree_picker();
              }
+-            SlashCommand::App => {
+-                let Some(thread_id) = self.thread_id else {
+-                    self.add_error_message(
+-                        "Session is still starting; try /app again in a moment.".to_string(),
+-                    );
+-                    return;
+-                };
+-                self.app_event_tx
+-                    .send(AppEvent::OpenDesktopThread { thread_id });
 +            SlashCommand::Rewind => {
 +                self.app_event_tx.send(AppEvent::OpenRewindPicker);
-+            }
-             SlashCommand::App => {
-                 let Some(thread_id) = self.thread_id else {
-                     self.add_error_message(
-@@ -1204,6 +1207,7 @@ impl ChatWidget {
+             }
+             SlashCommand::Init => {
+                 const INIT_PROMPT: &str = include_str!("../../assets/prompt_for_init_command.md");
+@@ -1181,7 +1174,6 @@ impl ChatWidget {
+             | SlashCommand::Raw
+             | SlashCommand::Vim
+             | SlashCommand::Diff
+-            | SlashCommand::App
+             | SlashCommand::Rename
+             | SlashCommand::Recap
+             | SlashCommand::TestApproval => QueueDrain::Continue,
+@@ -1204,6 +1196,7 @@ impl ChatWidget {
              | SlashCommand::Clear
              | SlashCommand::Resume
              | SlashCommand::Fork
@@ -1779,7 +2030,7 @@ index af912ae..e4b6745 100644
      match op_rx.try_recv() {
          Ok(Op::Interrupt) => {}
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index e84f8fb..424539b 100644
+index e84f8fb..dade30a 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -1218,7 +1218,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
@@ -1791,6 +2042,44 @@ index e84f8fb..424539b 100644
 +    chat.handle_main_esc_press();
      next_interrupt_op(&mut op_rx);
      chat.on_interrupted_turn(TurnAbortReason::Interrupted);
+ 
+@@ -3276,32 +3277,11 @@ async fn slash_fork_with_name_requests_named_fork() {
+ }
+ 
+ #[tokio::test]
+-async fn slash_app_requests_desktop_handoff() {
+-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+-    let thread_id = ThreadId::new();
+-    chat.thread_id = Some(thread_id);
+-
+-    chat.dispatch_command(SlashCommand::App);
+-
+-    assert_matches!(
+-        rx.try_recv(),
+-        Ok(AppEvent::OpenDesktopThread {
+-            thread_id: actual_thread_id,
+-        }) if actual_thread_id == thread_id
+-    );
+-}
+-
+-#[tokio::test]
+-async fn slash_app_without_thread_id_shows_starting_error() {
+-    let (mut chat, mut rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
+-
+-    chat.dispatch_command(SlashCommand::App);
+-
+-    let cells = drain_insert_history(&mut rx);
+-    assert_eq!(cells.len(), 1, "expected app startup error");
+-    assert_chatwidget_snapshot!(
+-        "slash_app_without_thread_id_shows_starting_error",
+-        lines_to_single_string(&cells[0])
++async fn slash_app_is_not_offered() {
++    // codEx has no Desktop app: the deep-link command is gone entirely.
++    assert!(
++        !SlashCommand::iter().any(|command| command.command() == "app"),
++        "/app must not be a slash command"
+     );
+ }
  
 diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
 new file mode 100644
@@ -4764,26 +5053,28 @@ index 0000000..81078cc
 +    assert_eq!(fs::read(&file).expect("read"), b"v1");
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index ca83861..c9502aa 100644
+index ca83861..1bcd753 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -36,6 +36,7 @@ pub enum SlashCommand {
+@@ -36,7 +36,7 @@ pub enum SlashCommand {
      Resume,
      Fork,
      Worktree,
+-    App,
 +    Rewind,
-     App,
      Init,
      Compact,
-@@ -101,6 +102,7 @@ impl SlashCommand {
+     Recap,
+@@ -101,7 +101,7 @@ impl SlashCommand {
              SlashCommand::Clear => "clear the terminal and start a new chat",
              SlashCommand::Fork => "fork the current chat",
              SlashCommand::Worktree => "start or continue a conversation in a new worktree",
+-            SlashCommand::App => "continue this session in the Desktop app",
 +            SlashCommand::Rewind => "roll back conversation or file changes",
-             SlashCommand::App => "continue this session in the Desktop app",
              SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
              SlashCommand::Copy => "copy the last response or part of it",
-@@ -213,6 +215,7 @@ impl SlashCommand {
+             SlashCommand::Export => "export the conversation as markdown",
+@@ -213,6 +213,7 @@ impl SlashCommand {
              | SlashCommand::Delete
              | SlashCommand::Fork
              | SlashCommand::Worktree
@@ -4791,6 +5082,30 @@ index ca83861..c9502aa 100644
              | SlashCommand::Init
              | SlashCommand::Compact
              | SlashCommand::Recap
+@@ -248,7 +249,6 @@ impl SlashCommand {
+             | SlashCommand::DebugConfig
+             | SlashCommand::Ps
+             | SlashCommand::Stop
+-            | SlashCommand::App
+             | SlashCommand::Goal
+             | SlashCommand::Mcp
+             | SlashCommand::Apps
+@@ -273,7 +273,6 @@ impl SlashCommand {
+         match self {
+             SlashCommand::SandboxReadRoot => cfg!(target_os = "windows"),
+             SlashCommand::Copy => !cfg!(target_os = "android"),
+-            SlashCommand::App => cfg!(any(target_os = "macos", target_os = "windows")),
+             SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
+             _ => true,
+         }
+@@ -320,7 +319,6 @@ mod tests {
+         assert!(SlashCommand::Raw.available_during_task());
+         assert!(SlashCommand::Raw.available_in_side_conversation());
+         assert!(SlashCommand::Raw.supports_inline_args());
+-        assert!(SlashCommand::App.available_during_task());
+     }
+ 
+     #[test]
 -- 
 2.47.3
 

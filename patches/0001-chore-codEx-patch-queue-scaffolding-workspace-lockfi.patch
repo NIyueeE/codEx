@@ -1,4 +1,4 @@
-From 48076ad1ba2b1eec31fe358ef9f6d01ca1d3b9e8 Mon Sep 17 00:00:00 2001
+From 76c7fe92506939c88fa259b22a6b62abb5c79547 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -7,15 +7,15 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  .codespellignore                              |   1 +
  .gitignore                                    |   4 +
  BASE_TAG                                      |   1 +
- README.md                                     | 346 +++++++++++++++---
- codex-rs/Cargo.lock                           | 302 +++++++--------
+ README.md                                     | 378 +++++++++++++++---
+ codex-rs/Cargo.lock                           | 302 +++++++-------
  .../tui/src/app/tests/safety_buffering.rs     |   5 +-
  scripts/bootstrap.sh                          |  30 ++
- scripts/check-patch-modules.sh                | 184 ++++++++++
- scripts/gen-patches.sh                        | 107 ++++++
- scripts/patch-modules.conf                    | 172 +++++++++
+ scripts/check-patch-modules.sh                | 184 +++++++++
+ scripts/gen-patches.sh                        | 107 +++++
+ scripts/patch-modules.conf                    | 184 +++++++++
  scripts/update.sh                             | 121 ++++++
- 11 files changed, 1068 insertions(+), 205 deletions(-)
+ 11 files changed, 1112 insertions(+), 205 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -54,10 +54,10 @@ index 0000000..d3717a3
 @@ -0,0 +1 @@
 +rust-v0.154.0
 diff --git a/README.md b/README.md
-index 06b02fc..8a17977 100644
+index 06b02fc..4f65236 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,319 @@
+@@ -1,81 +1,351 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -139,6 +139,10 @@ index 06b02fc..8a17977 100644
 +- **Updates**: `codex update` is a pure-Rust downloader with checksum
 +  verification; no `curl | sh`, npm, or brew.
 +- **Privacy**: no update checks or announcement fetches on startup by default.
++- **Headless only**: the closed-source Desktop app, its launcher
++  (`codex app`), the `codex://` handoff, the Codex Cloud browser, the
++  remote-control relay, and the remote plugin marketplace are all removed.
++  codEx is TUI/CLI only; no GUI, no vendor relay.
 +- **Distribution**: standalone archives for Linux (`codex` + `bwrap`) and
 +  Windows (`codex.exe` + `codex-resources/`), no macOS/app-server bundles.
 +- **Identity**: the CLI and TUI brand themselves as codEx, and
@@ -164,15 +168,15 @@ index 06b02fc..8a17977 100644
 +   chat before it; files are left untouched.
 +3. **Files only** - pick a numbered snapshot; a confirmation shows how many
 +   files would be restored and deleted before the workspace is touched.
- 
--```shell
--# Install using Homebrew
--brew install --cask codex
++
 +Both conversation scopes reuse the transcript picker (the same full-history
 +view the old double-Esc backtrack used): the newest user message starts
 +highlighted, **Esc** or **Left** steps to older messages, **Right** steps
 +newer, and **Enter** confirms the rewind.
-+
+ 
+-```shell
+-# Install using Homebrew
+-brew install --cask codex
 +**How snapshots work** (pure files, no git involved):
 +
 +- Before each main-thread user turn is submitted, the TUI snapshots the
@@ -262,9 +266,7 @@ index 06b02fc..8a17977 100644
 +  commits or backups.
 +
 +### Esc: single press does nothing, double press stops the reply
- 
--<details>
--<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
++
 +- A single **Esc** in the main UI/composer is a **no-op** - it no longer
 +  interrupts a turn or arms any backtrack mode.
 +- While a reply is running, the **first Esc** shows a footer hint
@@ -278,16 +280,11 @@ index 06b02fc..8a17977 100644
 +  it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
 +  previous message" backtrack was removed from the main UI; `/rewind` now
 +  reuses its transcript picker for message selection.
- 
--Each GitHub Release contains many executables, but in practice, you likely want one of these:
++
 +### `codex update`: pure-Rust self-update
  
--- macOS
--  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
--  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
--- Linux
--  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
--  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
+-<details>
+-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 +- `codex update` no longer shells out to `curl | sh`, npm, or brew. It is a
 +  self-contained Rust implementation:
 +  1. Maps the host architecture to the fork's release target
@@ -306,10 +303,15 @@ index 06b02fc..8a17977 100644
 +- Non-standalone installs (npm/brew/... ) get a clear message pointing at the
 +  fork releases for manual download.
  
--Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
+-Each GitHub Release contains many executables, but in practice, you likely want one of these:
 +### No update chatter, no announcements
  
--</details>
+-- macOS
+-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
+-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
+-- Linux
+-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
+-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
 +- `check_for_update_on_startup` now defaults to **`false`**: the TUI does not
 +  phone home on startup. Set it to `true` in `config.toml` to opt in.
 +- The startup **announcement fetch** (remote `announcement_tip.toml`) was
@@ -317,10 +319,41 @@ index 06b02fc..8a17977 100644
 +- Update banners/notices, when enabled, point at this fork's releases and tell
 +  you to run `codex update`.
  
+-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
++### Headless only: no closed-source surfaces
+ 
+-</details>
++codEx is built for headless, self-hosted use in TUI and CLI. Every entry point
++that pulled in OpenAI's closed-source products or vendor-run services is
++removed, not merely disabled:
+ 
 -### Using Codex with your ChatGPT plan
-+### Branding
++- **`codex app` and the Desktop launcher.** The subcommand, its
++  `AppCommand`, and the `desktop_app/` downloader are gone. On macOS it used to
++  fetch a closed-source `.dmg`; on Windows it opened a vendor install page.
++- **`/app` and the `codex://` handoff.** The slash command, its `AppEvent`,
++  and the platform launchers (including the PowerShell path that queried the
++  `OpenAI.Codex` AppX package) are gone, so the TUI can no longer deep-link
++  into the Desktop app.
++- **Desktop probes in `codex doctor`.** The `desktop` module, the appcast and
++  Windows Store update feeds, and the Sparkle-staging inspection are removed;
++  `doctor` no longer contacts `persistent.oaistatic.com`.
++- **Desktop-app tooltips.** Startup tips no longer advertise the Desktop app
++  on any platform; the paid promo slot now only offers Fast mode.
++- **`codex cloud`** (Codex Cloud task browser) and **`codex remote-control`**
++  plus the daemon's `enable-remote-control` / `disable-remote-control` toggles,
++  which paired a local daemon with the vendor relay.
++- **The remote plugin marketplace** (`openai-curated-remote`, served from the
++  chatgpt.com backend) is refused. Local and Git marketplaces still work.
  
 -Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
++Kept on purpose: the model/API backend the agent actually talks to, and the
++Windows sandbox plumbing, which references vendor package identities only to
++authorize sandbox IPC on the same machine.
+ 
+-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
++### Branding
++
 +- `codex --version` prints
 +  `codEx 0.154.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
 +  bar shows `codEx <version>`.
@@ -328,8 +361,7 @@ index 06b02fc..8a17977 100644
 +  tips reference `codEx` as well.
 +- The version number itself **matches the upstream base tag** (e.g. `0.154.0`),
 +  so version parsing stays plain semver and fork release tags stay clean.
- 
--You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
++
 +### Release & CI (Linux CI; Linux + Windows releases)
 +
 +- **Release matrix**: `x86_64-unknown-linux-musl` and
@@ -2138,10 +2170,10 @@ index 0000000..f49b884
 +find "${output_dir}" -name '*.patch' | sort
 diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
 new file mode 100644
-index 0000000..b040f0a
+index 0000000..7d73ad6
 --- /dev/null
 +++ b/scripts/patch-modules.conf
-@@ -0,0 +1,172 @@
+@@ -0,0 +1,184 @@
 +# codEx patch-module manifest.
 +#
 +# The fork's delta to upstream is organized as exactly one patch per module,
@@ -2180,6 +2212,10 @@ index 0000000..b040f0a
 +codex-rs/tui/src/slash_command.rs
 +codex-rs/tui/src/rewind/*
 +codex-rs/tui/src/app/event_dispatch.rs
++codex-rs/tui/src/app/history_ui.rs
++codex-rs/tui/src/app/history_ui_tests.rs
++codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
++codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
 +codex-rs/tui/src/app/session_lifecycle.rs
 +codex-rs/tui/src/app/tests.rs
 +codex-rs/tui/src/app/tests/turn_submission.rs
@@ -2200,6 +2236,14 @@ index 0000000..b040f0a
 +codex-rs/cli/src/self_update.rs
 +codex-rs/cli/src/wsl_paths.rs
 +codex-rs/cli/src/doctor/updates.rs
++codex-rs/cli/src/doctor.rs
++codex-rs/cli/src/plugin_cmd.rs
++codex-rs/cli/src/app_cmd.rs
++codex-rs/cli/src/desktop_app/*
++codex-rs/cli/src/doctor/desktop.rs
++codex-rs/cli/src/doctor/desktop/*
++codex-rs/cli/src/doctor/desktop_tests.rs
++codex-rs/cli/src/remote_control_cmd.rs
 +codex-rs/utils/cli/src/fork.rs
 +codex-rs/utils/cli/src/lib.rs
 +codex-rs/app-server-daemon/src/lib.rs

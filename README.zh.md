@@ -43,6 +43,9 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
 - **更新**:`codex update` 是纯 Rust 实现的下载器,带校验和验证;不再依赖
   `curl | sh`、npm 或 brew。
 - **隐私**:默认启动时不检查更新、不拉取公告。
+- **纯无头**:彻底移除了指向闭源桌面应用的所有入口 —— 启动器 `codex app`、
+  `codex://` 深链、Codex Cloud 浏览器、远程控制中继,以及远程插件市场。
+  codEx 只提供 TUI/CLI,没有图形界面,也不连厂商中继服务。
 - **发行**:提供 Linux(`codex` + `bwrap`)与 Windows(`codex.exe` +
   `codex-resources/`)独立归档,没有 macOS/app-server 包。
 - **身份**:CLI 和 TUI 以 codEx 自居,`codex --version` 指向本分支的仓库。
@@ -170,6 +173,31 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 - 启动时的**公告拉取**(远程 `announcement_tip.toml`)已彻底移除;只保留
   本地随机提示。
 - 更新横幅/通知(如果启用)指向本分支的 release,并提示运行 `codex update`。
+
+### 纯无头:不含任何闭源界面
+
+codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 OpenAI 闭源产品
+或厂商托管服务的入口都已**删除**(而非仅禁用):
+
+- **`codex app` 与桌面启动器**:子命令、`AppCommand` 与 `desktop_app/`
+  下载器均已移除。它在 macOS 上会拉取闭源 `.dmg`,在 Windows 上打开厂商
+  安装页。
+- **`/app` 与 `codex://` 深链**:斜杠命令、对应 `AppEvent` 以及各平台启动
+  逻辑(含查询 `OpenAI.Codex` AppX 包的 PowerShell 路径)全部移除,TUI
+  无法再跳转到桌面应用。
+- **`codex doctor` 的桌面探测**:`desktop` 模块、appcast 与 Windows Store
+  更新源、Sparkle 暂存检查均已移除;`doctor` 不再访问
+  `persistent.oaistatic.com`。
+- **桌面应用提示语**:任何平台都不再宣传桌面应用;付费用户的推广位只保留
+  Fast 模式。
+- **`codex cloud`**(Codex Cloud 任务浏览)与 **`codex remote-control`**
+  及守护进程的 `enable-remote-control` / `disable-remote-control` 开关
+  —— 它们会把本地守护进程与厂商中继配对。
+- **远程插件市场**(`openai-curated-remote`,由 chatgpt.com 后端提供)会被
+  拒绝;本地与 Git 市场不受影响。
+
+有意保留:agent 实际通信的模型/API 后端,以及 Windows 沙箱相关代码 —— 后者
+引用厂商包标识仅用于授权同机沙箱 IPC。
 
 ### 品牌
 

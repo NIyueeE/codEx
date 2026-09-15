@@ -1,4 +1,4 @@
-From afed7723b42e88f66c734d96e7cc9e25d3fa9942 Mon Sep 17 00:00:00 2001
+From 25bff95c2152ce91a348d75913998a5dedd5b55f Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: input: single Esc is a no-op, double Esc interrupts
@@ -6,7 +6,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
 ---
  codex-rs/tui/src/app/input.rs                 |  69 ++------
  .../tui/src/bottom_pane/actionable_banner.rs  |   3 +
- codex-rs/tui/src/bottom_pane/chat_composer.rs | 145 +++++++++--------
+ codex-rs/tui/src/bottom_pane/chat_composer.rs | 146 +++++++++--------
  .../bottom_pane/chat_composer/footer_state.rs |   2 +-
  codex-rs/tui/src/bottom_pane/footer.rs        | 148 +++---------------
  codex-rs/tui/src/bottom_pane/mod.rs           |  83 ++++++----
@@ -107,7 +107,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ...hly_credit_details_in_narrow_terminal.snap |   2 +-
  ...ipt_overlay_status_rate_limit_refresh.snap |   4 +-
  codex-rs/tui/src/status_indicator_widget.rs   |  25 ++-
- 103 files changed, 458 insertions(+), 478 deletions(-)
+ 103 files changed, 458 insertions(+), 479 deletions(-)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_then_esc_hint.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_hint_survives_esc.snap} (93%)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_backtrack.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_closes_shortcut_overlay.snap} (89%)
  delete mode 100644 codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_from_overlay.snap
@@ -242,7 +242,7 @@ index 65750af..c1c6a46 100644
          self.inline_banner.as_ref().is_some_and(|banner| {
              banner.visible.get()
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 967c712..94627d0 100644
+index 967c712..57de648 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
 @@ -255,7 +255,6 @@ use super::footer::GoalStatusIndicator;
@@ -253,7 +253,15 @@ index 967c712..94627d0 100644
  use super::footer::footer_height;
  use super::footer::footer_hint_items_width;
  use super::footer::footer_line_width;
-@@ -557,6 +556,10 @@ pub(crate) struct ChatComposer {
+@@ -412,7 +411,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
+                 | SlashCommand::New
+                 | SlashCommand::Clear
+                 | SlashCommand::Resume
+-                | SlashCommand::App
+                 | SlashCommand::Side
+                 | SlashCommand::Btw
+                 | SlashCommand::Agents
+@@ -557,6 +555,10 @@ pub(crate) struct ChatComposer {
      worktrees_enabled: bool,
      windows_degraded_sandbox_active: bool,
      side_conversation_active: bool,
@@ -264,7 +272,7 @@ index 967c712..94627d0 100644
      history_search: Option<HistorySearchSession>,
      vim_history: VimHistory,
      submit_keys: Vec<KeyBinding>,
-@@ -654,7 +657,7 @@ impl ChatComposer {
+@@ -654,7 +656,7 @@ impl ChatComposer {
              footer: FooterState {
                  quit_shortcut_expires_at: None,
                  quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
@@ -273,7 +281,7 @@ index 967c712..94627d0 100644
                  use_shift_enter_hint,
                  mode: FooterMode::ComposerEmpty,
                  hint_override: None,
-@@ -721,6 +724,8 @@ impl ChatComposer {
+@@ -721,6 +723,8 @@ impl ChatComposer {
              worktrees_enabled: false,
              windows_degraded_sandbox_active: false,
              side_conversation_active: false,
@@ -282,7 +290,7 @@ index 967c712..94627d0 100644
              history_search: None,
              vim_history: VimHistory::default(),
              submit_keys: vec![key_hint::plain(KeyCode::Enter)],
-@@ -1952,6 +1957,40 @@ impl ChatComposer {
+@@ -1952,6 +1956,40 @@ impl ChatComposer {
      }
  
      /// Clear the "press again to quit" hint immediately.
@@ -323,7 +331,7 @@ index 967c712..94627d0 100644
      pub fn clear_quit_shortcut_hint(&mut self, has_focus: bool) {
          self.footer.quit_shortcut_expires_at = None;
          self.footer.mode = reset_mode_after_activity(self.footer.mode);
-@@ -2159,14 +2198,12 @@ impl ChatComposer {
+@@ -2159,14 +2197,12 @@ impl ChatComposer {
          if self.handle_empty_prompt_shortcut(&key_event) {
              return (InputResult::None, true);
          }
@@ -343,7 +351,7 @@ index 967c712..94627d0 100644
          }
          let ActivePopup::File(popup) = &mut self.popups.active else {
              unreachable!();
-@@ -3543,13 +3580,13 @@ impl ChatComposer {
+@@ -3543,13 +3579,13 @@ impl ChatComposer {
              return (InputResult::None, true);
          }
          if key_event.code == KeyCode::Esc {
@@ -363,7 +371,7 @@ index 967c712..94627d0 100644
          } else {
              self.footer.mode = reset_mode_after_activity(self.footer.mode);
          }
-@@ -3883,20 +3920,10 @@ impl ChatComposer {
+@@ -3883,20 +3919,10 @@ impl ChatComposer {
  
      fn footer_props(&self) -> FooterProps {
          let mode = self.footer_mode();
@@ -385,7 +393,7 @@ index 967c712..94627d0 100644
              use_shift_enter_hint: self.footer.use_shift_enter_hint,
              is_task_running: self.is_task_running,
              queue_submissions: self.queue_submissions,
-@@ -3913,7 +3940,6 @@ impl ChatComposer {
+@@ -3913,7 +3939,6 @@ impl ChatComposer {
                  queue: self.footer.queue_key,
                  insert_newline: self.footer.insert_newline_key,
                  external_editor: self.footer.external_editor_key,
@@ -393,7 +401,7 @@ index 967c712..94627d0 100644
                  show_transcript: self.footer.show_transcript_key,
                  history_search: self.footer.history_search_key,
                  reasoning_down: self.footer.reasoning_down_key,
-@@ -3942,8 +3968,10 @@ impl ChatComposer {
+@@ -3942,8 +3967,10 @@ impl ChatComposer {
  
          match self.footer.mode {
              FooterMode::HistorySearch => FooterMode::HistorySearch,
@@ -405,7 +413,7 @@ index 967c712..94627d0 100644
              FooterMode::QuitShortcutReminder if self.quit_shortcut_hint_visible() => {
                  FooterMode::QuitShortcutReminder
              }
-@@ -3952,7 +3980,7 @@ impl ChatComposer {
+@@ -3952,7 +3979,7 @@ impl ChatComposer {
              {
                  FooterMode::QuitShortcutReminder
              }
@@ -414,7 +422,7 @@ index 967c712..94627d0 100644
              FooterMode::ComposerEmpty | FooterMode::ComposerHasDraft => base_mode,
          }
      }
-@@ -4428,12 +4456,20 @@ impl ChatComposer {
+@@ -4428,12 +4455,20 @@ impl ChatComposer {
          self.footer.context_window_pending = pending;
      }
  
@@ -441,7 +449,7 @@ index 967c712..94627d0 100644
          }
      }
  
-@@ -4705,7 +4741,7 @@ impl ChatComposer {
+@@ -4705,7 +4740,7 @@ impl ChatComposer {
                      FooterMode::HistorySearch
                      | FooterMode::QuitShortcutReminder
                      | FooterMode::ShortcutOverlay
@@ -450,7 +458,7 @@ index 967c712..94627d0 100644
                  };
                  let show_queue_hint = match footer_props.mode {
                      FooterMode::ComposerHasDraft => footer_props.is_task_running,
-@@ -4713,7 +4749,7 @@ impl ChatComposer {
+@@ -4713,7 +4748,7 @@ impl ChatComposer {
                      | FooterMode::QuitShortcutReminder
                      | FooterMode::ComposerEmpty
                      | FooterMode::ShortcutOverlay
@@ -459,7 +467,7 @@ index 967c712..94627d0 100644
                  };
                  let custom_height = self.custom_footer_height();
                  let footer_hint_height =
-@@ -4849,16 +4885,15 @@ impl ChatComposer {
+@@ -4849,16 +4884,15 @@ impl ChatComposer {
                                      footer_props.key_hints,
                                  ))
                              }
@@ -480,7 +488,7 @@ index 967c712..94627d0 100644
                              | FooterMode::QuitShortcutReminder
                              | FooterMode::ShortcutOverlay
                      ) {
-@@ -5407,7 +5442,6 @@ mod tests {
+@@ -5407,7 +5441,6 @@ mod tests {
              "footer_mode_shortcut_overlay",
              /*enhanced_keys_supported*/ true,
              |composer| {
@@ -488,7 +496,7 @@ index 967c712..94627d0 100644
                  let _ = composer
                      .handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
              },
-@@ -5447,7 +5481,7 @@ mod tests {
+@@ -5447,7 +5480,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -497,7 +505,7 @@ index 967c712..94627d0 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  composer.show_quit_shortcut_hint(
-@@ -5459,7 +5493,7 @@ mod tests {
+@@ -5459,7 +5492,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -506,7 +514,7 @@ index 967c712..94627d0 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  let _ = composer
-@@ -5468,25 +5502,6 @@ mod tests {
+@@ -5468,25 +5501,6 @@ mod tests {
              },
          );
  
@@ -532,7 +540,7 @@ index 967c712..94627d0 100644
          snapshot_composer_state(
              "footer_mode_hidden_while_typing",
              /*enhanced_keys_supported*/ true,
-@@ -6103,7 +6118,6 @@ mod tests {
+@@ -6103,7 +6117,6 @@ mod tests {
          let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
  
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
@@ -540,7 +548,7 @@ index 967c712..94627d0 100644
      }
  
      #[test]
-@@ -6141,7 +6155,6 @@ mod tests {
+@@ -6141,7 +6154,6 @@ mod tests {
              Some("Vim: Normal".magenta())
          );
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);

@@ -1,16 +1,30 @@
-From 6f3a9fe3cacf44d3c8c74f91f76e246bc8d2a10d Mon Sep 17 00:00:00 2001
+From 87de6a6751e41f3474d67ec07d189e95f69d65fa Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
 
 ---
  codex-rs/app-server-daemon/src/lib.rs         |   7 +-
- codex-rs/app-server-daemon/src/update_loop.rs | 124 +---
- .../src/update_loop_tests.rs                  |  84 ---
+ codex-rs/app-server-daemon/src/update_loop.rs | 124 +--
+ .../src/update_loop_tests.rs                  |  84 --
  codex-rs/cli/Cargo.toml                       |   4 +
- codex-rs/cli/src/doctor/updates.rs            |  60 +-
- codex-rs/cli/src/main.rs                      | 140 ++---
- codex-rs/cli/src/self_update.rs               | 547 ++++++++++++++++++
+ codex-rs/cli/src/app_cmd.rs                   |  25 -
+ codex-rs/cli/src/desktop_app/mac.rs           | 512 ------------
+ codex-rs/cli/src/desktop_app/mod.rs           |  22 -
+ codex-rs/cli/src/desktop_app/windows.rs       | 133 ---
+ codex-rs/cli/src/doctor.rs                    |  16 -
+ codex-rs/cli/src/doctor/desktop.rs            | 320 -------
+ .../cli/src/doctor/desktop/macos_security.rs  | 236 ------
+ .../doctor/desktop/macos_security_tests.rs    |  67 --
+ codex-rs/cli/src/doctor/desktop/platform.rs   | 283 -------
+ .../src/doctor/desktop/windows_security.rs    | 232 ------
+ .../doctor/desktop/windows_security_tests.rs  |  85 --
+ codex-rs/cli/src/doctor/desktop_tests.rs      |  97 ---
+ codex-rs/cli/src/doctor/updates.rs            | 462 +----------
+ codex-rs/cli/src/main.rs                      | 297 ++-----
+ codex-rs/cli/src/plugin_cmd.rs                |  23 +
+ codex-rs/cli/src/remote_control_cmd.rs        | 779 ------------------
+ codex-rs/cli/src/self_update.rs               | 547 ++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 --
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
  ...pdate_available_history_cell_snapshot.snap |  11 -
@@ -18,13 +32,25 @@ Subject: update: pure-Rust self-update against fork releases
  ...pdate_available_history_cell_snapshot.snap |  14 +-
  ...pdate_available_history_cell_snapshot.snap |  12 -
  codex-rs/tui/src/history_cell/tests.rs        |  29 -
- codex-rs/tui/src/update_action.rs             | 106 +---
+ codex-rs/tui/src/update_action.rs             | 106 +--
  codex-rs/tui/src/update_prompt.rs             |   7 +-
  codex-rs/tui/src/update_versions.rs           |  23 +-
  codex-rs/tui/src/updates.rs                   |  53 +-
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 20 files changed, 735 insertions(+), 585 deletions(-)
+ 34 files changed, 783 insertions(+), 3926 deletions(-)
+ delete mode 100644 codex-rs/cli/src/app_cmd.rs
+ delete mode 100644 codex-rs/cli/src/desktop_app/mac.rs
+ delete mode 100644 codex-rs/cli/src/desktop_app/mod.rs
+ delete mode 100644 codex-rs/cli/src/desktop_app/windows.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop/macos_security.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop/macos_security_tests.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop/platform.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop/windows_security.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
+ delete mode 100644 codex-rs/cli/src/doctor/desktop_tests.rs
+ delete mode 100644 codex-rs/cli/src/remote_control_cmd.rs
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
@@ -364,28 +390,2177 @@ index 67e54b7..c4daece 100644
      "Win32_Storage_Packaging_Appx",
      "Win32_System_Console",
      "Win32_System_Threading",
+diff --git a/codex-rs/cli/src/app_cmd.rs b/codex-rs/cli/src/app_cmd.rs
+deleted file mode 100644
+index 44c22b6..0000000
+--- a/codex-rs/cli/src/app_cmd.rs
++++ /dev/null
+@@ -1,25 +0,0 @@
+-use clap::Parser;
+-use std::path::PathBuf;
+-
+-#[derive(Debug, Parser)]
+-pub struct AppCommand {
+-    /// Workspace path to open in the Desktop app.
+-    #[arg(value_name = "PATH", default_value = ".")]
+-    pub path: PathBuf,
+-
+-    /// Override the app installer download URL (advanced).
+-    #[arg(long = "download-url")]
+-    pub download_url_override: Option<String>,
+-}
+-
+-pub async fn run_app(cmd: AppCommand) -> anyhow::Result<()> {
+-    let workspace = std::fs::canonicalize(&cmd.path).unwrap_or(cmd.path);
+-    #[cfg(target_os = "macos")]
+-    {
+-        crate::desktop_app::run_app_open_or_install(workspace, cmd.download_url_override).await
+-    }
+-    #[cfg(target_os = "windows")]
+-    {
+-        crate::desktop_app::run_app_open_or_install(workspace, cmd.download_url_override).await
+-    }
+-}
+diff --git a/codex-rs/cli/src/desktop_app/mac.rs b/codex-rs/cli/src/desktop_app/mac.rs
+deleted file mode 100644
+index 12abe08..0000000
+--- a/codex-rs/cli/src/desktop_app/mac.rs
++++ /dev/null
+@@ -1,512 +0,0 @@
+-use anyhow::Context as _;
+-use std::ffi::CString;
+-use std::path::Path;
+-use std::path::PathBuf;
+-use tempfile::Builder;
+-use tokio::process::Command;
+-
+-const CODEX_BUNDLE_IDENTIFIER: &str = "com.openai.codex";
+-const OPENAI_APPLE_TEAM_IDENTIFIER: &str = "2DC432GLL2";
+-const CODEX_DMG_URL_ARM64: &str = "https://persistent.oaistatic.com/codex-app-prod/Codex.dmg";
+-const CODEX_DMG_URL_X64: &str =
+-    "https://persistent.oaistatic.com/codex-app-prod/Codex-latest-x64.dmg";
+-
+-pub async fn run_mac_app_open_or_install(
+-    workspace: PathBuf,
+-    download_url_override: Option<String>,
+-) -> anyhow::Result<()> {
+-    if let Some(app_path) = find_existing_codex_app_path(&codex_app_search_dirs()) {
+-        eprintln!(
+-            "Opening Desktop app at {app_path}...",
+-            app_path = app_path.display()
+-        );
+-        open_codex_app(&app_path, &workspace).await?;
+-        return Ok(());
+-    }
+-    eprintln!("Desktop app not found; downloading installer...");
+-    let download_url = download_url_override.unwrap_or_else(|| {
+-        let default_url = if is_apple_silicon_mac() {
+-            CODEX_DMG_URL_ARM64
+-        } else {
+-            CODEX_DMG_URL_X64
+-        };
+-        default_url.to_string()
+-    });
+-    let installed_app = download_and_install_codex_to_user_applications(&download_url)
+-        .await
+-        .context("failed to download/install Desktop app")?;
+-    eprintln!(
+-        "Launching Desktop app from {installed_app}...",
+-        installed_app = installed_app.display()
+-    );
+-    open_codex_app(&installed_app, &workspace).await?;
+-    Ok(())
+-}
+-
+-fn is_apple_silicon_mac() -> bool {
+-    fn macos_sysctl_flag(name: &str) -> Option<bool> {
+-        let name = CString::new(name).ok()?;
+-        let mut value: libc::c_int = 0;
+-        let mut size = std::mem::size_of_val(&value);
+-        let result = unsafe {
+-            libc::sysctlbyname(
+-                name.as_ptr(),
+-                (&mut value as *mut libc::c_int).cast::<libc::c_void>(),
+-                &mut size,
+-                std::ptr::null_mut(),
+-                0,
+-            )
+-        };
+-        (result == 0).then_some(value != 0)
+-    }
+-
+-    std::env::consts::ARCH == "aarch64"
+-        || macos_sysctl_flag("sysctl.proc_translated").unwrap_or(false)
+-        || macos_sysctl_flag("hw.optional.arm64").unwrap_or(false)
+-}
+-
+-fn find_existing_codex_app_path(applications_dirs: &[PathBuf]) -> Option<PathBuf> {
+-    applications_dirs
+-        .iter()
+-        .flat_map(|dir| ["ChatGPT.app", "Codex.app"].map(|app_name| dir.join(app_name)))
+-        .find(|candidate| is_codex_app_bundle(candidate))
+-}
+-
+-fn codex_app_search_dirs() -> Vec<PathBuf> {
+-    let mut paths = vec![PathBuf::from("/Applications")];
+-    if let Some(home) = std::env::var_os("HOME") {
+-        paths.push(PathBuf::from(home).join("Applications"));
+-    }
+-    paths
+-}
+-
+-fn is_codex_app_bundle(app_path: &Path) -> bool {
+-    if !app_path.is_dir() {
+-        return false;
+-    }
+-
+-    std::process::Command::new("/usr/bin/plutil")
+-        .arg("-extract")
+-        .arg("CFBundleIdentifier")
+-        .arg("raw")
+-        .arg("-o")
+-        .arg("-")
+-        .arg(app_path.join("Contents/Info.plist"))
+-        .output()
+-        .is_ok_and(|output| {
+-            output.status.success()
+-                && String::from_utf8_lossy(&output.stdout).trim() == CODEX_BUNDLE_IDENTIFIER
+-        })
+-}
+-
+-async fn open_codex_app(app_path: &Path, workspace: &Path) -> anyhow::Result<()> {
+-    verify_codex_app_bundle(app_path).await?;
+-    eprintln!(
+-        "Opening workspace {workspace}...",
+-        workspace = workspace.display()
+-    );
+-    let url = codex_new_thread_url(workspace);
+-    let status = Command::new("open")
+-        .arg("-a")
+-        .arg(app_path)
+-        .arg(&url)
+-        .status()
+-        .await
+-        .context("failed to invoke `open`")?;
+-
+-    if status.success() {
+-        return Ok(());
+-    }
+-
+-    anyhow::bail!(
+-        "`open -a {app_path} {url}` exited with {status}",
+-        app_path = app_path.display(),
+-        url = url
+-    );
+-}
+-
+-async fn verify_codex_app_bundle(app_path: &Path) -> anyhow::Result<()> {
+-    let requirement = format!(
+-        "identifier \"{CODEX_BUNDLE_IDENTIFIER}\" and anchor apple generic and certificate leaf[subject.OU] = \"{OPENAI_APPLE_TEAM_IDENTIFIER}\""
+-    );
+-    let output = Command::new("/usr/bin/codesign")
+-        .args(["--verify", "--deep", "--strict"])
+-        .arg(format!("-R={requirement}"))
+-        .arg(app_path)
+-        .output()
+-        .await
+-        .context("failed to verify Desktop app signature")?;
+-
+-    if output.status.success() {
+-        return Ok(());
+-    }
+-
+-    anyhow::bail!(
+-        "Desktop app at {} failed OpenAI signature verification (team {OPENAI_APPLE_TEAM_IDENTIFIER}, bundle {CODEX_BUNDLE_IDENTIFIER}): {}",
+-        app_path.display(),
+-        String::from_utf8_lossy(&output.stderr).trim()
+-    );
+-}
+-
+-fn codex_new_thread_url(workspace: &Path) -> String {
+-    let workspace = workspace.as_os_str().to_string_lossy();
+-    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+-    serializer.append_pair("path", workspace.as_ref());
+-    let query = serializer.finish();
+-    format!("codex://threads/new?{query}")
+-}
+-
+-async fn download_and_install_codex_to_user_applications(dmg_url: &str) -> anyhow::Result<PathBuf> {
+-    let temp_dir = Builder::new()
+-        .prefix("codex-app-installer-")
+-        .tempdir()
+-        .context("failed to create temp dir")?;
+-    let tmp_root = temp_dir.path().to_path_buf();
+-    let _temp_dir = temp_dir;
+-
+-    let dmg_path = tmp_root.join("Codex.dmg");
+-    download_dmg(dmg_url, &dmg_path).await?;
+-
+-    eprintln!("Mounting Desktop app installer...");
+-    let mount_point = mount_dmg(&dmg_path).await?;
+-    eprintln!(
+-        "Installer mounted at {mount_point}.",
+-        mount_point = mount_point.display()
+-    );
+-    let result = async {
+-        let app_in_volume = find_codex_app_in_mount(&mount_point)
+-            .context("failed to locate Codex.app in mounted dmg")?;
+-        verify_codex_app_bundle(&app_in_volume)
+-            .await
+-            .context("refusing to install an unverified Desktop app")?;
+-        install_codex_app_bundle(&app_in_volume).await
+-    }
+-    .await;
+-
+-    let detach_result = detach_dmg(&mount_point).await;
+-    if let Err(err) = detach_result {
+-        eprintln!(
+-            "warning: failed to detach dmg at {mount_point}: {err}",
+-            mount_point = mount_point.display()
+-        );
+-    }
+-
+-    result
+-}
+-
+-async fn install_codex_app_bundle(app_in_volume: &Path) -> anyhow::Result<PathBuf> {
+-    for applications_dir in candidate_applications_dirs()? {
+-        eprintln!(
+-            "Installing Desktop app into {applications_dir}...",
+-            applications_dir = applications_dir.display()
+-        );
+-        std::fs::create_dir_all(&applications_dir).with_context(|| {
+-            format!(
+-                "failed to create applications dir {applications_dir}",
+-                applications_dir = applications_dir.display()
+-            )
+-        })?;
+-
+-        let dest_app = applications_dir.join("Codex.app");
+-        if dest_app.is_dir() {
+-            return Ok(dest_app);
+-        }
+-
+-        match copy_app_bundle(app_in_volume, &dest_app).await {
+-            Ok(()) => return Ok(dest_app),
+-            Err(err) => {
+-                eprintln!(
+-                    "warning: failed to install Codex.app to {applications_dir}: {err}",
+-                    applications_dir = applications_dir.display()
+-                );
+-            }
+-        }
+-    }
+-
+-    anyhow::bail!("failed to install Codex.app to any applications directory");
+-}
+-
+-fn candidate_applications_dirs() -> anyhow::Result<Vec<PathBuf>> {
+-    let mut dirs = vec![PathBuf::from("/Applications")];
+-    dirs.push(user_applications_dir()?);
+-    Ok(dirs)
+-}
+-
+-async fn download_dmg(url: &str, dest: &Path) -> anyhow::Result<()> {
+-    eprintln!("Downloading installer...");
+-    let status = Command::new("curl")
+-        .arg("-fL")
+-        .arg("--retry")
+-        .arg("3")
+-        .arg("--retry-delay")
+-        .arg("1")
+-        .arg("-o")
+-        .arg(dest)
+-        .arg(url)
+-        .status()
+-        .await
+-        .context("failed to invoke `curl`")?;
+-
+-    if status.success() {
+-        return Ok(());
+-    }
+-    anyhow::bail!("curl download failed with {status}");
+-}
+-
+-async fn mount_dmg(dmg_path: &Path) -> anyhow::Result<PathBuf> {
+-    let output = Command::new("hdiutil")
+-        .arg("attach")
+-        .arg("-nobrowse")
+-        .arg("-readonly")
+-        .arg(dmg_path)
+-        .output()
+-        .await
+-        .context("failed to invoke `hdiutil attach`")?;
+-
+-    if !output.status.success() {
+-        anyhow::bail!(
+-            "`hdiutil attach` failed with {status}: {stderr}",
+-            status = output.status,
+-            stderr = String::from_utf8_lossy(&output.stderr)
+-        );
+-    }
+-
+-    let stdout = String::from_utf8_lossy(&output.stdout);
+-    parse_hdiutil_attach_mount_point(&stdout)
+-        .map(PathBuf::from)
+-        .with_context(|| format!("failed to parse mount point from hdiutil output:\n{stdout}"))
+-}
+-
+-async fn detach_dmg(mount_point: &Path) -> anyhow::Result<()> {
+-    let status = Command::new("hdiutil")
+-        .arg("detach")
+-        .arg(mount_point)
+-        .status()
+-        .await
+-        .context("failed to invoke `hdiutil detach`")?;
+-
+-    if status.success() {
+-        return Ok(());
+-    }
+-    anyhow::bail!("hdiutil detach failed with {status}");
+-}
+-
+-fn find_codex_app_in_mount(mount_point: &Path) -> anyhow::Result<PathBuf> {
+-    let direct = mount_point.join("Codex.app");
+-    if direct.is_dir() {
+-        return Ok(direct);
+-    }
+-
+-    for entry in std::fs::read_dir(mount_point).with_context(|| {
+-        format!(
+-            "failed to read {mount_point}",
+-            mount_point = mount_point.display()
+-        )
+-    })? {
+-        let entry = entry.context("failed to read mount directory entry")?;
+-        let path = entry.path();
+-        if path.extension().is_some_and(|ext| ext == "app") && path.is_dir() {
+-            return Ok(path);
+-        }
+-    }
+-
+-    anyhow::bail!(
+-        "no .app bundle found at {mount_point}",
+-        mount_point = mount_point.display()
+-    );
+-}
+-
+-async fn copy_app_bundle(src_app: &Path, dest_app: &Path) -> anyhow::Result<()> {
+-    let status = Command::new("ditto")
+-        .arg(src_app)
+-        .arg(dest_app)
+-        .status()
+-        .await
+-        .context("failed to invoke `ditto`")?;
+-
+-    if status.success() {
+-        return Ok(());
+-    }
+-    anyhow::bail!("ditto copy failed with {status}");
+-}
+-
+-fn user_applications_dir() -> anyhow::Result<PathBuf> {
+-    let home = std::env::var_os("HOME").context("HOME is not set")?;
+-    Ok(PathBuf::from(home).join("Applications"))
+-}
+-
+-fn parse_hdiutil_attach_mount_point(output: &str) -> Option<String> {
+-    output.lines().find_map(|line| {
+-        if !line.contains("/Volumes/") {
+-            return None;
+-        }
+-        if let Some((_, mount)) = line.rsplit_once('\t') {
+-            return Some(mount.trim().to_string());
+-        }
+-        line.split_whitespace()
+-            .find(|field| field.starts_with("/Volumes/"))
+-            .map(str::to_string)
+-    })
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::codex_new_thread_url;
+-    use super::find_existing_codex_app_path;
+-    use super::open_codex_app;
+-    use super::parse_hdiutil_attach_mount_point;
+-    use super::verify_codex_app_bundle;
+-    use pretty_assertions::assert_eq;
+-    use std::fs;
+-    use std::path::Path;
+-
+-    fn write_app_bundle(app_path: &Path, bundle_identifier: &str) {
+-        let contents_path = app_path.join("Contents");
+-        fs::create_dir_all(&contents_path).expect("create app bundle");
+-        fs::write(
+-            contents_path.join("Info.plist"),
+-            format!(
+-                r#"<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>{bundle_identifier}</string></dict></plist>"#
+-            ),
+-        )
+-        .expect("write Info.plist");
+-    }
+-
+-    #[test]
+-    fn finds_chatgpt_app_with_codex_bundle_identifier() {
+-        let temp_dir = tempfile::tempdir().expect("create temp dir");
+-        let app_path = temp_dir.path().join("ChatGPT.app");
+-        write_app_bundle(&app_path, "com.openai.codex");
+-
+-        assert_eq!(
+-            find_existing_codex_app_path(&[temp_dir.path().to_path_buf()]),
+-            Some(app_path)
+-        );
+-    }
+-
+-    #[test]
+-    fn ignores_classic_chatgpt_app() {
+-        let temp_dir = tempfile::tempdir().expect("create temp dir");
+-        write_app_bundle(&temp_dir.path().join("ChatGPT.app"), "com.openai.chat");
+-        let codex_app_path = temp_dir.path().join("Codex.app");
+-        write_app_bundle(&codex_app_path, "com.openai.codex");
+-
+-        assert_eq!(
+-            find_existing_codex_app_path(&[temp_dir.path().to_path_buf()]),
+-            Some(codex_app_path)
+-        );
+-    }
+-
+-    #[tokio::test]
+-    async fn rejects_unsigned_app_with_codex_bundle_identifier() {
+-        let temp_dir = tempfile::tempdir().expect("create temp dir");
+-        let app_path = temp_dir.path().join("Codex.app");
+-        write_app_bundle(&app_path, "com.openai.codex");
+-
+-        let err = verify_codex_app_bundle(&app_path)
+-            .await
+-            .expect_err("unsigned app should not satisfy the OpenAI signing requirement");
+-
+-        assert!(
+-            err.to_string()
+-                .contains("failed OpenAI signature verification"),
+-            "unexpected verification error: {err}"
+-        );
+-    }
+-
+-    #[tokio::test]
+-    async fn rejects_valid_signature_without_openai_signing_identity() {
+-        let temp_dir = tempfile::tempdir().expect("create temp dir");
+-        let app_path = temp_dir.path().join("Codex.app");
+-        let contents_path = app_path.join("Contents");
+-        let executable_path = contents_path.join("MacOS/Codex");
+-        fs::create_dir_all(executable_path.parent().expect("executable parent"))
+-            .expect("create executable directory");
+-        fs::copy("/usr/bin/true", &executable_path).expect("copy executable into app bundle");
+-        fs::write(
+-            contents_path.join("Info.plist"),
+-            r#"<?xml version="1.0"?><plist version="1.0"><dict><key>CFBundleIdentifier</key><string>com.openai.codex</string><key>CFBundleExecutable</key><string>Codex</string></dict></plist>"#,
+-        )
+-        .expect("write Info.plist");
+-
+-        let sign_status = std::process::Command::new("/usr/bin/codesign")
+-            .args(["--force", "--sign", "-"])
+-            .arg(&app_path)
+-            .status()
+-            .expect("sign app bundle");
+-        assert!(sign_status.success(), "failed to ad-hoc sign app bundle");
+-
+-        let verify_status = std::process::Command::new("/usr/bin/codesign")
+-            .args(["--verify", "--deep", "--strict"])
+-            .arg(&app_path)
+-            .status()
+-            .expect("verify app bundle signature");
+-        assert!(verify_status.success(), "ad-hoc signature should be valid");
+-
+-        let err = verify_codex_app_bundle(&app_path)
+-            .await
+-            .expect_err("valid signature without the OpenAI team should not be trusted");
+-
+-        assert!(
+-            err.to_string()
+-                .contains("failed OpenAI signature verification"),
+-            "unexpected verification error: {err}"
+-        );
+-    }
+-
+-    #[tokio::test]
+-    async fn refuses_to_launch_unsigned_existing_codex_app() {
+-        let temp_dir = tempfile::tempdir().expect("create temp dir");
+-        let app_path = temp_dir.path().join("Codex.app");
+-        write_app_bundle(&app_path, "com.openai.codex");
+-
+-        let err = open_codex_app(&app_path, temp_dir.path())
+-            .await
+-            .expect_err("unsigned existing app should not be launched");
+-
+-        assert!(
+-            err.to_string()
+-                .contains("failed OpenAI signature verification"),
+-            "unexpected launch error: {err}"
+-        );
+-    }
+-
+-    #[test]
+-    fn parses_mount_point_from_tab_separated_hdiutil_output() {
+-        let output = "/dev/disk2s1\tApple_HFS\tCodex\t/Volumes/Codex\n";
+-        assert_eq!(
+-            parse_hdiutil_attach_mount_point(output).as_deref(),
+-            Some("/Volumes/Codex")
+-        );
+-    }
+-
+-    #[test]
+-    fn parses_mount_point_with_spaces() {
+-        let output = "/dev/disk2s1\tApple_HFS\tCodex Installer\t/Volumes/Codex Installer\n";
+-        assert_eq!(
+-            parse_hdiutil_attach_mount_point(output).as_deref(),
+-            Some("/Volumes/Codex Installer")
+-        );
+-    }
+-
+-    #[test]
+-    fn codex_new_thread_url_encodes_workspace_path() {
+-        let url = url::Url::parse(&codex_new_thread_url(Path::new("/tmp/codex workspace/#1")))
+-            .expect("deep link should parse");
+-
+-        assert_eq!(
+-            (
+-                url.scheme().to_string(),
+-                url.host_str().map(str::to_string),
+-                url.path().to_string(),
+-                url.query_pairs().into_owned().collect::<Vec<_>>(),
+-            ),
+-            (
+-                "codex".to_string(),
+-                Some("threads".to_string()),
+-                "/new".to_string(),
+-                vec![("path".to_string(), "/tmp/codex workspace/#1".to_string())],
+-            )
+-        );
+-    }
+-}
+diff --git a/codex-rs/cli/src/desktop_app/mod.rs b/codex-rs/cli/src/desktop_app/mod.rs
+deleted file mode 100644
+index 5a78341..0000000
+--- a/codex-rs/cli/src/desktop_app/mod.rs
++++ /dev/null
+@@ -1,22 +0,0 @@
+-#[cfg(target_os = "macos")]
+-mod mac;
+-#[cfg(target_os = "windows")]
+-mod windows;
+-
+-/// Run the app install/open logic for the current OS.
+-#[cfg(target_os = "macos")]
+-pub async fn run_app_open_or_install(
+-    workspace: std::path::PathBuf,
+-    download_url_override: Option<String>,
+-) -> anyhow::Result<()> {
+-    mac::run_mac_app_open_or_install(workspace, download_url_override).await
+-}
+-
+-/// Run the app install/open logic for the current OS.
+-#[cfg(target_os = "windows")]
+-pub async fn run_app_open_or_install(
+-    workspace: std::path::PathBuf,
+-    download_url_override: Option<String>,
+-) -> anyhow::Result<()> {
+-    windows::run_windows_app_open_or_install(workspace, download_url_override).await
+-}
+diff --git a/codex-rs/cli/src/desktop_app/windows.rs b/codex-rs/cli/src/desktop_app/windows.rs
+deleted file mode 100644
+index ab0f757..0000000
+--- a/codex-rs/cli/src/desktop_app/windows.rs
++++ /dev/null
+@@ -1,133 +0,0 @@
+-use anyhow::Context as _;
+-use std::path::Path;
+-use std::path::PathBuf;
+-use tokio::process::Command;
+-
+-const CODEX_WINDOWS_INSTALLER_URL: &str =
+-    "https://get.microsoft.com/installer/download/9PLM9XGG6VKS?cid=website_cta_psi";
+-const CODEX_MICROSOFT_STORE_WEB_URL: &str = "https://apps.microsoft.com/detail/9plm9xgg6vks";
+-
+-pub async fn run_windows_app_open_or_install(
+-    workspace: PathBuf,
+-    download_url_override: Option<String>,
+-) -> anyhow::Result<()> {
+-    let workspace_path = workspace.display().to_string();
+-    let display_workspace = display_workspace_path(&workspace);
+-    if codex_app_is_installed().await? {
+-        eprintln!("Opening workspace {display_workspace} in the Desktop app...");
+-        open_url(&codex_new_thread_url(&workspace_path)).await?;
+-        return Ok(());
+-    }
+-
+-    eprintln!("Desktop app not found; opening Windows installer...");
+-    let download_url = download_url_override
+-        .as_deref()
+-        .unwrap_or(CODEX_WINDOWS_INSTALLER_URL);
+-    if open_url(download_url).await.is_err() && download_url_override.is_none() {
+-        open_url(CODEX_MICROSOFT_STORE_WEB_URL).await?;
+-    }
+-    eprintln!("After installing the Desktop app, open workspace {display_workspace}.");
+-    Ok(())
+-}
+-
+-async fn codex_app_is_installed() -> anyhow::Result<bool> {
+-    // This package identity is stable across Codex- and ChatGPT-branded builds.
+-    let output = Command::new("powershell.exe")
+-        .arg("-NoProfile")
+-        .arg("-Command")
+-        .arg(
+-            "Get-StartApps | Where-Object AppID -Like 'OpenAI.Codex_*!App' | Select-Object -First 1 -ExpandProperty AppID",
+-        )
+-        .output()
+-        .await
+-        .context("failed to invoke `powershell.exe`")?;
+-
+-    if !output.status.success() {
+-        return Ok(false);
+-    }
+-
+-    Ok(!String::from_utf8_lossy(&output.stdout).trim().is_empty())
+-}
+-
+-async fn open_url(url: &str) -> anyhow::Result<()> {
+-    let status = Command::new("powershell.exe")
+-        .arg("-NoProfile")
+-        .arg("-Command")
+-        .arg("& { param($target) Start-Process -FilePath $target }")
+-        .arg(url)
+-        .status()
+-        .await
+-        .with_context(|| format!("failed to open {url}"))?;
+-
+-    if status.success() {
+-        Ok(())
+-    } else {
+-        anyhow::bail!("failed to open {url} with {status}");
+-    }
+-}
+-
+-fn codex_new_thread_url(workspace: &str) -> String {
+-    let mut serializer = url::form_urlencoded::Serializer::new(String::new());
+-    serializer.append_pair("path", workspace);
+-    let query = serializer.finish();
+-    format!("codex://threads/new?{query}")
+-}
+-
+-fn display_workspace_path(workspace: &Path) -> String {
+-    let path = workspace.display().to_string();
+-    if let Some(path) = path.strip_prefix(r"\\?\UNC\") {
+-        format!(r"\\{path}")
+-    } else if let Some(path) = path.strip_prefix(r"\\?\") {
+-        path.to_string()
+-    } else {
+-        path
+-    }
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use super::codex_new_thread_url;
+-    use super::display_workspace_path;
+-    use pretty_assertions::assert_eq;
+-    use std::path::Path;
+-
+-    #[test]
+-    fn display_workspace_path_removes_windows_extended_prefix() {
+-        assert_eq!(
+-            display_workspace_path(Path::new(r"\\?\C:\Users\fcoury\code\codex")),
+-            r"C:\Users\fcoury\code\codex"
+-        );
+-    }
+-
+-    #[test]
+-    fn display_workspace_path_preserves_unc_prefix() {
+-        assert_eq!(
+-            display_workspace_path(Path::new(r"\\?\UNC\server\share\codex")),
+-            r"\\server\share\codex"
+-        );
+-    }
+-
+-    #[test]
+-    fn display_workspace_path_leaves_regular_paths_unchanged() {
+-        assert_eq!(
+-            display_workspace_path(Path::new(r"C:\Users\fcoury\code\codex")),
+-            r"C:\Users\fcoury\code\codex"
+-        );
+-    }
+-
+-    #[test]
+-    fn codex_new_thread_url_encodes_windows_workspace_path() {
+-        assert_eq!(
+-            codex_new_thread_url(r"C:\Users\akuma\repos\koba"),
+-            r"codex://threads/new?path=C%3A%5CUsers%5Cakuma%5Crepos%5Ckoba"
+-        );
+-    }
+-
+-    #[test]
+-    fn codex_new_thread_url_preserves_verbatim_workspace_path() {
+-        assert_eq!(
+-            codex_new_thread_url(r"\\?\C:\Users\akuma\repos\koba"),
+-            r"codex://threads/new?path=%5C%5C%3F%5CC%3A%5CUsers%5Cakuma%5Crepos%5Ckoba"
+-        );
+-    }
+-}
+diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
+index e42fa9b..e0e9f93 100644
+--- a/codex-rs/cli/src/doctor.rs
++++ b/codex-rs/cli/src/doctor.rs
+@@ -72,7 +72,6 @@ use serde::Serialize;
+ use supports_color::Stream;
+ 
+ mod background;
+-mod desktop;
+ mod disk;
+ mod git;
+ mod network;
+@@ -88,10 +87,6 @@ mod updates;
+ #[cfg(target_os = "windows")]
+ mod windows_dev_drive;
+ 
+-#[cfg(test)]
+-#[path = "doctor/desktop_tests.rs"]
+-mod desktop_tests;
+-
+ use background::background_server_check;
+ use git::git_check;
+ use output::HumanOutputOptions;
+@@ -547,17 +542,6 @@ async fn build_report(
+         }
+     }
+ 
+-    progress.begin("desktop");
+-    if let Some(desktop) = desktop::collect().await {
+-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+-        if let Some(application) = desktop.application.as_ref() {
+-            updates::append_desktop_update(&mut checks, config_result.as_ref().ok(), application)
+-                .await;
+-        }
+-        progress.finish("desktop", overall_status(&desktop.checks));
+-        checks.extend(desktop.checks);
+-    }
+-
+     progress.settle();
+ 
+     let overall_status = overall_status(&checks);
+diff --git a/codex-rs/cli/src/doctor/desktop.rs b/codex-rs/cli/src/doctor/desktop.rs
+deleted file mode 100644
+index 96b6a06..0000000
+--- a/codex-rs/cli/src/doctor/desktop.rs
++++ /dev/null
+@@ -1,320 +0,0 @@
+-use std::cmp::Reverse;
+-use std::env;
+-use std::fs;
+-use std::io;
+-use std::io::Read;
+-use std::path::Path;
+-use std::path::PathBuf;
+-use std::time::SystemTime;
+-
+-use chrono::DateTime;
+-use chrono::FixedOffset;
+-use chrono::Utc;
+-
+-use super::CheckStatus;
+-use super::DoctorCheck;
+-
+-#[cfg(target_os = "macos")]
+-mod macos_security;
+-pub(super) mod platform;
+-#[cfg(any(target_os = "windows", test))]
+-mod windows_security;
+-
+-const MAX_DIRECTORY_ENTRIES: usize = 256;
+-const MAX_LOG_FILES: usize = 64;
+-const MAX_SESSION_LOG_FILES: usize = 8;
+-const MAX_LOG_SEGMENT_BYTES: u64 = 10 * 1024 * 1024;
+-const HANDSHAKE_CHECK_ID: &str = "desktop.app_server.handshake";
+-
+-pub(super) struct DesktopDiagnostics {
+-    pub(super) checks: Vec<DoctorCheck>,
+-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+-    pub(super) application: Option<platform::InstalledApp>,
+-}
+-
+-struct DesktopLog {
+-    path: PathBuf,
+-    session_id: String,
+-    process_id: u32,
+-    modified: SystemTime,
+-}
+-
+-struct HandshakeEvent {
+-    timestamp: DateTime<FixedOffset>,
+-    outcome: HandshakeOutcome,
+-    websocket: bool,
+-}
+-
+-enum HandshakeOutcome {
+-    Success,
+-    Failure,
+-}
+-
+-enum DesktopLogEvent {
+-    ConnectionContext { local_websocket: bool },
+-    Handshake(HandshakeEvent),
+-}
+-
+-pub(super) async fn collect() -> Option<DesktopDiagnostics> {
+-    let application = match platform::installed_app().await {
+-        Ok(Some(application)) => application,
+-        Ok(None) => return None,
+-        Err(_) => {
+-            return Some(DesktopDiagnostics {
+-                checks: vec![
+-                    unavailable(
+-                        "desktop.app.version",
+-                        "the desktop application installation could not be inspected",
+-                    ),
+-                    #[cfg(target_os = "windows")]
+-                    windows_security::collect().await,
+-                ],
+-                #[cfg(any(target_os = "macos", target_os = "windows"))]
+-                application: None,
+-            });
+-        }
+-    };
+-
+-    let directory = desktop_log_root(application.identity);
+-    let (running, handshake) = match &directory {
+-        Some(root) => inspect_desktop_session(
+-            &root.join(Utc::now().format("%Y/%m/%d").to_string()),
+-            |pid| platform::application_running(&application, pid),
+-        ),
+-        None => (false, stopped_desktop_check()),
+-    };
+-    let log_directory = directory
+-        .as_deref()
+-        .map_or_else(|| "unavailable".to_string(), redacted_path);
+-    let application_check = platform::desktop_check(
+-        "desktop.app.version",
+-        CheckStatus::Ok,
+-        "the desktop application is installed",
+-    )
+-    .detail(format!("version: {}", application.version))
+-    .detail(format!("running: {running}"))
+-    .detail(format!("log directory: {log_directory}"));
+-
+-    Some(DesktopDiagnostics {
+-        checks: vec![
+-            application_check,
+-            handshake,
+-            #[cfg(target_os = "macos")]
+-            macos_security::collect(&application.bundle).await,
+-            #[cfg(target_os = "windows")]
+-            windows_security::collect().await,
+-        ],
+-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+-        application: Some(application),
+-    })
+-}
+-
+-pub(super) fn inspect_desktop_session(
+-    directory: &Path,
+-    application_running: impl Fn(u32) -> bool,
+-) -> (bool, DoctorCheck) {
+-    let logs = discover_desktop_logs(directory);
+-    let Some(session) = logs.iter().find(|log| application_running(log.process_id)) else {
+-        return (false, stopped_desktop_check());
+-    };
+-
+-    let check = latest_session_handshake(&logs, &session.session_id).map_or_else(
+-        || {
+-            platform::desktop_check(
+-                HANDSHAKE_CHECK_ID,
+-                CheckStatus::Ok,
+-                "no desktop app-server handshake was recorded",
+-            )
+-        },
+-        |event| event.outcome.into_check(),
+-    );
+-
+-    (true, check)
+-}
+-
+-fn desktop_log_root(identity: &str) -> Option<PathBuf> {
+-    let root = match env::consts::OS {
+-        "macos" => PathBuf::from(env::var_os("HOME")?)
+-            .join("Library/Logs")
+-            .join(identity),
+-        "windows" => {
+-            let local = env::var_os("LOCALAPPDATA").map(PathBuf::from).or_else(|| {
+-                env::var_os("USERPROFILE").map(|home| PathBuf::from(home).join("AppData/Local"))
+-            })?;
+-            local.join("Codex/Logs")
+-        }
+-        _ => return None,
+-    };
+-
+-    Some(root)
+-}
+-
+-fn discover_desktop_logs(directory: &Path) -> Vec<DesktopLog> {
+-    let Ok(entries) = fs::read_dir(directory) else {
+-        return Vec::new();
+-    };
+-
+-    let mut logs = entries
+-        .take(MAX_DIRECTORY_ENTRIES)
+-        .filter_map(Result::ok)
+-        .filter_map(DesktopLog::from_entry)
+-        .collect::<Vec<_>>();
+-    logs.sort_unstable_by_key(|log| Reverse(log.modified));
+-    logs.truncate(MAX_LOG_FILES);
+-    logs
+-}
+-
+-fn latest_session_handshake(logs: &[DesktopLog], session_id: &str) -> Option<HandshakeEvent> {
+-    let mut latest: Option<HandshakeEvent> = None;
+-
+-    for log in logs
+-        .iter()
+-        .filter(|log| log.session_id == session_id)
+-        .take(MAX_SESSION_LOG_FILES)
+-    {
+-        let Ok(contents) = read_log_segment(&log.path) else {
+-            continue;
+-        };
+-        let mut local_websocket = false;
+-
+-        for line in String::from_utf8_lossy(&contents).lines() {
+-            match DesktopLogEvent::parse(line) {
+-                Some(DesktopLogEvent::ConnectionContext {
+-                    local_websocket: local,
+-                }) => {
+-                    local_websocket = local;
+-                }
+-                Some(DesktopLogEvent::Handshake(event))
+-                    if (!event.websocket || local_websocket)
+-                        && latest
+-                            .as_ref()
+-                            .is_none_or(|current| event.timestamp >= current.timestamp) =>
+-                {
+-                    latest = Some(event);
+-                }
+-                _ => {}
+-            }
+-        }
+-    }
+-
+-    latest
+-}
+-
+-impl DesktopLog {
+-    fn from_entry(entry: fs::DirEntry) -> Option<Self> {
+-        let metadata = entry.metadata().ok()?;
+-        if !metadata.is_file() {
+-            return None;
+-        }
+-
+-        let name = entry.file_name();
+-        let name = name
+-            .to_str()?
+-            .strip_prefix("codex-desktop-")?
+-            .strip_suffix(".log")?;
+-        let (session_and_pid, _) = name.split_once("-t")?;
+-        let (session_id, process_id) = session_and_pid.rsplit_once('-')?;
+-
+-        Some(Self {
+-            path: entry.path(),
+-            session_id: session_id.to_string(),
+-            process_id: process_id.parse().ok().filter(|pid| *pid > 0)?,
+-            modified: metadata.modified().ok()?,
+-        })
+-    }
+-}
+-
+-fn read_log_segment(path: &Path) -> io::Result<Vec<u8>> {
+-    let mut contents = Vec::new();
+-    fs::File::open(path)?
+-        .take(MAX_LOG_SEGMENT_BYTES)
+-        .read_to_end(&mut contents)?;
+-    Ok(contents)
+-}
+-
+-impl DesktopLogEvent {
+-    fn parse(line: &str) -> Option<Self> {
+-        let (timestamp, line) = line.split_once(' ')?;
+-        let timestamp = DateTime::parse_from_rfc3339(timestamp).ok()?;
+-        let (_, message) = line.split_once(" [AppServerConnection] ")?;
+-
+-        if let Some(fields) = message
+-            .strip_prefix("Starting app-server connection ")
+-            .or_else(|| message.strip_prefix("app_server_connection.state_changed "))
+-        {
+-            return Some(Self::ConnectionContext {
+-                local_websocket: log_field(fields, "hostId") == Some("local")
+-                    && log_field(fields, "transport") == Some("websocket"),
+-            });
+-        }
+-
+-        let fields = message.strip_prefix("initialize_handshake_result ")?;
+-        let outcome = match log_field(fields, "outcome")? {
+-            "success" => HandshakeOutcome::Success,
+-            "failure" => HandshakeOutcome::Failure,
+-            _ => return None,
+-        };
+-        let websocket = match log_field(fields, "transportKind")? {
+-            "stdio" => false,
+-            "websocket" => true,
+-            _ => return None,
+-        };
+-
+-        Some(Self::Handshake(HandshakeEvent {
+-            timestamp,
+-            outcome,
+-            websocket,
+-        }))
+-    }
+-}
+-
+-impl HandshakeOutcome {
+-    fn into_check(self) -> DoctorCheck {
+-        let (status, summary) = match self {
+-            Self::Success => (
+-                CheckStatus::Ok,
+-                "the desktop app-server initialized successfully",
+-            ),
+-            Self::Failure => (
+-                CheckStatus::Fail,
+-                "the desktop app-server failed to initialize",
+-            ),
+-        };
+-
+-        platform::desktop_check(HANDSHAKE_CHECK_ID, status, summary)
+-    }
+-}
+-
+-fn log_field<'a>(fields: &'a str, name: &str) -> Option<&'a str> {
+-    fields.split_whitespace().rev().find_map(|field| {
+-        let (key, value) = field.split_once('=')?;
+-        (key == name).then_some(value)
+-    })
+-}
+-
+-fn stopped_desktop_check() -> DoctorCheck {
+-    platform::desktop_check(
+-        HANDSHAKE_CHECK_ID,
+-        CheckStatus::Ok,
+-        "the desktop application is not running",
+-    )
+-}
+-
+-fn unavailable(id: &'static str, summary: &'static str) -> DoctorCheck {
+-    platform::desktop_check(id, CheckStatus::Warning, summary)
+-        .remediation("restore desktop diagnostic access and rerun codex doctor")
+-}
+-
+-fn redacted_path(path: &Path) -> String {
+-    for variable in ["HOME", "USERPROFILE"] {
+-        if let Some(home) = env::var_os(variable)
+-            && let Ok(relative) = path.strip_prefix(Path::new(&home))
+-        {
+-            return Path::new("$HOME").join(relative).display().to_string();
+-        }
+-    }
+-    path.file_name()
+-        .unwrap_or(path.as_os_str())
+-        .to_string_lossy()
+-        .into_owned()
+-}
+diff --git a/codex-rs/cli/src/doctor/desktop/macos_security.rs b/codex-rs/cli/src/doctor/desktop/macos_security.rs
+deleted file mode 100644
+index ae0a1bf..0000000
+--- a/codex-rs/cli/src/doctor/desktop/macos_security.rs
++++ /dev/null
+@@ -1,236 +0,0 @@
+-use super::super::CheckStatus;
+-use super::super::DoctorCheck;
+-use super::platform::desktop_check;
+-use std::io;
+-use std::path::Path;
+-use std::process::Output;
+-use std::process::Stdio;
+-use std::time::Duration;
+-use tokio::io::AsyncRead;
+-use tokio::io::AsyncReadExt;
+-use tokio::process::Command;
+-use tokio::time::timeout;
+-
+-const PROBE_TIMEOUT: Duration = Duration::from_secs(10);
+-const MAX_OUTPUT_BYTES: usize = 256 * 1024;
+-const SECURITY_LOG_PREDICATE: &str = concat!(
+-    "(process == 'syspolicyd' OR process == 'AppleSystemPolicy' ",
+-    "OR process BEGINSWITH 'XProtect' OR subsystem BEGINSWITH 'com.apple.syspolicy' ",
+-    "OR subsystem CONTAINS[c] 'XProtect' ",
+-    "OR subsystem == 'com.apple.security.assessment') AND ",
+-    "(eventMessage CONTAINS[c] 'codex' OR eventMessage CONTAINS[c] 'chatgpt' ",
+-    "OR eventMessage CONTAINS[c] '.plugin-appserver' ",
+-    "OR eventMessage CONTAINS[c] '100024' OR eventMessage CONTAINS[c] 'EMFILE' ",
+-    "OR eventMessage CONTAINS[c] 'ENFILE' ",
+-    "OR eventMessage CONTAINS[c] 'too many open files' ",
+-    "OR eventMessage CONTAINS[c] 'Unexpected Xprotect assessment')"
+-);
+-
+-#[derive(Clone, Copy, Debug, Eq, Ord, PartialEq, PartialOrd)]
+-enum Evidence {
+-    Clear,
+-    Audit,
+-    Exhausted,
+-    Blocked,
+-    Malware,
+-    Unavailable,
+-}
+-
+-pub(super) async fn collect(bundle: &Path) -> DoctorCheck {
+-    let (gatekeeper, events) = tokio::join!(inspect_gatekeeper(bundle), inspect_security_events());
+-    enforcement_check(gatekeeper, events)
+-}
+-
+-async fn inspect_gatekeeper(bundle: &Path) -> Evidence {
+-    let mut command = Command::new("/usr/sbin/spctl");
+-    command
+-        .args(["--assess", "--type", "execute", "--verbose=2"])
+-        .arg(bundle);
+-    classify_gatekeeper(run_command(&mut command).await.as_ref())
+-}
+-
+-fn classify_gatekeeper(output: Option<&Output>) -> Evidence {
+-    let Some(output) = output.filter(|output| !is_truncated(output)) else {
+-        return Evidence::Unavailable;
+-    };
+-    if output.status.success() {
+-        return Evidence::Clear;
+-    }
+-    let error = String::from_utf8_lossy(&output.stderr).to_ascii_lowercase();
+-    if error.contains("rejected") || error.contains("no usable signature") {
+-        Evidence::Blocked
+-    } else {
+-        Evidence::Unavailable
+-    }
+-}
+-
+-async fn inspect_security_events() -> Evidence {
+-    let mut command = Command::new("/usr/bin/log");
+-    command.args([
+-        "show",
+-        "--last",
+-        "30m",
+-        "--info",
+-        "--style",
+-        "compact",
+-        "--predicate",
+-        SECURITY_LOG_PREDICATE,
+-    ]);
+-    let Some(output) = run_command(&mut command)
+-        .await
+-        .filter(|output| output.status.success())
+-    else {
+-        return Evidence::Unavailable;
+-    };
+-    let evidence = classify_security_events(&String::from_utf8_lossy(&output.stdout));
+-    if is_truncated(&output) && evidence < Evidence::Exhausted {
+-        Evidence::Unavailable
+-    } else {
+-        evidence
+-    }
+-}
+-
+-fn classify_security_events(output: &str) -> Evidence {
+-    let mut evidence = Evidence::Clear;
+-    for line in output.lines().map(str::to_ascii_lowercase) {
+-        let contains = |values: &[&str]| values.iter().any(|value| line.contains(value));
+-        if !contains(&[
+-            "com.openai.codex",
+-            "codex.app",
+-            "chatgpt.app",
+-            ".plugin-appserver",
+-            "codex-command-runner",
+-        ]) || contains(&["not blocked", "not denied"])
+-        {
+-            continue;
+-        }
+-        let event = if contains(&["100024", "emfile", "enfile", "too many open files"]) {
+-            Evidence::Exhausted
+-        } else if contains(&["would block", "would deny"]) {
+-            Evidence::Audit
+-        } else if contains(&[
+-            "xp_malware_detected",
+-            "xp_malware_remediated",
+-            "malware detected",
+-            "malware blocked",
+-            "malware removed",
+-            "remediat",
+-        ]) {
+-            Evidence::Malware
+-        } else if contains(&[
+-            "blocked",
+-            "denied",
+-            "rejected",
+-            "notarization failed",
+-            "signature invalid",
+-            "execution prevented",
+-            "unexpected xprotect assessment",
+-            "damaged and",
+-        ]) {
+-            Evidence::Blocked
+-        } else if contains(&["audit"]) {
+-            Evidence::Audit
+-        } else {
+-            Evidence::Clear
+-        };
+-        evidence = evidence.max(event);
+-    }
+-    evidence
+-}
+-
+-fn enforcement_check(gatekeeper: Evidence, events: Evidence) -> DoctorCheck {
+-    let id = "desktop.security.enforcement";
+-    let (status, summary, remedy) = if events == Evidence::Malware {
+-        (
+-            CheckStatus::Fail,
+-            "macos XProtect blocked or remediated the desktop application",
+-            "collect the XProtect detection and ask your security administrator to review the official Codex installation",
+-        )
+-    } else if gatekeeper == Evidence::Blocked {
+-        (
+-            CheckStatus::Fail,
+-            "macos gatekeeper rejected the desktop application",
+-            "ask your security administrator to review the application policy",
+-        )
+-    } else if events == Evidence::Blocked {
+-        (
+-            CheckStatus::Fail,
+-            "a recent macos security event blocked the desktop application",
+-            "ask your security administrator to review the matching prevention event",
+-        )
+-    } else if events == Evidence::Exhausted {
+-        (
+-            CheckStatus::Warning,
+-            "macos system-policy diagnostics indicate file descriptor exhaustion",
+-            "restart your Mac, retry Codex once, and contact support if the problem returns",
+-        )
+-    } else if events == Evidence::Audit {
+-        (
+-            CheckStatus::Warning,
+-            "recent desktop security events are audit-only",
+-            "ask your security administrator to verify the application policy",
+-        )
+-    } else if gatekeeper == Evidence::Unavailable {
+-        (
+-            CheckStatus::Warning,
+-            "the desktop security assessment was unavailable",
+-            "check access to macos gatekeeper diagnostics",
+-        )
+-    } else if events == Evidence::Unavailable {
+-        (
+-            CheckStatus::Warning,
+-            "recent macos security enforcement history was unavailable",
+-            "check access to macos unified security logs and rerun codex doctor",
+-        )
+-    } else {
+-        return desktop_check(
+-            id,
+-            CheckStatus::Ok,
+-            "the desktop application passed available macos security assessments",
+-        )
+-        .detail("gatekeeper: accepted");
+-    };
+-    desktop_check(id, status, summary).remediation(remedy)
+-}
+-
+-fn is_truncated(output: &Output) -> bool {
+-    output.stdout.len() > MAX_OUTPUT_BYTES || output.stderr.len() > MAX_OUTPUT_BYTES
+-}
+-
+-async fn run_command(command: &mut Command) -> Option<Output> {
+-    command
+-        .stdin(Stdio::null())
+-        .stdout(Stdio::piped())
+-        .stderr(Stdio::piped())
+-        .kill_on_drop(true);
+-    let mut child = command.spawn().ok()?;
+-    let (stdout, stderr) = (child.stdout.take()?, child.stderr.take()?);
+-    timeout(PROBE_TIMEOUT, async {
+-        let (stdout, stderr, status) =
+-            tokio::join!(read_bounded(stdout), read_bounded(stderr), child.wait());
+-        Some(Output {
+-            status: status.ok()?,
+-            stdout: stdout.ok()?,
+-            stderr: stderr.ok()?,
+-        })
+-    })
+-    .await
+-    .ok()
+-    .flatten()
+-}
+-
+-async fn read_bounded<R: AsyncRead + Unpin>(mut reader: R) -> io::Result<Vec<u8>> {
+-    let mut bytes = Vec::new();
+-    (&mut reader)
+-        .take(MAX_OUTPUT_BYTES as u64 + 1)
+-        .read_to_end(&mut bytes)
+-        .await?;
+-    if bytes.len() > MAX_OUTPUT_BYTES {
+-        tokio::io::copy(&mut reader, &mut tokio::io::sink()).await?;
+-    }
+-    Ok(bytes)
+-}
+-
+-#[cfg(test)]
+-#[path = "macos_security_tests.rs"]
+-mod tests;
+diff --git a/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs b/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs
+deleted file mode 100644
+index 4fb1cc5..0000000
+--- a/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs
++++ /dev/null
+@@ -1,67 +0,0 @@
+-use super::CheckStatus;
+-use super::Evidence;
+-use super::classify_gatekeeper;
+-use super::classify_security_events;
+-use super::enforcement_check;
+-use pretty_assertions::assert_eq;
+-use std::os::unix::process::ExitStatusExt;
+-use std::process::ExitStatus;
+-use std::process::Output;
+-
+-#[test]
+-fn only_matching_enforced_apple_security_events_are_failures() {
+-    for (event, expected) in [
+-        ("denied com.openai.codex", Evidence::Blocked),
+-        (
+-            "denied /Applications/Codex.app/Contents/MacOS/Codex",
+-            Evidence::Blocked,
+-        ),
+-        ("malware detected ChatGPT.app", Evidence::Malware),
+-        ("audit token blocked ChatGPT.app", Evidence::Blocked),
+-        (
+-            "audit token XP_MALWARE_DETECTED ChatGPT.app",
+-            Evidence::Malware,
+-        ),
+-        ("XP_MALWARE_REMEDIATED ChatGPT.app", Evidence::Malware),
+-        ("denied .plugin-appserver", Evidence::Blocked),
+-        ("audit would block ChatGPT.app", Evidence::Audit),
+-        ("OSStatus 100024 ChatGPT.app", Evidence::Exhausted),
+-        ("not blocked ChatGPT.app", Evidence::Clear),
+-        ("denied EMFILE com.example.other", Evidence::Clear),
+-        ("EMFILE\nmalware detected ChatGPT.app", Evidence::Malware),
+-    ] {
+-        assert_eq!(classify_security_events(event), expected, "{event}");
+-    }
+-}
+-
+-#[test]
+-fn gatekeeper_failures_require_actionable_security_evidence() {
+-    for (message, expected) in [
+-        ("ChatGPT.app: rejected", Evidence::Blocked),
+-        ("operation not permitted", Evidence::Unavailable),
+-    ] {
+-        let output = Output {
+-            status: ExitStatus::from_raw(1 << 8),
+-            stdout: Vec::new(),
+-            stderr: message.as_bytes().to_vec(),
+-        };
+-        assert_eq!(classify_gatekeeper(Some(&output)), expected);
+-    }
+-}
+-
+-#[test]
+-fn exhaustion_and_unavailable_history_have_actionable_warnings() {
+-    for (events, remedy) in [
+-        (Evidence::Exhausted, "restart"),
+-        (Evidence::Unavailable, "unified security logs"),
+-    ] {
+-        let check = enforcement_check(Evidence::Clear, events);
+-        assert_eq!(check.status, CheckStatus::Warning);
+-        assert!(
+-            check
+-                .remediation
+-                .as_deref()
+-                .is_some_and(|value| value.contains(remedy))
+-        );
+-    }
+-}
+diff --git a/codex-rs/cli/src/doctor/desktop/platform.rs b/codex-rs/cli/src/doctor/desktop/platform.rs
+deleted file mode 100644
+index b06685a..0000000
+--- a/codex-rs/cli/src/doctor/desktop/platform.rs
++++ /dev/null
+@@ -1,283 +0,0 @@
+-#[cfg(target_os = "macos")]
+-use std::ffi::CStr;
+-#[cfg(target_os = "macos")]
+-use std::ffi::OsStr;
+-#[cfg(target_os = "macos")]
+-use std::fs;
+-#[cfg(target_os = "macos")]
+-use std::os::unix::ffi::OsStrExt;
+-#[cfg(target_os = "windows")]
+-use std::os::windows::io::AsRawHandle;
+-#[cfg(target_os = "windows")]
+-use std::os::windows::io::FromRawHandle;
+-#[cfg(target_os = "windows")]
+-use std::os::windows::io::OwnedHandle;
+-#[cfg(target_os = "macos")]
+-use std::path::Path;
+-#[cfg(target_os = "macos")]
+-use std::path::PathBuf;
+-#[cfg(target_os = "macos")]
+-use std::process::Stdio;
+-#[cfg(target_os = "macos")]
+-use std::time::Duration;
+-
+-#[cfg(target_os = "macos")]
+-use serde_json::Value;
+-#[cfg(target_os = "macos")]
+-use tokio::process::Command;
+-#[cfg(target_os = "macos")]
+-use tokio::time::timeout;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::Foundation::ERROR_INSUFFICIENT_BUFFER;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::Foundation::ERROR_SUCCESS;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::Storage::Packaging::Appx::FindPackagesByPackageFamily;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::Storage::Packaging::Appx::GetPackageFamilyName;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::Storage::Packaging::Appx::PACKAGE_FILTER_HEAD;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::System::Threading::OpenProcess;
+-#[cfg(target_os = "windows")]
+-use windows_sys::Win32::System::Threading::PROCESS_QUERY_LIMITED_INFORMATION;
+-
+-use super::super::CheckStatus;
+-use super::super::DoctorCheck;
+-
+-pub(in crate::doctor) struct InstalledApp {
+-    pub(in crate::doctor) identity: &'static str,
+-    pub(in crate::doctor) version: String,
+-    #[cfg(target_os = "windows")]
+-    package_family: &'static str,
+-    #[cfg(target_os = "macos")]
+-    pub(in crate::doctor) bundle: PathBuf,
+-    #[cfg(target_os = "macos")]
+-    pub(in crate::doctor) build: u64,
+-}
+-
+-#[derive(Clone, Copy, Debug)]
+-pub(in crate::doctor) struct DiscoveryError;
+-
+-pub(super) async fn installed_app() -> Result<Option<InstalledApp>, DiscoveryError> {
+-    #[cfg(target_os = "windows")]
+-    {
+-        installed_windows_app()
+-    }
+-    #[cfg(target_os = "macos")]
+-    {
+-        installed_macos_app().await
+-    }
+-    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+-    {
+-        Ok(None)
+-    }
+-}
+-
+-#[cfg(target_os = "macos")]
+-pub(super) fn application_running(application: &InstalledApp, candidate_pid: u32) -> bool {
+-    process_executable_path(candidate_pid)
+-        .is_some_and(|path| path.starts_with(application.bundle.join("Contents/MacOS")))
+-}
+-
+-#[cfg(target_os = "macos")]
+-fn process_executable_path(pid: u32) -> Option<PathBuf> {
+-    let pid = i32::try_from(pid).ok()?;
+-    let mut buffer = [0_u8; libc::PROC_PIDPATHINFO_MAXSIZE as usize];
+-    let result =
+-        unsafe { libc::proc_pidpath(pid, buffer.as_mut_ptr().cast(), buffer.len() as u32) };
+-    if result <= 0 {
+-        return None;
+-    }
+-    let executable = CStr::from_bytes_until_nul(&buffer).ok()?;
+-    Some(PathBuf::from(OsStr::from_bytes(executable.to_bytes())))
+-}
+-
+-#[cfg(target_os = "windows")]
+-pub(super) fn application_running(application: &InstalledApp, candidate_pid: u32) -> bool {
+-    process_package_family(candidate_pid).as_deref() == Some(application.package_family)
+-}
+-
+-#[cfg(target_os = "windows")]
+-fn process_package_family(pid: u32) -> Option<String> {
+-    let handle = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid) };
+-    if handle == 0 {
+-        return None;
+-    }
+-    let process = unsafe { OwnedHandle::from_raw_handle(handle as _) };
+-
+-    let mut family_length = 0;
+-    let result = unsafe {
+-        GetPackageFamilyName(
+-            process.as_raw_handle() as _,
+-            &mut family_length,
+-            std::ptr::null_mut(),
+-        )
+-    };
+-    if result != ERROR_INSUFFICIENT_BUFFER || family_length == 0 {
+-        return None;
+-    }
+-
+-    let mut family = vec![0_u16; family_length as usize];
+-    let result = unsafe {
+-        GetPackageFamilyName(
+-            process.as_raw_handle() as _,
+-            &mut family_length,
+-            family.as_mut_ptr(),
+-        )
+-    };
+-    if result != ERROR_SUCCESS {
+-        return None;
+-    }
+-
+-    let end = family.iter().position(|value| *value == 0)?;
+-    String::from_utf16(&family[..end]).ok()
+-}
+-
+-#[cfg(not(any(target_os = "windows", target_os = "macos")))]
+-pub(super) fn application_running(_application: &InstalledApp, _candidate_pid: u32) -> bool {
+-    false
+-}
+-
+-pub(super) fn desktop_check(
+-    id: impl Into<String>,
+-    status: CheckStatus,
+-    summary: impl Into<String>,
+-) -> DoctorCheck {
+-    DoctorCheck::new(id, "desktop", status, summary)
+-}
+-
+-#[cfg(target_os = "windows")]
+-fn installed_windows_app() -> Result<Option<InstalledApp>, DiscoveryError> {
+-    const PACKAGE_FAMILY: &str = "OpenAI.Codex_2p2nqsd0c76g0";
+-
+-    let family = PACKAGE_FAMILY
+-        .encode_utf16()
+-        .chain(std::iter::once(0))
+-        .collect::<Vec<_>>();
+-    let mut count = 0;
+-    let mut length = 0;
+-    let result = unsafe {
+-        FindPackagesByPackageFamily(
+-            family.as_ptr(),
+-            PACKAGE_FILTER_HEAD,
+-            &mut count,
+-            std::ptr::null_mut(),
+-            &mut length,
+-            std::ptr::null_mut(),
+-            std::ptr::null_mut(),
+-        )
+-    };
+-    if result == ERROR_SUCCESS && count == 0 {
+-        return Ok(None);
+-    }
+-    if result != ERROR_INSUFFICIENT_BUFFER {
+-        return Err(DiscoveryError);
+-    }
+-
+-    let mut names = vec![std::ptr::null_mut(); count as usize];
+-    let mut buffer = vec![0_u16; length as usize];
+-    let result = unsafe {
+-        FindPackagesByPackageFamily(
+-            family.as_ptr(),
+-            PACKAGE_FILTER_HEAD,
+-            &mut count,
+-            names.as_mut_ptr(),
+-            &mut length,
+-            buffer.as_mut_ptr(),
+-            std::ptr::null_mut(),
+-        )
+-    };
+-    if result != ERROR_SUCCESS {
+-        return Err(DiscoveryError);
+-    }
+-    if count == 0 {
+-        return Ok(None);
+-    }
+-    let end = buffer
+-        .iter()
+-        .position(|value| *value == 0)
+-        .ok_or(DiscoveryError)?;
+-    let package = String::from_utf16(&buffer[..end]).map_err(|_| DiscoveryError)?;
+-    let version = package
+-        .strip_prefix("OpenAI.Codex_")
+-        .and_then(|name| name.split('_').next())
+-        .filter(|version| {
+-            version
+-                .split('.')
+-                .all(|part| !part.is_empty() && part.bytes().all(|digit| digit.is_ascii_digit()))
+-        })
+-        .ok_or(DiscoveryError)?;
+-
+-    Ok(Some(InstalledApp {
+-        identity: "OpenAI.Codex",
+-        version: version.to_string(),
+-        package_family: PACKAGE_FAMILY,
+-    }))
+-}
+-
+-#[cfg(target_os = "macos")]
+-async fn installed_macos_app() -> Result<Option<InstalledApp>, DiscoveryError> {
+-    let applications = std::iter::once(PathBuf::from("/Applications"))
+-        .chain(std::env::var_os("HOME").map(|home| PathBuf::from(home).join("Applications")))
+-        .flat_map(|directory| {
+-            ["ChatGPT.app", "Codex.app"]
+-                .into_iter()
+-                .map(move |application| directory.join(application))
+-        });
+-
+-    for bundle in applications {
+-        match fs::metadata(&bundle) {
+-            Ok(metadata) if metadata.is_dir() => {}
+-            Ok(_) => continue,
+-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => continue,
+-            Err(_) => return Err(DiscoveryError),
+-        }
+-        if let Some(application) = inspect_macos_bundle(&bundle).await? {
+-            return Ok(Some(application));
+-        }
+-    }
+-
+-    Ok(None)
+-}
+-
+-#[cfg(target_os = "macos")]
+-pub(in crate::doctor) async fn inspect_macos_bundle(
+-    bundle: &Path,
+-) -> Result<Option<InstalledApp>, DiscoveryError> {
+-    let mut command = Command::new("/usr/bin/plutil");
+-    command
+-        .args(["-convert", "json", "-o", "-"])
+-        .arg(bundle.join("Contents/Info.plist"))
+-        .stdin(Stdio::null())
+-        .stderr(Stdio::null())
+-        .kill_on_drop(true);
+-    let output = timeout(Duration::from_secs(5), command.output())
+-        .await
+-        .map_err(|_| DiscoveryError)?
+-        .map_err(|_| DiscoveryError)?;
+-    if !output.status.success() || output.stdout.len() > 64 * 1024 {
+-        return Err(DiscoveryError);
+-    }
+-    let metadata: Value = serde_json::from_slice(&output.stdout).map_err(|_| DiscoveryError)?;
+-    if metadata.get("CFBundleIdentifier").and_then(Value::as_str) != Some("com.openai.codex") {
+-        return Ok(None);
+-    }
+-    let version = metadata
+-        .get("CFBundleShortVersionString")
+-        .or_else(|| metadata.get("CFBundleVersion"))
+-        .and_then(Value::as_str)
+-        .ok_or(DiscoveryError)?;
+-    let build = metadata
+-        .get("CFBundleVersion")
+-        .and_then(Value::as_str)
+-        .and_then(|value| value.parse().ok())
+-        .ok_or(DiscoveryError)?;
+-
+-    Ok(Some(InstalledApp {
+-        identity: "com.openai.codex",
+-        version: version.to_string(),
+-        bundle: bundle.to_path_buf(),
+-        build,
+-    }))
+-}
+diff --git a/codex-rs/cli/src/doctor/desktop/windows_security.rs b/codex-rs/cli/src/doctor/desktop/windows_security.rs
+deleted file mode 100644
+index 94e95ed..0000000
+--- a/codex-rs/cli/src/doctor/desktop/windows_security.rs
++++ /dev/null
+@@ -1,232 +0,0 @@
+-use std::env;
+-use std::path::Path;
+-use std::process::Stdio;
+-use std::time::Duration;
+-
+-use tokio::io::AsyncReadExt;
+-use tokio::process::Command;
+-use tokio::time::timeout;
+-
+-use super::super::CheckStatus;
+-use super::super::DoctorCheck;
+-use super::platform::desktop_check;
+-
+-const MAX_EVENTS_PER_CHANNEL: usize = 256;
+-const MAX_RENDERED_EVENTS: usize = 16;
+-const MAX_EVENT_OUTPUT_BYTES: usize = 2 * 1024 * 1024;
+-type Channel = (&'static str, &'static str, &'static [u32]);
+-type Evidence = (CheckStatus, String);
+-
+-const CHANNELS: [Channel; 5] = [
+-    (
+-        "microsoft_defender",
+-        "Microsoft-Windows-Windows Defender/Operational",
+-        &[
+-            1006, 1007, 1116, 1117, 1121, 1122, 1123, 1124, 1125, 1126, 1127, 1128,
+-        ],
+-    ),
+-    (
+-        "applocker",
+-        "Microsoft-Windows-AppLocker/EXE and DLL",
+-        &[8003, 8004],
+-    ),
+-    (
+-        "applocker",
+-        "Microsoft-Windows-AppLocker/Packaged app-Execution",
+-        &[8021, 8022],
+-    ),
+-    (
+-        "applocker",
+-        "Microsoft-Windows-AppLocker/MSI and Script",
+-        &[8006, 8007],
+-    ),
+-    (
+-        "windows_app_control",
+-        "Microsoft-Windows-CodeIntegrity/Operational",
+-        &[3076, 3077],
+-    ),
+-];
+-
+-pub(super) async fn collect() -> DoctorCheck {
+-    let Some(system_root) = env::var_os("SystemRoot") else {
+-        return classify(&[]);
+-    };
+-    let wevtutil = Path::new(&system_root).join("System32/wevtutil.exe");
+-    let mut channels = Vec::with_capacity(CHANNELS.len());
+-    for pair in CHANNELS.chunks(/*chunk_size*/ 2) {
+-        let first = query_channel(&wevtutil, pair[0]);
+-        if let Some(second) = pair.get(/*index*/ 1) {
+-            let (first, second) = tokio::join!(first, query_channel(&wevtutil, *second));
+-            channels.extend([first, second]);
+-        } else {
+-            channels.push(first.await);
+-        }
+-    }
+-    classify(&channels)
+-}
+-
+-async fn query_channel(wevtutil: &Path, channel: Channel) -> Option<Vec<Evidence>> {
+-    let events = channel
+-        .2
+-        .iter()
+-        .map(|id| format!("EventID={id}"))
+-        .collect::<Vec<_>>()
+-        .join(" or ");
+-    let mut child = Command::new(wevtutil)
+-        .args(["qe", channel.1])
+-        .arg(format!(
+-            "/q:*[System[({events}) and TimeCreated[timediff(@SystemTime) <= 604800000]]]"
+-        ))
+-        .arg(format!("/c:{MAX_EVENTS_PER_CHANNEL}"))
+-        .args(["/rd:true", "/f:xml"])
+-        .stdin(Stdio::null())
+-        .stdout(Stdio::piped())
+-        .stderr(Stdio::null())
+-        .kill_on_drop(true)
+-        .spawn()
+-        .ok()?;
+-    let mut output = Vec::new();
+-    let status = timeout(Duration::from_secs(10), async {
+-        let mut reader = child.stdout.take()?.take(MAX_EVENT_OUTPUT_BYTES as u64 + 1);
+-        reader.read_to_end(&mut output).await.ok()?;
+-        if output.len() > MAX_EVENT_OUTPUT_BYTES {
+-            return None;
+-        }
+-        child.wait().await.ok()
+-    })
+-    .await
+-    .ok()
+-    .flatten()?;
+-    status
+-        .success()
+-        .then(|| parse_events(&String::from_utf8_lossy(&output), channel))
+-}
+-
+-fn parse_events(xml: &str, (source, _, ids): Channel) -> Vec<Evidence> {
+-    xml.split("</Event>")
+-        .take(MAX_EVENTS_PER_CHANNEL)
+-        .filter_map(|event| {
+-            let id = element(event, "EventID")?.parse().ok()?;
+-            if !ids.contains(&id) {
+-                return None;
+-            }
+-            let target = event
+-                .split("<Data")
+-                .skip(/*n*/ 1)
+-                .filter_map(|data| data.split_once('>')?.1.split_once("</Data>").map(|v| v.0))
+-                .chain(
+-                    ["FilePath", "FileName", "Image", "PackageName", "PackageFamilyName"]
+-                        .into_iter()
+-                        .filter_map(|name| element(event, name)),
+-                )
+-                .find_map(event_target)?;
+-            let timestamp = event.split_once("SystemTime=\"")?.1.split_once('"')?.0;
+-            let (status, action) = match id {
+-                1121 | 1123 | 1126 | 1127 | 8004 | 8007 | 8022 | 3077 => {
+-                    (CheckStatus::Fail, "blocked")
+-                }
+-                1122 | 1124 | 1125 | 1128 | 8003 | 8006 | 8021 | 3076 => {
+-                    (CheckStatus::Warning, "audited")
+-                }
+-                1006 | 1116 => (CheckStatus::Warning, "detected"),
+-                1007 | 1117 => defender_action(event),
+-                _ => return None,
+-            };
+-            Some((
+-                status,
+-                format!(
+-                    "source: {source}; event: {id}; target: {target}; action: {action}; time: {timestamp}"
+-                ),
+-            ))
+-        })
+-        .collect()
+-}
+-
+-fn event_target(value: &str) -> Option<&'static str> {
+-    let value = value.to_ascii_lowercase();
+-    let parts = value.split(['\\', '/']).map(str::trim).collect::<Vec<_>>();
+-    let name = *parts.last()?;
+-    let package = parts.iter().any(|part| part.starts_with("openai.codex_"));
+-    let trusted = package || parts.windows(2).any(|pair| pair == ["openai", "codex"]);
+-    match name {
+-        "codex-windows-sandbox-setup.exe" => Some("sandbox_setup"),
+-        "codex-command-runner.exe" => Some("command_runner"),
+-        "codex.exe" => Some("codex"),
+-        "codex-desktop.exe" => Some("codex_desktop"),
+-        "chatgpt.exe" | "electron.exe" if trusted => Some("codex_desktop"),
+-        "rg.exe" if trusted => Some("ripgrep"),
+-        _ if package => Some("codex_desktop_package"),
+-        _ => None,
+-    }
+-}
+-
+-fn defender_action(event: &str) -> (CheckStatus, &'static str) {
+-    let action = [
+-        "Action Name",
+-        "ActionName",
+-        "Action",
+-        "Action ID",
+-        "ActionID",
+-    ]
+-    .into_iter()
+-    .find_map(|name| data_value(event, name))
+-    .or_else(|| element(event, "ActionName"))
+-    .unwrap_or_default()
+-    .to_ascii_lowercase();
+-    match action.as_str() {
+-        "quarantine" | "2" => (CheckStatus::Fail, "quarantined"),
+-        "clean" | "remove" | "block" | "1" | "3" | "10" => (CheckStatus::Fail, "blocked"),
+-        "allow" | "ignore" | "none" | "no action" | "user defined" | "6" | "8" | "9" | "11" => {
+-            (CheckStatus::Ok, "allowed")
+-        }
+-        _ => (CheckStatus::Warning, "detected"),
+-    }
+-}
+-
+-fn classify(channels: &[Option<Vec<Evidence>>]) -> DoctorCheck {
+-    let visible = channels.iter().any(Option::is_some);
+-    let mut status = if visible {
+-        CheckStatus::Ok
+-    } else {
+-        CheckStatus::Warning
+-    };
+-    let mut details = Vec::new();
+-    for (event_status, detail) in channels.iter().flatten().flatten() {
+-        status = status.max(*event_status);
+-        if details.len() < MAX_RENDERED_EVENTS {
+-            details.push(detail.clone());
+-        }
+-    }
+-    let summary = match (status, visible) {
+-        (CheckStatus::Ok, _) if channels.contains(&None) => "security event coverage is incomplete",
+-        (CheckStatus::Ok, _) => "no locally visible recent Codex security enforcement was found",
+-        (CheckStatus::Warning, false) => "security event channels could not be inspected",
+-        (CheckStatus::Warning, true) => "recent Codex security audit or detection requires review",
+-        (CheckStatus::Fail, _) => "endpoint security blocked or quarantined a Codex executable",
+-    };
+-    let mut check = desktop_check("desktop.security.enforcement", status, summary).details(details);
+-    if status != CheckStatus::Ok {
+-        check = check.remediation(
+-            "ask your organization's security administrator to review endpoint security events and the approved Codex application policy",
+-        );
+-    }
+-    check
+-}
+-
+-fn element<'a>(xml: &'a str, name: &str) -> Option<&'a str> {
+-    let body = xml.split_once(&format!("<{name}"))?.1.split_once('>')?.1;
+-    Some(body.split_once(&format!("</{name}>"))?.0.trim())
+-}
+-
+-fn data_value<'a>(xml: &'a str, name: &str) -> Option<&'a str> {
+-    let body = xml
+-        .split_once(&format!("Name=\"{name}\""))?
+-        .1
+-        .split_once('>')?
+-        .1;
+-    Some(body.split_once("</Data>")?.0.trim())
+-}
+-
+-#[cfg(test)]
+-#[path = "windows_security_tests.rs"]
+-mod tests;
+diff --git a/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs b/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
+deleted file mode 100644
+index ddd6973..0000000
+--- a/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
++++ /dev/null
+@@ -1,85 +0,0 @@
+-use pretty_assertions::assert_eq;
+-
+-use super::CHANNELS;
+-use super::CheckStatus;
+-use super::MAX_RENDERED_EVENTS;
+-use super::classify;
+-use super::parse_events;
+-
+-#[cfg(not(target_os = "windows"))]
+-#[tokio::test]
+-async fn an_unavailable_reader_is_not_reported_as_clean() {
+-    assert_eq!(super::collect().await.status, CheckStatus::Warning);
+-}
+-
+-#[test]
+-fn every_source_distinguishes_audits_from_blocks() {
+-    for (channel, audit, block) in [
+-        (0, 1122, 1121),
+-        (0, 1125, 1126),
+-        (1, 8003, 8004),
+-        (2, 8021, 8022),
+-        (3, 8006, 8007),
+-        (4, 3076, 3077),
+-    ] {
+-        for (id, expected) in [(audit, CheckStatus::Warning), (block, CheckStatus::Fail)] {
+-            let events = parse_events(&fixture(id, "codex.exe", &[]), CHANNELS[channel]);
+-            assert_eq!(events[0].0, expected, "misclassified event {id}");
+-        }
+-    }
+-}
+-
+-#[test]
+-fn defender_distinguishes_detection_and_remediation() {
+-    for (id, action, expected) in [
+-        (1116, "", CheckStatus::Warning),
+-        (1117, "Allow", CheckStatus::Ok),
+-        (1117, "Quarantine", CheckStatus::Fail),
+-        (1117, "Remove", CheckStatus::Fail),
+-    ] {
+-        let events = parse_events(
+-            &fixture(id, "codex.exe", &[("Action Name", action)]),
+-            CHANNELS[0],
+-        );
+-        assert_eq!(classify(&[Some(events)]).status, expected);
+-    }
+-}
+-
+-#[test]
+-fn only_trusted_codex_executables_are_reported() {
+-    for (path, expected) in [
+-        ("codex.exe", true),
+-        (r"OpenAI.Codex_2p2nqsd0c76g0\ChatGPT.exe", true),
+-        ("evil-codex.exe", false),
+-        (r"C:\Other\ChatGPT.exe", false),
+-        (r"OpenAI.CodexEvil_1\ChatGPT.exe", false),
+-    ] {
+-        let events = parse_events(&fixture(/*id*/ 1121, path, &[]), CHANNELS[0]);
+-        assert_eq!(!events.is_empty(), expected, "misclassified {path}");
+-    }
+-}
+-
+-#[test]
+-fn evidence_is_bounded_redacted_and_correctly_classified() {
+-    assert_eq!(classify(&[None]).status, CheckStatus::Warning);
+-    assert_eq!(classify(&[Some(Vec::new()), None]).status, CheckStatus::Ok);
+-    let audits = fixture(/*id*/ 1122, "codex.exe", &[]).repeat(MAX_RENDERED_EVENTS);
+-    let secret = "private-customer-secret";
+-    let block = fixture(/*id*/ 1121, "codex.exe", &[("User", secret)]);
+-    let events = parse_events(&format!("{audits}{block}"), CHANNELS[0]);
+-    let check = classify(&[Some(events)]);
+-    assert_eq!(check.id, "desktop.security.enforcement");
+-    assert_eq!(check.status, CheckStatus::Fail);
+-    assert_eq!(check.details.len(), MAX_RENDERED_EVENTS);
+-    assert!(!serde_json::to_string(&check).unwrap().contains(secret));
+-}
+-
+-fn fixture(id: u32, path: &str, fields: &[(&str, &str)]) -> String {
+-    let data = fields
+-        .iter()
+-        .map(|(name, value)| format!("<Data Name=\"{name}\">{value}</Data>"))
+-        .collect::<String>();
+-    format!(
+-        "<Event><System><EventID>{id}</EventID><TimeCreated SystemTime=\"2026-01-01T00:00:00Z\"/></System><EventData><Data Name=\"Path\">{path}</Data>{data}</EventData></Event>"
+-    )
+-}
+diff --git a/codex-rs/cli/src/doctor/desktop_tests.rs b/codex-rs/cli/src/doctor/desktop_tests.rs
+deleted file mode 100644
+index b5bd937..0000000
+--- a/codex-rs/cli/src/doctor/desktop_tests.rs
++++ /dev/null
+@@ -1,97 +0,0 @@
+-use std::fs;
+-use std::path::Path;
+-
+-use pretty_assertions::assert_eq;
+-
+-use super::CheckStatus;
+-use super::desktop::inspect_desktop_session;
+-
+-const CURRENT_SESSION: &str = "12345678-1234-1234-1234-123456789abc";
+-const CURRENT_PROCESS: u32 = 12345;
+-
+-#[test]
+-fn current_desktop_session_reports_the_latest_local_handshake() {
+-    let directory = tempfile::tempdir().expect("temporary directory should be created");
+-    write_log(
+-        directory.path(),
+-        concat!(
+-            "2026-08-07T12:00:00.000Z error [AppServerConnection] initialize_handshake_result outcome=failure transportKind=stdio\n",
+-            "2026-08-07T12:01:00.000Z info [AppServerConnection] Starting app-server connection hostId=local transport=websocket\n",
+-            "2026-08-07T12:02:00.000Z info [AppServerConnection] initialize_handshake_result outcome=success transportKind=websocket\n",
+-            "2026-08-07T12:03:00.000Z info [AppServerConnection] app_server_connection.state_changed hostId=remote transport=websocket\n",
+-            "2026-08-07T12:04:00.000Z error [AppServerConnection] initialize_handshake_result outcome=failure transportKind=websocket\n",
+-        ),
+-    );
+-
+-    let (running, check) = inspect_desktop_session(directory.path(), |pid| pid == CURRENT_PROCESS);
+-
+-    assert!(running);
+-    assert_eq!(check.id, "desktop.app_server.handshake");
+-    assert_eq!(check.status, CheckStatus::Ok);
+-    assert_eq!(
+-        check.summary,
+-        "the desktop app-server initialized successfully"
+-    );
+-}
+-
+-#[test]
+-fn failed_handshake_does_not_expose_sensitive_log_fields() {
+-    let directory = tempfile::tempdir().expect("temporary directory should be created");
+-    write_log(
+-        directory.path(),
+-        "2026-08-07T12:00:00.000Z error [AppServerConnection] initialize_handshake_result errorMessage=\"desktop-secret outcome=success\" outcome=failure transportKind=stdio\n",
+-    );
+-
+-    let (running, check) = inspect_desktop_session(directory.path(), |_| true);
+-
+-    assert!(running);
+-    assert_eq!(check.status, CheckStatus::Fail);
+-    assert_eq!(check.summary, "the desktop app-server failed to initialize");
+-    assert!(
+-        !serde_json::to_string(&check)
+-            .unwrap()
+-            .contains("desktop-secret")
+-    );
+-}
+-
+-#[test]
+-fn handshake_failure_in_the_middle_of_a_log_segment_is_detected() {
+-    let directory = tempfile::tempdir().expect("temporary directory should be created");
+-    let padding = "x".repeat(96 * 1024);
+-    write_log(
+-        directory.path(),
+-        &format!(
+-            "{padding}\n2026-08-07T12:00:00.000Z error [AppServerConnection] initialize_handshake_result outcome=failure transportKind=stdio\n{padding}"
+-        ),
+-    );
+-
+-    let (running, check) = inspect_desktop_session(directory.path(), |_| true);
+-
+-    assert!(running);
+-    assert_eq!(check.status, CheckStatus::Fail);
+-}
+-
+-#[test]
+-fn stopped_desktop_does_not_report_a_failure() {
+-    let directory = tempfile::tempdir().expect("temporary directory should be created");
+-    write_log(
+-        directory.path(),
+-        "2026-08-07T12:00:00.000Z error [AppServerConnection] initialize_handshake_result outcome=failure transportKind=stdio\n",
+-    );
+-
+-    let (running, check) = inspect_desktop_session(directory.path(), |_| false);
+-
+-    assert!(!running);
+-    assert_eq!(check.status, CheckStatus::Ok);
+-    assert_eq!(check.summary, "the desktop application is not running");
+-}
+-
+-fn write_log(directory: &Path, contents: &str) {
+-    fs::write(
+-        directory.join(format!(
+-            "codex-desktop-{CURRENT_SESSION}-{CURRENT_PROCESS}-t0-i0-120000-0.log"
+-        )),
+-        contents,
+-    )
+-    .expect("desktop log fixture should be created");
+-}
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
-index fbad7d9..f8f2889 100644
+index fbad7d9..e0d16f4 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
 +++ b/codex-rs/cli/src/doctor/updates.rs
-@@ -14,6 +14,7 @@ use codex_http_client::ClientRouteClass;
+@@ -5,8 +5,6 @@
+ //! other helpers selected by PATH; npm update targets are not verified.
+ 
+ use std::path::Path;
+-#[cfg(target_os = "macos")]
+-use std::path::PathBuf;
+ use std::time::Duration;
+ 
+ use codex_core::config::Config;
+@@ -14,36 +12,18 @@ use codex_http_client::ClientRouteClass;
  use codex_http_client::RouteAwareClientPool;
  use codex_install_context::InstallContext;
  use codex_install_context::InstallMethod;
 +use codex_utils_cli::latest_release_url;
  use http::Method;
  use serde::Deserialize;
- #[cfg(target_os = "macos")]
-@@ -33,8 +34,6 @@ use super::network;
+-#[cfg(target_os = "macos")]
+-use url::Url;
+ 
+ use super::CheckStatus;
+ use super::DoctorCheck;
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-use super::DoctorIssue;
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-use super::desktop::platform::InstalledApp;
+ use super::doctor_install_context;
+ use super::doctor_managed_by_npm;
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-use super::network;
+ 
  const MAX_VERSION_RESPONSE_BYTES: usize = 1024 * 1024;
  
  const VERSION_FILE_NAME: &str = "version.json";
 -const GITHUB_LATEST_RELEASE_URL: &str = "https://api.github.com/repos/openai/codex/releases/latest";
 -const HOMEBREW_CASK_API_URL: &str = "https://formulae.brew.sh/api/cask/codex.json";
- #[cfg(all(target_os = "macos", target_arch = "x86_64"))]
- const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
- #[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
-@@ -75,7 +74,7 @@ pub(super) async fn updates_check(config: &Config) -> DoctorCheck {
+-#[cfg(all(target_os = "macos", target_arch = "x86_64"))]
+-const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast-x64.xml";
+-#[cfg(all(target_os = "macos", not(target_arch = "x86_64")))]
+-const DESKTOP_UPDATE_URL: &str = "https://persistent.oaistatic.com/codex-app-prod/appcast.xml";
+-#[cfg(target_os = "macos")]
+-const BACKEND_DESKTOP_UPDATE_URL: &str = "https://chatgpt.com/backend-api/wham/app/appcast";
+-#[cfg(target_os = "windows")]
+-const DESKTOP_UPDATE_URL: &str =
+-    "https://persistent.oaistatic.com/codex-app-prod/windows-store-update.json";
+ 
+ /// Builds the update-health row for the current installation.
+ ///
+@@ -75,7 +55,7 @@ pub(super) async fn updates_check(config: &Config) -> DoctorCheck {
          ClientRouteClass::Other,
      );
  
@@ -394,7 +2569,286 @@ index fbad7d9..f8f2889 100644
          Ok(latest_version) => {
              details.push(format!("latest version: {latest_version}"));
              if is_newer(&latest_version, env!("CARGO_PKG_VERSION")) == Some(true) {
-@@ -389,31 +388,22 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
+@@ -93,278 +73,6 @@ pub(super) async fn updates_check(config: &Config) -> DoctorCheck {
+     DoctorCheck::new("updates.status", "updates", status, summary).details(details)
+ }
+ 
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-pub(super) async fn append_desktop_update(
+-    checks: &mut [DoctorCheck],
+-    config: Option<&Config>,
+-    application: &InstalledApp,
+-) {
+-    let deadline = tokio::time::Instant::now() + Duration::from_secs(2);
+-    #[cfg(target_os = "macos")]
+-    if let Some(home) = std::env::var_os("HOME").map(PathBuf::from)
+-        && let Some(build) = latest_macos_staged_build(
+-            &home
+-                .join("Library/Caches")
+-                .join(application.identity)
+-                .join("org.sparkle-project.Sparkle/Installation"),
+-            application.build,
+-        )
+-        .await
+-        && let Some(update) = checks.iter_mut().find(|check| check.id == "updates.status")
+-    {
+-        update.details.extend([
+-            "desktop update status: ready to install".to_string(),
+-            format!("desktop latest build: {build}"),
+-            format!("desktop application: {}", application.identity),
+-        ]);
+-    }
+-
+-    let Some(config) = config else {
+-        return;
+-    };
+-    let Some(reachability_index) = checks
+-        .iter()
+-        .position(|check| check.id == "network.provider_reachability")
+-    else {
+-        return;
+-    };
+-    #[cfg(target_os = "macos")]
+-    let desktop_update_url = std::env::var_os("HOME")
+-        .map(PathBuf::from)
+-        .map(|home| {
+-            macos_desktop_update_url(&home, application, &os_info::get().version().to_string())
+-        })
+-        .unwrap_or_else(|| DESKTOP_UPDATE_URL.to_string());
+-    #[cfg(target_os = "windows")]
+-    let desktop_update_url = DESKTOP_UPDATE_URL;
+-    #[cfg(target_os = "macos")]
+-    let desktop_update_url = desktop_update_url.as_str();
+-    let desktop_update_display_url = desktop_update_url
+-        .split_once('?')
+-        .map_or(desktop_update_url, |(endpoint, _)| endpoint);
+-    let client = RouteAwareClientPool::new_without_request_logging(
+-        config.http_client_factory(),
+-        ClientRouteClass::Other,
+-    );
+-    let outcome = match client
+-        .request(Method::GET, desktop_update_url)
+-        .timeout(deadline.saturating_duration_since(tokio::time::Instant::now()))
+-        .send()
+-        .await
+-    {
+-        Ok(response) => {
+-            let status = response.status().as_u16();
+-            #[cfg(target_os = "windows")]
+-            if status == 404 && response.url().scheme() == "https" {
+-                checks[reachability_index].details.push(format!(
+-                    "desktop assets CDN: {desktop_update_display_url} reachable (HTTP 404; no update available)"
+-                ));
+-                return;
+-            }
+-            if cfg!(target_os = "windows") && response.url().scheme() != "https" {
+-                Err("update manifest redirected to a non-HTTPS URL".to_string())
+-            } else if status == 407 {
+-                Err("proxy authentication required (HTTP 407)".to_string())
+-            } else if !(200..=299).contains(&status) {
+-                Err(format!("HTTP {status}"))
+-            } else {
+-                checks[reachability_index].details.push(format!(
+-                    "desktop assets CDN: {desktop_update_display_url} reachable (HTTP {status})"
+-                ));
+-                #[cfg(target_os = "windows")]
+-                if let Some(update) = checks.iter_mut().find(|check| check.id == "updates.status") {
+-                    match response.bytes().await {
+-                        Ok(body) => match windows_store_update(&body, &application.version) {
+-                            Ok(Some(build)) => update.details.extend([
+-                                "desktop update status: available".to_string(),
+-                                format!("desktop latest build: {build}"),
+-                                format!("desktop application: {}", application.identity),
+-                            ]),
+-                            Ok(None) => {}
+-                            Err(error) => {
+-                                update.status = update.status.max(CheckStatus::Warning);
+-                                update
+-                                    .details
+-                                    .push(format!("desktop update manifest: {error}"));
+-                            }
+-                        },
+-                        Err(_) => {
+-                            update.status = update.status.max(CheckStatus::Warning);
+-                            update
+-                                .details
+-                                .push("desktop update manifest: response could not be read".into());
+-                        }
+-                    }
+-                }
+-                Ok(())
+-            }
+-        }
+-        Err(error) => Err(network::request_error(error)),
+-    };
+-
+-    if let Err(error) = outcome {
+-        let reachability = &mut checks[reachability_index];
+-        reachability.details.push(format!(
+-            "desktop assets CDN: {desktop_update_display_url} {error} (optional)"
+-        ));
+-        if reachability.status == CheckStatus::Ok {
+-            reachability.status = CheckStatus::Warning;
+-            reachability.summary = "desktop update and runtime CDN is unreachable".to_string();
+-        }
+-        reachability.issues.push(
+-            DoctorIssue::new(
+-                CheckStatus::Warning,
+-                "desktop update and runtime CDN is unreachable",
+-            )
+-            .measured(format!("{desktop_update_display_url} {error}"))
+-            .expected("desktop update and runtime CDN reachable over HTTPS")
+-            .remedy(
+-                if desktop_update_display_url.starts_with("https://chatgpt.com/") {
+-                    "check proxy, firewall, DNS, and certificate access to chatgpt.com"
+-                } else {
+-                    "check proxy, firewall, DNS, and certificate access to persistent.oaistatic.com"
+-                },
+-            )
+-            .field("desktop assets CDN"),
+-        );
+-    }
+-}
+-
+-#[cfg(target_os = "macos")]
+-fn macos_desktop_update_url(home: &Path, application: &InstalledApp, os_version: &str) -> String {
+-    #[derive(Deserialize)]
+-    #[serde(rename_all = "camelCase")]
+-    struct ProductionAppcastState {
+-        #[serde(default)]
+-        backend_appcast_enabled: bool,
+-        installation_id: Option<String>,
+-    }
+-
+-    let state_path = home
+-        .join("Library/Application Support")
+-        .join(application.identity)
+-        .join("production-appcast-bootstrap.json");
+-    let Some(state) = std::fs::read(state_path)
+-        .ok()
+-        .and_then(|contents| serde_json::from_slice::<ProductionAppcastState>(&contents).ok())
+-    else {
+-        return DESKTOP_UPDATE_URL.to_string();
+-    };
+-    let Some(installation_id) = state
+-        .backend_appcast_enabled
+-        .then_some(state.installation_id)
+-        .flatten()
+-    else {
+-        return DESKTOP_UPDATE_URL.to_string();
+-    };
+-
+-    let Ok(mut url) = Url::parse(BACKEND_DESKTOP_UPDATE_URL) else {
+-        return DESKTOP_UPDATE_URL.to_string();
+-    };
+-    url.query_pairs_mut().extend_pairs([
+-        ("installation_id", installation_id.as_str()),
+-        (
+-            "arch",
+-            if cfg!(target_arch = "x86_64") {
+-                "x64"
+-            } else {
+-                "arm64"
+-            },
+-        ),
+-        ("app_version", application.version.as_str()),
+-        ("beta", "false"),
+-        ("os-version", os_version),
+-        ("plan_type", "unknown"),
+-    ]);
+-    url.to_string()
+-}
+-
+-#[cfg(any(target_os = "windows", test))]
+-fn windows_store_update(
+-    manifest: &[u8],
+-    installed_version: &str,
+-) -> Result<Option<String>, &'static str> {
+-    #[derive(Deserialize)]
+-    #[serde(rename_all = "camelCase")]
+-    struct StoreManifest {
+-        schema_version: u64,
+-        build_version: String,
+-        store_product_id: String,
+-        package_identity: String,
+-    }
+-
+-    let manifest: StoreManifest =
+-        serde_json::from_slice(manifest).map_err(|_| "invalid Windows Store update manifest")?;
+-    if manifest.schema_version == 0
+-        || manifest.store_product_id != "9PLM9XGG6VKS"
+-        || manifest.package_identity != "OpenAI.Codex"
+-    {
+-        return Err("Windows Store update manifest does not target the production application");
+-    }
+-    let version = |value: &str| -> Option<[u64; 4]> {
+-        value
+-            .split('.')
+-            .map(str::parse::<u64>)
+-            .collect::<Result<Vec<_>, _>>()
+-            .ok()?
+-            .try_into()
+-            .ok()
+-    };
+-    let latest = version(&manifest.build_version)
+-        .ok_or("Windows Store update manifest contains an invalid build version")?;
+-    let installed =
+-        version(installed_version).ok_or("installed Windows application has an invalid version")?;
+-    Ok((latest > installed).then_some(manifest.build_version))
+-}
+-
+-#[cfg(target_os = "macos")]
+-async fn latest_macos_staged_build(root: &Path, installed_build: u64) -> Option<u64> {
+-    const MAX_STAGED_BUNDLES: usize = 64;
+-
+-    if !std::fs::symlink_metadata(root).ok()?.is_dir() {
+-        return None;
+-    }
+-    let deadline = tokio::time::Instant::now() + Duration::from_secs(1);
+-    let mut inspected = 0;
+-    let mut latest = None;
+-    for entry in std::fs::read_dir(root).ok()? {
+-        if inspected == MAX_STAGED_BUNDLES || tokio::time::Instant::now() >= deadline {
+-            break;
+-        }
+-        let Ok(entry) = entry else {
+-            continue;
+-        };
+-        if !entry.file_type().is_ok_and(|kind| kind.is_dir()) {
+-            continue;
+-        }
+-        let extracted = entry.path().join("extracted");
+-        if !std::fs::symlink_metadata(&extracted).is_ok_and(|metadata| metadata.is_dir()) {
+-            continue;
+-        }
+-        let bundle = extracted.join("ChatGPT.app");
+-        if !std::fs::symlink_metadata(&bundle).is_ok_and(|metadata| metadata.is_dir()) {
+-            continue;
+-        }
+-        inspected += 1;
+-        let Ok(result) = tokio::time::timeout_at(
+-            deadline,
+-            super::desktop::platform::inspect_macos_bundle(&bundle),
+-        )
+-        .await
+-        else {
+-            break;
+-        };
+-        if let Ok(Some(application)) = result
+-            && application.build > installed_build
+-        {
+-            latest = Some(latest.map_or(application.build, |latest: u64| {
+-                latest.max(application.build)
+-            }));
+-        }
+-    }
+-    latest
+-}
+-
+ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
+     details.push(format!("version cache: {}", version_file.display()));
+     match std::fs::read_to_string(version_file) {
+@@ -389,31 +97,22 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
  
  fn update_action_label(context: &InstallContext) -> &'static str {
      match &context.method {
@@ -435,7 +2889,7 @@ index fbad7d9..f8f2889 100644
  async fn fetch_latest_github_release_version(
      client: &RouteAwareClientPool,
  ) -> Result<String, String> {
-@@ -422,24 +412,15 @@ async fn fetch_latest_github_release_version(
+@@ -422,24 +121,15 @@ async fn fetch_latest_github_release_version(
          tag_name: String,
      }
  
@@ -463,7 +2917,7 @@ index fbad7d9..f8f2889 100644
  async fn http_get_json<T>(client: &RouteAwareClientPool, url: &str) -> Result<T, String>
  where
      T: for<'de> Deserialize<'de>,
-@@ -497,6 +478,8 @@ struct VersionInfo {
+@@ -497,6 +187,8 @@ struct VersionInfo {
  #[cfg(test)]
  mod tests {
      use super::*;
@@ -472,7 +2926,125 @@ index fbad7d9..f8f2889 100644
      use pretty_assertions::assert_eq;
  
      #[tokio::test]
-@@ -691,14 +674,19 @@ mod tests {
+@@ -566,117 +258,6 @@ mod tests {
+         }
+     }
+ 
+-    #[cfg(target_os = "macos")]
+-    #[test]
+-    fn macos_update_probe_uses_the_persisted_production_appcast_feed() {
+-        let home = tempfile::tempdir().expect("temporary home should be created");
+-        let application = InstalledApp {
+-            identity: "com.openai.codex",
+-            version: "26.623.10000".to_string(),
+-            bundle: PathBuf::new(),
+-            build: 6139,
+-        };
+-        assert_eq!(
+-            macos_desktop_update_url(home.path(), &application, "26.6.0"),
+-            DESKTOP_UPDATE_URL
+-        );
+-
+-        let state_directory = home
+-            .path()
+-            .join("Library/Application Support/com.openai.codex");
+-        std::fs::create_dir_all(&state_directory)
+-            .expect("production appcast state directory should be created");
+-        std::fs::write(
+-            state_directory.join("production-appcast-bootstrap.json"),
+-            r#"{"backendAppcastEnabled":true,"installationId":"028e90f8-5f2a-47db-a05c-6a48f548d728"}"#,
+-        )
+-        .expect("production appcast state should be created");
+-
+-        let arch = if cfg!(target_arch = "x86_64") {
+-            "x64"
+-        } else {
+-            "arm64"
+-        };
+-        assert_eq!(
+-            macos_desktop_update_url(home.path(), &application, "26.6.0"),
+-            format!(
+-                "{BACKEND_DESKTOP_UPDATE_URL}?installation_id=028e90f8-5f2a-47db-a05c-6a48f548d728&arch={arch}&app_version=26.623.10000&beta=false&os-version=26.6.0&plan_type=unknown"
+-            )
+-        );
+-    }
+-
+-    #[cfg(target_os = "macos")]
+-    #[tokio::test]
+-    async fn macos_staged_updates_require_a_newer_matching_extracted_bundle() {
+-        let root = tempfile::tempdir().expect("temporary Sparkle cache should be created");
+-        for index in 0..320 {
+-            std::fs::create_dir(root.path().join(format!("unrelated-{index}")))
+-                .expect("unrelated Sparkle cache directory should be created");
+-        }
+-        for (name, identity, build) in [
+-            ("newest", "com.openai.codex", "6268"),
+-            ("newer", "com.openai.codex", "6168"),
+-            ("older", "com.openai.codex", "6138"),
+-            ("different", "com.example.other", "9999"),
+-            ("invalid", "com.openai.codex", "invalid"),
+-        ] {
+-            let bundle = root.path().join(name).join("extracted/ChatGPT.app");
+-            write_macos_bundle(&bundle, identity, build);
+-        }
+-        let outside = tempfile::tempdir().expect("external fixture should be created");
+-        let linked = outside.path().join("ChatGPT.app");
+-        write_macos_bundle(&linked, "com.openai.codex", "9999");
+-        std::os::unix::fs::symlink(&linked, root.path().join("ChatGPT.app"))
+-            .expect("symlinked staged app fixture should be created");
+-
+-        assert_eq!(
+-            latest_macos_staged_build(root.path(), /*installed_build*/ 6139).await,
+-            Some(6268)
+-        );
+-        assert_eq!(
+-            latest_macos_staged_build(root.path(), /*installed_build*/ 6268).await,
+-            None
+-        );
+-    }
+-
+-    #[test]
+-    fn windows_store_updates_compare_all_four_production_build_components() {
+-        let mut manifest = serde_json::json!({
+-            "schemaVersion": 1,
+-            "buildVersion": "26.803.5235.1",
+-            "storeProductId": "9PLM9XGG6VKS",
+-            "packageIdentity": "OpenAI.Codex",
+-        });
+-        assert_eq!(
+-            windows_store_update(&serde_json::to_vec(&manifest).unwrap(), "26.803.5235.0"),
+-            Ok(Some("26.803.5235.1".to_string()))
+-        );
+-        assert_eq!(
+-            windows_store_update(&serde_json::to_vec(&manifest).unwrap(), "26.803.5235.1"),
+-            Ok(None)
+-        );
+-        manifest["storeProductId"] = "other".into();
+-        assert!(
+-            windows_store_update(&serde_json::to_vec(&manifest).unwrap(), "26.803.5235.0").is_err()
+-        );
+-    }
+-
+-    #[cfg(target_os = "macos")]
+-    fn write_macos_bundle(path: &Path, identity: &str, build: &str) {
+-        let contents = path.join("Contents");
+-        std::fs::create_dir_all(&contents).expect("staged app fixture should be created");
+-        std::fs::write(
+-            contents.join("Info.plist"),
+-            format!(
+-                "<?xml version=\"1.0\"?><plist version=\"1.0\"><dict>\
+-                 <key>CFBundleIdentifier</key><string>{identity}</string>\
+-                 <key>CFBundleVersion</key><string>{build}</string>\
+-                 </dict></plist>"
+-            ),
+-        )
+-        .expect("staged app metadata should be created");
+-    }
+-
+     #[test]
+     fn is_newer_compares_plain_semver() {
+         assert_eq!(is_newer("1.2.4", "1.2.3"), Some(true));
+@@ -691,14 +272,19 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -496,11 +3068,42 @@ index fbad7d9..f8f2889 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 50aa973..0ece1cf 100644
+index 50aa973..bdf5f5c 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
-@@ -73,9 +73,8 @@ mod queue_cmd;
- mod remote_control_cmd;
+@@ -5,7 +5,6 @@ use clap_complete::Shell;
+ use clap_complete::generate;
+ use codex_app_server_daemon::BootstrapOptions as AppServerBootstrapOptions;
+ use codex_app_server_daemon::LifecycleCommand as AppServerLifecycleCommand;
+-use codex_app_server_daemon::RemoteControlMode as AppServerRemoteControlMode;
+ use codex_arg0::Arg0DispatchPaths;
+ use codex_arg0::arg0_dispatch_or_else;
+ use codex_chatgpt::apply_command::ApplyCommand;
+@@ -19,7 +18,6 @@ use codex_cli::run_login_with_chatgpt;
+ use codex_cli::run_login_with_device_code;
+ use codex_cli::run_logout;
+ use codex_cloud_config::cloud_config_bundle_loader_for_storage;
+-use codex_cloud_tasks::Cli as CloudTasksCli;
+ use codex_exec::Cli as ExecCli;
+ use codex_exec::Command as ExecCommand;
+ use codex_exec::ReviewArgs;
+@@ -54,11 +52,7 @@ use supports_color::Stream;
+ #[global_allocator]
+ static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
+ 
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-mod app_cmd;
+ mod cloud_config;
+-#[cfg(any(target_os = "macos", target_os = "windows"))]
+-mod desktop_app;
+ mod doctor;
+ #[cfg(test)]
+ #[path = "exec_server_args_tests.rs"]
+@@ -70,18 +64,15 @@ mod mcp_cmd;
+ mod migrate_rollouts;
+ mod plugin_cmd;
+ mod queue_cmd;
+-mod remote_control_cmd;
  #[cfg(target_os = "windows")]
  mod sandbox_setup;
 +mod self_update;
@@ -510,7 +3113,13 @@ index 50aa973..0ece1cf 100644
  
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
-@@ -111,13 +110,17 @@ use codex_protocol::protocol::AskForApproval;
+ use crate::plugin_cmd::PluginSubcommand;
+ use crate::queue_cmd::QueueCommand;
+-use crate::remote_control_cmd::RemoteControlCommand;
+ use doctor::DoctorCommand;
+ use state_db_recovery as local_state_db;
+ 
+@@ -111,13 +102,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -530,7 +3139,7 @@ index 50aa973..0ece1cf 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -143,6 +146,14 @@ struct MultitoolCli {
+@@ -143,6 +138,14 @@ struct MultitoolCli {
      subcommand: Option<Subcommand>,
  }
  
@@ -545,7 +3154,17 @@ index 50aa973..0ece1cf 100644
  #[derive(Debug, clap::Subcommand)]
  enum Subcommand {
      /// Browse all agent sessions on the shared local app-server daemon.
-@@ -180,8 +191,8 @@ enum Subcommand {
+@@ -170,18 +173,11 @@ enum Subcommand {
+     /// [experimental] Run the app server or related tooling.
+     AppServer(AppServerCommand),
+ 
+-    /// [experimental] Manage the app-server daemon with remote control enabled.
+-    RemoteControl(RemoteControlCommand),
+-
+-    /// Launch the Desktop app (opens the app installer if missing).
+-    #[cfg(any(target_os = "macos", target_os = "windows"))]
+-    App(app_cmd::AppCommand),
+-
      /// Generate shell completion scripts.
      Completion(CompletionCommand),
  
@@ -556,7 +3175,31 @@ index 50aa973..0ece1cf 100644
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
      Doctor(DoctorCommand),
-@@ -864,7 +875,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -221,10 +217,6 @@ enum Subcommand {
+     /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
+     Fork(ForkCommand),
+ 
+-    /// [EXPERIMENTAL] Browse tasks from Codex Cloud and apply changes locally.
+-    #[clap(name = "cloud", alias = "cloud-tasks")]
+-    Cloud(CloudTasksCli),
+-
+     /// Internal: run the responses API proxy.
+     #[clap(hide = true)]
+     ResponsesApiProxy(ResponsesApiProxyArgs),
+@@ -787,12 +779,6 @@ enum AppServerDaemonSubcommand {
+     /// Restart the local app server daemon.
+     Restart,
+ 
+-    /// Enable remote control for future starts and a currently running managed daemon.
+-    EnableRemoteControl,
+-
+-    /// Disable remote control for future starts and a currently running managed daemon.
+-    DisableRemoteControl,
+-
+     /// Stop the local app server daemon.
+     Stop,
+ 
+@@ -864,7 +850,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -565,7 +3208,7 @@ index 50aa973..0ece1cf 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -886,79 +897,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -886,79 +872,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -605,7 +3248,11 @@ index 50aa973..0ece1cf 100644
 -                .args(args)
 -                .current_dir(update_cwd.path())
 -                .status()?
--        }
++    match action {
++        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
++            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
++            self_update::run().await?;
+         }
 -        #[cfg(not(windows))]
 -        {
 -            let (cmd, args) = action.command_args();
@@ -617,11 +3264,7 @@ index 50aa973..0ece1cf 100644
 -            std::process::Command::new(&command_path)
 -                .args(&normalized_args)
 -                .status()?
-+    match action {
-+        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
-+            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
-+            self_update::run().await?;
-         }
+-        }
 -    };
 -    if !status.success() {
 -        anyhow::bail!("`{cmd_str}` failed with status {status}");
@@ -665,7 +3308,7 @@ index 50aa973..0ece1cf 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -970,10 +941,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -970,10 +916,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -678,7 +3321,7 @@ index 50aa973..0ece1cf 100644
      }
  }
  
-@@ -1221,7 +1192,7 @@ async fn cli_main(
+@@ -1221,7 +1167,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -687,7 +3330,54 @@ index 50aa973..0ece1cf 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1489,7 +1460,7 @@ async fn cli_main(
+@@ -1378,16 +1324,6 @@ async fn cli_main(
+                     AppServerDaemonSubcommand::Restart => {
+                         print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
+                     }
+-                    AppServerDaemonSubcommand::EnableRemoteControl => {
+-                        print_app_server_remote_control_output(AppServerRemoteControlMode::Enabled)
+-                            .await?;
+-                    }
+-                    AppServerDaemonSubcommand::DisableRemoteControl => {
+-                        print_app_server_remote_control_output(
+-                            AppServerRemoteControlMode::Disabled,
+-                        )
+-                        .await?;
+-                    }
+                     AppServerDaemonSubcommand::Stop => {
+                         print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
+                     }
+@@ -1439,29 +1375,6 @@ async fn cli_main(
+                 }
+             }
+         }
+-        Some(Subcommand::RemoteControl(remote_control_cli)) => {
+-            let subcommand_name = remote_control_cli.subcommand_name();
+-            reject_remote_mode_for_subcommand(
+-                root_remote.as_deref(),
+-                root_remote_auth_token_env.as_deref(),
+-                subcommand_name,
+-            )?;
+-            remote_control_cmd::run(
+-                remote_control_cli,
+-                arg0_paths.clone(),
+-                root_config_overrides,
+-            )
+-            .await?;
+-        }
+-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+-        Some(Subcommand::App(app_cli)) => {
+-            reject_remote_mode_for_subcommand(
+-                root_remote.as_deref(),
+-                root_remote_auth_token_env.as_deref(),
+-                "app",
+-            )?;
+-            app_cmd::run_app(app_cli).await?;
+-        }
+         Some(Subcommand::Resume(ResumeCommand {
+             session_id,
+             last,
+@@ -1489,7 +1402,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -696,7 +3386,7 @@ index 50aa973..0ece1cf 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1576,7 +1547,7 @@ async fn cli_main(
+@@ -1576,7 +1489,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -705,7 +3395,7 @@ index 50aa973..0ece1cf 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1642,13 +1613,13 @@ async fn cli_main(
+@@ -1642,13 +1555,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -721,16 +3411,74 @@ index 50aa973..0ece1cf 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -2565,7 +2536,7 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -1664,19 +1577,6 @@ async fn cli_main(
+             )
+             .await?;
+         }
+-        Some(Subcommand::Cloud(mut cloud_cli)) => {
+-            reject_remote_mode_for_subcommand(
+-                root_remote.as_deref(),
+-                root_remote_auth_token_env.as_deref(),
+-                "cloud",
+-            )?;
+-            prepend_config_flags(
+-                &mut cloud_cli.config_overrides,
+-                root_config_overrides.clone(),
+-            );
+-            codex_cloud_tasks::run_main(cloud_cli, arg0_paths.codex_linux_sandbox_exe.clone())
+-                .await?;
+-        }
+         Some(Subcommand::Sandbox(mut sandbox_cli)) => {
+             let config_profile = sandbox_cli
+                 .config_profile
+@@ -2556,17 +2456,13 @@ fn unsupported_subcommand_name_for_strict_config(
+         Some(Subcommand::AppServer(app_server)) => {
+             Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
+         }
+-        Some(Subcommand::RemoteControl(remote_control)) => Some(remote_control.subcommand_name()),
+         Some(Subcommand::Mcp(_)) => Some("mcp"),
+         Some(Subcommand::Plugin(_)) => Some("plugin"),
+         Some(Subcommand::MigrateRollouts(_)) => Some("migrate-rollouts"),
+-        #[cfg(any(target_os = "macos", target_os = "windows"))]
+-        Some(Subcommand::App(_)) => Some("app"),
          Some(Subcommand::Login(_)) => Some("login"),
          Some(Subcommand::Logout(_)) => Some("logout"),
          Some(Subcommand::Completion(_)) => Some("completion"),
 -        Some(Subcommand::Update) => Some("update"),
+-        Some(Subcommand::Cloud(_)) => Some("cloud"),
 +        Some(Subcommand::Update(_)) => Some("update"),
-         Some(Subcommand::Cloud(_)) => Some("cloud"),
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
-@@ -3758,7 +3729,24 @@ mod tests {
+         Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
+@@ -2616,12 +2512,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+             AppServerDaemonSubcommand::Bootstrap(_) => "app-server daemon bootstrap",
+             AppServerDaemonSubcommand::Start => "app-server daemon start",
+             AppServerDaemonSubcommand::Restart => "app-server daemon restart",
+-            AppServerDaemonSubcommand::EnableRemoteControl => {
+-                "app-server daemon enable-remote-control"
+-            }
+-            AppServerDaemonSubcommand::DisableRemoteControl => {
+-                "app-server daemon disable-remote-control"
+-            }
+             AppServerDaemonSubcommand::Stop => "app-server daemon stop",
+             AppServerDaemonSubcommand::Version => "app-server daemon version",
+             AppServerDaemonSubcommand::PidUpdateLoop => "app-server daemon pid-update-loop",
+@@ -2655,14 +2545,6 @@ fn updater_http_client_factory(
+     }
+ }
+ 
+-async fn print_app_server_remote_control_output(
+-    mode: AppServerRemoteControlMode,
+-) -> anyhow::Result<()> {
+-    let output = codex_app_server_daemon::set_remote_control(mode).await?;
+-    println!("{}", serde_json::to_string(&output)?);
+-    Ok(())
+-}
+-
+ fn read_remote_auth_token_from_env_var_with<F>(
+     env_var_name: &str,
+     get_var: F,
+@@ -3758,7 +3640,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -756,6 +3504,921 @@ index 50aa973..0ece1cf 100644
      }
  
      #[test]
+@@ -4534,31 +4433,20 @@ mod tests {
+     }
+ 
+     #[test]
+-    fn reject_remote_flag_for_remote_control() {
+-        let cli = MultitoolCli::try_parse_from(["codex", "--remote", "unix://", "remote-control"])
+-            .expect("parse");
+-        let Some(Subcommand::RemoteControl(remote_control)) = &cli.subcommand else {
+-            panic!("expected remote-control subcommand");
+-        };
+-        assert_eq!(remote_control.subcommand_name(), "remote-control");
+-
+-        let err = reject_remote_mode_for_subcommand(
+-            cli.remote.remote.as_deref(),
+-            cli.remote.remote_auth_token_env.as_deref(),
+-            "remote-control",
+-        )
+-        .expect_err("remote-control should reject root --remote");
+-
+-        assert!(err.to_string().contains("remote-control"));
+-    }
+-
+-    #[test]
+-    fn remote_control_pair_parses() {
+-        let cli = MultitoolCli::try_parse_from(["codex", "remote-control", "pair"]).expect("parse");
+-        let Some(Subcommand::RemoteControl(remote_control)) = &cli.subcommand else {
+-            panic!("expected remote-control subcommand");
+-        };
+-        assert_eq!(remote_control.subcommand_name(), "remote-control pair");
++    fn closed_source_launcher_and_cloud_subcommands_are_absent() {
++        // codEx is used headless: the Desktop launcher, the Codex Cloud
++        // browser, and the remote-control daemon are all removed.
++        for argv in [
++            ["codex", "app"].as_slice(),
++            ["codex", "cloud"].as_slice(),
++            ["codex", "cloud-tasks"].as_slice(),
++            ["codex", "remote-control", "pair"].as_slice(),
++        ] {
++            assert!(
++                MultitoolCli::try_parse_from(argv).is_err(),
++                "{argv:?} should no longer parse"
++            );
++        }
+     }
+ 
+     #[test]
+@@ -4873,24 +4761,17 @@ mod tests {
+                 subcommand: AppServerDaemonSubcommand::Restart
+             }))
+         ));
+-        assert!(matches!(
+-            app_server_from_args(
+-                ["codex", "app-server", "daemon", "enable-remote-control"].as_ref()
+-            )
+-            .subcommand,
+-            Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
+-                subcommand: AppServerDaemonSubcommand::EnableRemoteControl
+-            }))
+-        ));
+-        assert!(matches!(
+-            app_server_from_args(
+-                ["codex", "app-server", "daemon", "disable-remote-control"].as_ref()
+-            )
+-            .subcommand,
+-            Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
+-                subcommand: AppServerDaemonSubcommand::DisableRemoteControl
+-            }))
+-        ));
++        // The remote-control relay toggles are removed: codEx runs headless
++        // and never pairs a daemon with the vendor relay.
++        for argv in [
++            ["codex", "app-server", "daemon", "enable-remote-control"].as_slice(),
++            ["codex", "app-server", "daemon", "disable-remote-control"].as_slice(),
++        ] {
++            assert!(
++                MultitoolCli::try_parse_from(argv).is_err(),
++                "{argv:?} should no longer parse"
++            );
++        }
+         assert!(matches!(
+             app_server_from_args(["codex", "app-server", "daemon", "stop"].as_ref()).subcommand,
+             Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
+diff --git a/codex-rs/cli/src/plugin_cmd.rs b/codex-rs/cli/src/plugin_cmd.rs
+index e82200b..a1791b3 100644
+--- a/codex-rs/cli/src/plugin_cmd.rs
++++ b/codex-rs/cli/src/plugin_cmd.rs
+@@ -43,6 +43,13 @@ use std::sync::Arc;
+ 
+ use crate::marketplace_cmd::MarketplaceCli;
+ 
++/// Whether codEx consults the vendor's remote plugin catalog.
++///
++/// Disabled: codEx targets headless, self-hosted use and never fetches the
++/// curated marketplace from the chatgpt.com backend. Flip to `true` to restore
++/// upstream behaviour.
++const REMOTE_PLUGIN_CATALOG_ENABLED: bool = false;
++
+ const OPENAI_BUNDLED_ALPHA_MARKETPLACE_NAME: &str = "openai-bundled-alpha";
+ const OPENAI_PRIMARY_RUNTIME_MARKETPLACE_NAME: &str = "openai-primary-runtime";
+ 
+@@ -655,6 +662,10 @@ pub async fn run_plugin_remove(
+     let selection = parse_plugin_selection(plugin, marketplace_name)?;
+ 
+     if selection.marketplace_name == REMOTE_GLOBAL_MARKETPLACE_NAME {
++        ensure!(
++            REMOTE_PLUGIN_CATALOG_ENABLED,
++            "the remote plugin marketplace is disabled in codEx; nothing to remove from it"
++        );
+         ensure!(
+             context.plugins_input.plugins_enabled,
+             "remote plugins are not enabled"
+@@ -810,6 +821,18 @@ async fn fetch_remote_marketplaces(
+     marketplace_name: Option<&str>,
+     cache_mode: RemotePluginCatalogCacheMode,
+ ) -> Result<RemoteMarketplaceListing> {
++    if !REMOTE_PLUGIN_CATALOG_ENABLED {
++        // codEx serves headless, self-hosted use: the vendor's remote plugin
++        // catalog (served from the chatgpt.com backend under the curated
++        // marketplace name) is never consulted. Local and Git marketplaces
++        // are unaffected; the upstream fetch below is kept so an upgrade does
++        // not have to re-add it.
++        ensure!(
++            marketplace_name != Some(REMOTE_GLOBAL_MARKETPLACE_NAME),
++            "the remote plugin marketplace is disabled in codEx; use a local or Git marketplace"
++        );
++        return Ok(RemoteMarketplaceListing::default());
++    }
+     if marketplace_name.is_some_and(|name| name != REMOTE_GLOBAL_MARKETPLACE_NAME) {
+         return Ok(RemoteMarketplaceListing::default());
+     }
+diff --git a/codex-rs/cli/src/remote_control_cmd.rs b/codex-rs/cli/src/remote_control_cmd.rs
+deleted file mode 100644
+index bd0f16b..0000000
+--- a/codex-rs/cli/src/remote_control_cmd.rs
++++ /dev/null
+@@ -1,779 +0,0 @@
+-use std::io::Write;
+-use std::time::Duration;
+-
+-use anyhow::Context;
+-use clap::Args;
+-use codex_app_server::AppServerRuntimeOptions;
+-use codex_app_server::AppServerTransport;
+-use codex_app_server::AppServerWebsocketAuthSettings;
+-use codex_app_server_daemon::LifecycleCommand as AppServerLifecycleCommand;
+-use codex_app_server_daemon::LifecycleOutput as AppServerLifecycleOutput;
+-use codex_app_server_daemon::LifecycleStatus as AppServerLifecycleStatus;
+-use codex_app_server_daemon::RemoteControlReadyOutput as AppServerRemoteControlReadyOutput;
+-use codex_app_server_daemon::RemoteControlReadyStatus as AppServerRemoteControlReadyStatus;
+-use codex_app_server_daemon::RemoteControlStartOutput as AppServerRemoteControlStartOutput;
+-use codex_app_server_protocol::RemoteControlConnectionStatus;
+-use codex_app_server_protocol::RemoteControlPairingStartResponse;
+-use codex_arg0::Arg0DispatchPaths;
+-use codex_config::LoaderOverrides;
+-use codex_protocol::protocol::SessionSource;
+-use codex_utils_absolute_path::AbsolutePathBuf;
+-use codex_utils_cli::CliConfigOverrides;
+-use serde::Serialize;
+-use tokio::sync::watch;
+-use tokio::task::JoinHandle;
+-use tokio::time::timeout;
+-
+-const FOREGROUND_SOCKET_CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+-const FOREGROUND_SOCKET_CONNECT_RETRY_DELAY: Duration = Duration::from_millis(50);
+-const FOREGROUND_APP_SERVER_ABORT_TIMEOUT: Duration = Duration::from_secs(1);
+-
+-#[derive(Debug, Args)]
+-pub(crate) struct RemoteControlCommand {
+-    /// Emit machine-readable JSON.
+-    #[arg(long = "json", global = true)]
+-    json: bool,
+-
+-    #[command(subcommand)]
+-    subcommand: Option<RemoteControlSubcommand>,
+-}
+-
+-impl RemoteControlCommand {
+-    pub(crate) fn subcommand_name(&self) -> &'static str {
+-        match self.subcommand {
+-            None => "remote-control",
+-            Some(RemoteControlSubcommand::Start) => "remote-control start",
+-            Some(RemoteControlSubcommand::Stop) => "remote-control stop",
+-            Some(RemoteControlSubcommand::Pair) => "remote-control pair",
+-        }
+-    }
+-}
+-
+-#[derive(Debug, Clone, Copy, clap::Subcommand)]
+-enum RemoteControlSubcommand {
+-    /// Start the app-server daemon with remote control enabled.
+-    Start,
+-
+-    /// Stop the app-server daemon.
+-    Stop,
+-
+-    /// Create and print a short-lived manual pairing code.
+-    Pair,
+-}
+-
+-pub(crate) async fn run(
+-    command: RemoteControlCommand,
+-    arg0_paths: Arg0DispatchPaths,
+-    root_config_overrides: CliConfigOverrides,
+-) -> anyhow::Result<()> {
+-    match command.subcommand {
+-        None => {
+-            print_remote_control_progress(
+-                command.json,
+-                "Starting app-server with remote control enabled...",
+-            )?;
+-            run_foreground_remote_control(command.json, arg0_paths, root_config_overrides).await?;
+-        }
+-        Some(RemoteControlSubcommand::Start) => {
+-            print_remote_control_progress(
+-                command.json,
+-                "Starting app-server daemon with remote control enabled...",
+-            )?;
+-            let output = codex_app_server_daemon::ensure_remote_control_ready().await?;
+-            print_remote_control_start_output(&output, command.json)?;
+-        }
+-        Some(RemoteControlSubcommand::Stop) => {
+-            print_remote_control_progress(command.json, "Stopping remote control...")?;
+-            let output = codex_app_server_daemon::run(AppServerLifecycleCommand::Stop).await?;
+-            print_remote_control_stop_output(&output, command.json)?;
+-        }
+-        Some(RemoteControlSubcommand::Pair) => {
+-            let output = codex_app_server_daemon::start_remote_control_pairing().await?;
+-            print_remote_control_pairing_output(&output, command.json)?;
+-        }
+-    }
+-    Ok(())
+-}
+-
+-fn print_remote_control_progress(json: bool, message: &str) -> anyhow::Result<()> {
+-    if json {
+-        return Ok(());
+-    }
+-
+-    println!("{message}");
+-    std::io::stdout()
+-        .flush()
+-        .context("failed to flush remote-control progress message")?;
+-    Ok(())
+-}
+-
+-async fn run_foreground_remote_control(
+-    json: bool,
+-    arg0_paths: Arg0DispatchPaths,
+-    root_config_overrides: CliConfigOverrides,
+-) -> anyhow::Result<()> {
+-    let socket_dir = tempfile::Builder::new()
+-        .prefix("codex-rc-")
+-        .tempdir_in("/tmp")
+-        .or_else(|_| tempfile::tempdir())
+-        .context("failed to create private app-server socket directory")?;
+-    let socket_path = socket_dir.path().join("rc.sock");
+-    let socket_path = AbsolutePathBuf::from_absolute_path(&socket_path)
+-        .context("private app-server socket path was not absolute")?;
+-    let transport = AppServerTransport::UnixSocket {
+-        socket_path: socket_path.clone(),
+-    };
+-    let runtime_options = AppServerRuntimeOptions {
+-        remote_control_startup_mode: codex_app_server::RemoteControlStartupMode::EnabledEphemeral,
+-        install_shutdown_signal_handler: false,
+-        ..Default::default()
+-    };
+-    let (stop_rx, stop_signal_task) = foreground_stop_signal();
+-    let mut app_server_task = tokio::spawn(codex_app_server::run_main_with_transport_options(
+-        arg0_paths,
+-        root_config_overrides,
+-        LoaderOverrides::default(),
+-        /*strict_config*/ false,
+-        /*default_analytics_enabled*/ false,
+-        transport,
+-        SessionSource::VSCode,
+-        AppServerWebsocketAuthSettings::default(),
+-        runtime_options,
+-    ));
+-
+-    let summary = match wait_for_foreground_remote_control_start(
+-        &mut app_server_task,
+-        wait_for_foreground_remote_control_ready(socket_path),
+-        stop_rx.clone(),
+-    )
+-    .await
+-    {
+-        ForegroundStartupResult::Ready(summary) => summary,
+-        ForegroundStartupResult::Stopped => {
+-            abort_foreground_app_server(app_server_task).await;
+-            stop_signal_task.abort();
+-            return Ok(());
+-        }
+-        ForegroundStartupResult::ReadyFailed(error) => {
+-            abort_foreground_app_server(app_server_task).await;
+-            stop_signal_task.abort();
+-            return Err(error);
+-        }
+-        ForegroundStartupResult::AppServerExited(error) => {
+-            stop_signal_task.abort();
+-            return Err(error);
+-        }
+-    };
+-
+-    if *stop_rx.borrow() {
+-        abort_foreground_app_server(app_server_task).await;
+-        stop_signal_task.abort();
+-        return Ok(());
+-    }
+-
+-    if let Err(error) = print_foreground_ready_output(&summary, json) {
+-        abort_foreground_app_server(app_server_task).await;
+-        stop_signal_task.abort();
+-        return Err(error);
+-    }
+-
+-    let result = wait_for_foreground_app_server(app_server_task, stop_rx).await;
+-    stop_signal_task.abort();
+-    result
+-}
+-
+-fn foreground_stop_signal() -> (watch::Receiver<bool>, JoinHandle<()>) {
+-    let (stop_tx, stop_rx) = watch::channel(false);
+-    let task = tokio::spawn(async move {
+-        if let Err(err) = tokio::signal::ctrl_c().await {
+-            eprintln!("failed to listen for Ctrl-C: {err}");
+-        }
+-        let _ = stop_tx.send(true);
+-    });
+-    (stop_rx, task)
+-}
+-
+-enum ForegroundStartupResult {
+-    Ready(AppServerRemoteControlReadyStatus),
+-    Stopped,
+-    ReadyFailed(anyhow::Error),
+-    AppServerExited(anyhow::Error),
+-}
+-
+-async fn wait_for_foreground_remote_control_start(
+-    app_server_task: &mut JoinHandle<std::io::Result<()>>,
+-    ready: impl std::future::Future<Output = anyhow::Result<AppServerRemoteControlReadyStatus>>,
+-    mut stop_rx: watch::Receiver<bool>,
+-) -> ForegroundStartupResult {
+-    tokio::pin!(ready);
+-
+-    tokio::select! {
+-        ready_result = &mut ready => match ready_result {
+-            Ok(summary) => ForegroundStartupResult::Ready(summary),
+-            Err(error) => ForegroundStartupResult::ReadyFailed(error),
+-        },
+-        app_server_result = app_server_task => {
+-            ForegroundStartupResult::AppServerExited(
+-                foreground_app_server_exited_before_ready(app_server_result)
+-            )
+-        }
+-        _ = wait_for_stop_signal(&mut stop_rx) => ForegroundStartupResult::Stopped,
+-    }
+-}
+-
+-async fn wait_for_foreground_app_server(
+-    mut app_server_task: JoinHandle<std::io::Result<()>>,
+-    mut stop_rx: watch::Receiver<bool>,
+-) -> anyhow::Result<()> {
+-    tokio::select! {
+-        app_server_result = &mut app_server_task => {
+-            app_server_result
+-                .context("foreground app-server task failed to join")?
+-                .context("foreground app-server exited with an error")?;
+-        }
+-        _ = wait_for_stop_signal(&mut stop_rx) => {
+-            abort_foreground_app_server(app_server_task).await;
+-        }
+-    }
+-
+-    Ok(())
+-}
+-
+-async fn wait_for_stop_signal(stop_rx: &mut watch::Receiver<bool>) {
+-    if *stop_rx.borrow() {
+-        return;
+-    }
+-    let _ = stop_rx.wait_for(|stopped| *stopped).await;
+-}
+-
+-fn foreground_app_server_exited_before_ready(
+-    result: Result<std::io::Result<()>, tokio::task::JoinError>,
+-) -> anyhow::Error {
+-    match result {
+-        Ok(Ok(())) => {
+-            anyhow::anyhow!("foreground app-server exited before remote control became ready")
+-        }
+-        Ok(Err(error)) => anyhow::Error::new(error)
+-            .context("foreground app-server exited before remote control became ready"),
+-        Err(error) => anyhow::Error::new(error)
+-            .context("foreground app-server task failed before remote control became ready"),
+-    }
+-}
+-
+-async fn abort_foreground_app_server(app_server_task: JoinHandle<std::io::Result<()>>) {
+-    app_server_task.abort();
+-    let _ = timeout(FOREGROUND_APP_SERVER_ABORT_TIMEOUT, app_server_task).await;
+-}
+-
+-async fn wait_for_foreground_remote_control_ready(
+-    socket_path: AbsolutePathBuf,
+-) -> anyhow::Result<AppServerRemoteControlReadyStatus> {
+-    codex_app_server_daemon::enable_remote_control_on_socket(
+-        socket_path.as_path(),
+-        FOREGROUND_SOCKET_CONNECT_TIMEOUT,
+-        FOREGROUND_SOCKET_CONNECT_RETRY_DELAY,
+-    )
+-    .await
+-}
+-
+-fn print_remote_control_start_output(
+-    output: &AppServerRemoteControlReadyOutput,
+-    json: bool,
+-) -> anyhow::Result<()> {
+-    ensure_remote_control_startable(&output.remote_control)?;
+-    if json {
+-        println!(
+-            "{}",
+-            serde_json::to_string(&RemoteControlStartJsonOutput::daemon(output))?
+-        );
+-        return Ok(());
+-    }
+-
+-    for line in remote_control_start_human_lines(
+-        &output.remote_control,
+-        RemoteControlHumanOutputMode::Daemon,
+-    )? {
+-        println!("{line}");
+-    }
+-    for line in daemon_app_server_human_lines(&output.daemon) {
+-        println!("{line}");
+-    }
+-    Ok(())
+-}
+-
+-fn print_foreground_ready_output(
+-    summary: &AppServerRemoteControlReadyStatus,
+-    json: bool,
+-) -> anyhow::Result<()> {
+-    if json {
+-        ensure_remote_control_startable(summary)?;
+-        println!(
+-            "{}",
+-            serde_json::to_string(&RemoteControlStartJsonOutput::foreground(summary))?
+-        );
+-        return Ok(());
+-    }
+-
+-    for line in remote_control_start_human_lines(summary, RemoteControlHumanOutputMode::Foreground)?
+-    {
+-        println!("{line}");
+-    }
+-    Ok(())
+-}
+-
+-#[derive(Serialize)]
+-#[serde(rename_all = "camelCase")]
+-struct RemoteControlStartJsonOutput<'a> {
+-    mode: RemoteControlModeJson,
+-    status: RemoteControlConnectionStatus,
+-    server_name: &'a str,
+-    environment_id: Option<&'a str>,
+-    timed_out: bool,
+-    #[serde(skip_serializing_if = "Option::is_none")]
+-    daemon: Option<&'a AppServerRemoteControlStartOutput>,
+-}
+-
+-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize)]
+-#[serde(rename_all = "camelCase")]
+-enum RemoteControlModeJson {
+-    Foreground,
+-    Daemon,
+-}
+-
+-impl<'a> RemoteControlStartJsonOutput<'a> {
+-    fn foreground(summary: &'a AppServerRemoteControlReadyStatus) -> Self {
+-        Self {
+-            mode: RemoteControlModeJson::Foreground,
+-            status: summary.status,
+-            server_name: &summary.server_name,
+-            environment_id: summary.environment_id.as_deref(),
+-            timed_out: summary.timed_out,
+-            daemon: None,
+-        }
+-    }
+-
+-    fn daemon(output: &'a AppServerRemoteControlReadyOutput) -> Self {
+-        let remote_control = &output.remote_control;
+-        Self {
+-            mode: RemoteControlModeJson::Daemon,
+-            status: remote_control.status,
+-            server_name: &remote_control.server_name,
+-            environment_id: remote_control.environment_id.as_deref(),
+-            timed_out: remote_control.timed_out,
+-            daemon: Some(&output.daemon),
+-        }
+-    }
+-}
+-
+-fn remote_control_start_human_message(
+-    output: &AppServerRemoteControlReadyStatus,
+-) -> anyhow::Result<String> {
+-    ensure_remote_control_startable(output)?;
+-    match output.status {
+-        RemoteControlConnectionStatus::Connected => Ok(format!(
+-            "This machine is available for remote control as {}.",
+-            output.server_name
+-        )),
+-        RemoteControlConnectionStatus::Connecting => Ok(format!(
+-            "Remote control is enabled on {} and still connecting.",
+-            output.server_name
+-        )),
+-        RemoteControlConnectionStatus::Errored | RemoteControlConnectionStatus::Disabled => {
+-            unreachable!("errored and disabled statuses are rejected before formatting")
+-        }
+-    }
+-}
+-
+-fn ensure_remote_control_startable(
+-    output: &AppServerRemoteControlReadyStatus,
+-) -> anyhow::Result<()> {
+-    match output.status {
+-        RemoteControlConnectionStatus::Connected | RemoteControlConnectionStatus::Connecting => {
+-            Ok(())
+-        }
+-        RemoteControlConnectionStatus::Errored => {
+-            anyhow::bail!(
+-                "Remote control is enabled on {} but the connection is errored.",
+-                output.server_name
+-            );
+-        }
+-        RemoteControlConnectionStatus::Disabled => {
+-            anyhow::bail!("Remote control is disabled on {}.", output.server_name);
+-        }
+-    }
+-}
+-
+-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+-enum RemoteControlHumanOutputMode {
+-    Foreground,
+-    Daemon,
+-}
+-
+-fn remote_control_start_human_lines(
+-    summary: &AppServerRemoteControlReadyStatus,
+-    mode: RemoteControlHumanOutputMode,
+-) -> anyhow::Result<Vec<String>> {
+-    let mut lines = vec![remote_control_start_human_message(summary)?];
+-    match mode {
+-        RemoteControlHumanOutputMode::Foreground => {
+-            lines.push("Press Ctrl-C to stop.".to_string());
+-        }
+-        RemoteControlHumanOutputMode::Daemon => {}
+-    }
+-    Ok(lines)
+-}
+-
+-fn daemon_app_server_human_lines(output: &AppServerRemoteControlStartOutput) -> Vec<String> {
+-    let (managed_codex_path, managed_codex_version) = daemon_app_server_identity(output);
+-    vec![
+-        "Daemon used app-server:".to_string(),
+-        format!("  path: {}", managed_codex_path.display()),
+-        format!("  version: {}", managed_codex_version.unwrap_or("unknown")),
+-    ]
+-}
+-
+-fn daemon_app_server_identity(
+-    output: &AppServerRemoteControlStartOutput,
+-) -> (&std::path::Path, Option<&str>) {
+-    match output {
+-        AppServerRemoteControlStartOutput::Bootstrap(output) => (
+-            &output.managed_codex_path,
+-            output.managed_codex_version.as_deref(),
+-        ),
+-        AppServerRemoteControlStartOutput::Start(output) => (
+-            &output.managed_codex_path,
+-            output.managed_codex_version.as_deref(),
+-        ),
+-    }
+-}
+-
+-fn print_remote_control_stop_output(
+-    output: &AppServerLifecycleOutput,
+-    json: bool,
+-) -> anyhow::Result<()> {
+-    if json {
+-        println!("{}", serde_json::to_string(output)?);
+-        return Ok(());
+-    }
+-
+-    println!("{}", remote_control_stop_human_message(output));
+-    Ok(())
+-}
+-
+-fn print_remote_control_pairing_output(
+-    output: &RemoteControlPairingStartResponse,
+-    json: bool,
+-) -> anyhow::Result<()> {
+-    println!("{}", format_remote_control_pairing_output(output, json)?);
+-    Ok(())
+-}
+-
+-fn format_remote_control_pairing_output(
+-    output: &RemoteControlPairingStartResponse,
+-    json: bool,
+-) -> anyhow::Result<String> {
+-    if json {
+-        return Ok(serde_json::to_string(output)?);
+-    }
+-
+-    let manual_pairing_code = output
+-        .manual_pairing_code
+-        .as_deref()
+-        .context("remote-control pairing response did not include a manual pairing code")?;
+-    Ok(format!("Pairing code: {manual_pairing_code}"))
+-}
+-
+-fn remote_control_stop_human_message(output: &AppServerLifecycleOutput) -> String {
+-    match output.status {
+-        AppServerLifecycleStatus::Stopped => "Remote control stopped.".to_string(),
+-        AppServerLifecycleStatus::NotRunning => "Remote control is not running.".to_string(),
+-        AppServerLifecycleStatus::Started
+-        | AppServerLifecycleStatus::Restarted
+-        | AppServerLifecycleStatus::AlreadyRunning
+-        | AppServerLifecycleStatus::Running => {
+-            format!(
+-                "Remote control stop completed with status {:?}.",
+-                output.status
+-            )
+-        }
+-    }
+-}
+-
+-#[cfg(test)]
+-mod tests {
+-    use pretty_assertions::assert_eq;
+-    use serde_json::json;
+-    use std::path::PathBuf;
+-
+-    use super::*;
+-
+-    fn remote_control_status(
+-        status: RemoteControlConnectionStatus,
+-    ) -> AppServerRemoteControlReadyStatus {
+-        AppServerRemoteControlReadyStatus {
+-            status,
+-            server_name: "owen-mbp".to_string(),
+-            environment_id: Some("env_test".to_string()),
+-            timed_out: status == RemoteControlConnectionStatus::Connecting,
+-        }
+-    }
+-
+-    fn daemon_ready_output(
+-        status: RemoteControlConnectionStatus,
+-    ) -> AppServerRemoteControlReadyOutput {
+-        AppServerRemoteControlReadyOutput {
+-            daemon: AppServerRemoteControlStartOutput::Start(AppServerLifecycleOutput {
+-                status: AppServerLifecycleStatus::Started,
+-                backend: None,
+-                pid: Some(42),
+-                managed_codex_path: PathBuf::from("/opt/codex/bin/codex"),
+-                managed_codex_version: Some("1.0.0".to_string()),
+-                socket_path: PathBuf::from("/tmp/app-server-control.sock"),
+-                cli_version: Some("1.0.0".to_string()),
+-                app_server_version: Some("2.0.0".to_string()),
+-            }),
+-            remote_control: AppServerRemoteControlReadyStatus {
+-                status,
+-                server_name: "owen-mbp".to_string(),
+-                environment_id: Some("env_test".to_string()),
+-                timed_out: status == RemoteControlConnectionStatus::Connecting,
+-            },
+-        }
+-    }
+-
+-    fn pairing_response(manual_pairing_code: Option<&str>) -> RemoteControlPairingStartResponse {
+-        RemoteControlPairingStartResponse {
+-            pairing_code: "pairing-code".to_string(),
+-            manual_pairing_code: manual_pairing_code.map(str::to_string),
+-            environment_id: "env_test".to_string(),
+-            expires_at: 1_700_000_000,
+-        }
+-    }
+-
+-    #[test]
+-    fn remote_control_human_start_messages_use_server_name() {
+-        assert_eq!(
+-            remote_control_start_human_message(&remote_control_status(
+-                RemoteControlConnectionStatus::Connected
+-            ))
+-            .expect("connected message"),
+-            "This machine is available for remote control as owen-mbp."
+-        );
+-        assert_eq!(
+-            remote_control_start_human_message(&remote_control_status(
+-                RemoteControlConnectionStatus::Connecting
+-            ))
+-            .expect("connecting message"),
+-            "Remote control is enabled on owen-mbp and still connecting."
+-        );
+-        assert_eq!(
+-            remote_control_start_human_message(&remote_control_status(
+-                RemoteControlConnectionStatus::Errored
+-            ))
+-            .expect_err("errored status should fail")
+-            .to_string(),
+-            "Remote control is enabled on owen-mbp but the connection is errored."
+-        );
+-        assert_eq!(
+-            remote_control_start_human_message(&remote_control_status(
+-                RemoteControlConnectionStatus::Disabled
+-            ))
+-            .expect_err("disabled status should fail")
+-            .to_string(),
+-            "Remote control is disabled on owen-mbp."
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_human_lines_include_foreground_stop_hint_only() {
+-        let summary = remote_control_status(RemoteControlConnectionStatus::Connected);
+-
+-        assert_eq!(
+-            remote_control_start_human_lines(&summary, RemoteControlHumanOutputMode::Foreground)
+-                .expect("foreground lines"),
+-            vec![
+-                "This machine is available for remote control as owen-mbp.".to_string(),
+-                "Press Ctrl-C to stop.".to_string(),
+-            ]
+-        );
+-        assert_eq!(
+-            remote_control_start_human_lines(&summary, RemoteControlHumanOutputMode::Daemon)
+-                .expect("daemon lines"),
+-            vec!["This machine is available for remote control as owen-mbp.".to_string()]
+-        );
+-    }
+-
+-    #[test]
+-    fn daemon_app_server_human_lines_include_path_and_version() {
+-        assert_eq!(
+-            daemon_app_server_human_lines(
+-                &daemon_ready_output(RemoteControlConnectionStatus::Connected).daemon
+-            ),
+-            vec![
+-                "Daemon used app-server:".to_string(),
+-                "  path: /opt/codex/bin/codex".to_string(),
+-                "  version: 1.0.0".to_string(),
+-            ]
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_json_output_marks_foreground_or_daemon() {
+-        let foreground_summary = remote_control_status(RemoteControlConnectionStatus::Connected);
+-        assert_eq!(
+-            serde_json::to_value(RemoteControlStartJsonOutput::foreground(
+-                &foreground_summary
+-            ))
+-            .expect("foreground JSON"),
+-            json!({
+-                "mode": "foreground",
+-                "status": "connected",
+-                "serverName": "owen-mbp",
+-                "environmentId": "env_test",
+-                "timedOut": false,
+-            })
+-        );
+-
+-        let daemon_output = daemon_ready_output(RemoteControlConnectionStatus::Connected);
+-        assert_eq!(
+-            serde_json::to_value(RemoteControlStartJsonOutput::daemon(&daemon_output))
+-                .expect("daemon JSON"),
+-            json!({
+-                "mode": "daemon",
+-                "status": "connected",
+-                "serverName": "owen-mbp",
+-                "environmentId": "env_test",
+-                "timedOut": false,
+-                "daemon": {
+-                    "status": "started",
+-                    "pid": 42,
+-                    "managedCodexPath": "/opt/codex/bin/codex",
+-                    "managedCodexVersion": "1.0.0",
+-                    "socketPath": "/tmp/app-server-control.sock",
+-                    "cliVersion": "1.0.0",
+-                    "appServerVersion": "2.0.0",
+-                },
+-            })
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_daemon_json_rejects_unstartable_status() {
+-        assert_eq!(
+-            print_remote_control_start_output(
+-                &daemon_ready_output(RemoteControlConnectionStatus::Errored),
+-                /*json*/ true
+-            )
+-            .expect_err("errored daemon status should fail")
+-            .to_string(),
+-            "Remote control is enabled on owen-mbp but the connection is errored."
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_pairing_human_output_labels_the_manual_code() {
+-        assert_eq!(
+-            format_remote_control_pairing_output(
+-                &pairing_response(Some("ABCD-EFGH")),
+-                /*json*/ false,
+-            )
+-            .expect("manual pairing output"),
+-            "Pairing code: ABCD-EFGH"
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_pairing_json_output_preserves_pairing_artifacts() {
+-        let output = format_remote_control_pairing_output(
+-            &pairing_response(Some("ABCD-EFGH")),
+-            /*json*/ true,
+-        )
+-        .expect("pairing JSON output");
+-        assert_eq!(
+-            serde_json::from_str::<serde_json::Value>(&output).expect("valid JSON"),
+-            json!({
+-                "pairingCode": "pairing-code",
+-                "manualPairingCode": "ABCD-EFGH",
+-                "environmentId": "env_test",
+-                "expiresAt": 1_700_000_000,
+-            })
+-        );
+-    }
+-
+-    #[test]
+-    fn remote_control_pairing_human_output_requires_manual_code() {
+-        assert_eq!(
+-            format_remote_control_pairing_output(
+-                &pairing_response(/*manual_pairing_code*/ None),
+-                /*json*/ false,
+-            )
+-            .expect_err("missing manual pairing code should fail")
+-            .to_string(),
+-            "remote-control pairing response did not include a manual pairing code"
+-        );
+-    }
+-
+-    #[tokio::test]
+-    async fn foreground_wait_aborts_app_server_on_stop_signal() {
+-        let app_server_task = tokio::spawn(std::future::pending::<std::io::Result<()>>());
+-        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+-        stop_tx.send(true).expect("send stop signal");
+-
+-        tokio::time::timeout(
+-            std::time::Duration::from_secs(1),
+-            wait_for_foreground_app_server(app_server_task, stop_rx),
+-        )
+-        .await
+-        .expect("foreground wait should return after stop signal")
+-        .expect("stop signal should shut down cleanly");
+-    }
+-
+-    #[tokio::test]
+-    async fn foreground_start_wait_stops_before_ready() {
+-        let mut app_server_task = tokio::spawn(std::future::pending::<std::io::Result<()>>());
+-        let (stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+-        stop_tx.send(true).expect("send stop signal");
+-
+-        let startup = tokio::time::timeout(
+-            std::time::Duration::from_secs(1),
+-            wait_for_foreground_remote_control_start(
+-                &mut app_server_task,
+-                std::future::pending::<anyhow::Result<AppServerRemoteControlReadyStatus>>(),
+-                stop_rx,
+-            ),
+-        )
+-        .await
+-        .expect("foreground startup wait should return after stop signal");
+-
+-        assert!(matches!(startup, ForegroundStartupResult::Stopped));
+-        app_server_task.abort();
+-        let _ = app_server_task.await;
+-    }
+-
+-    #[tokio::test]
+-    async fn foreground_start_wait_reports_app_server_exit_before_ready() {
+-        let mut app_server_task =
+-            tokio::spawn(async { Err(std::io::Error::other("startup failed before socket bind")) });
+-        let (_stop_tx, stop_rx) = tokio::sync::watch::channel(false);
+-
+-        let startup = tokio::time::timeout(
+-            std::time::Duration::from_secs(1),
+-            wait_for_foreground_remote_control_start(
+-                &mut app_server_task,
+-                std::future::pending::<anyhow::Result<AppServerRemoteControlReadyStatus>>(),
+-                stop_rx,
+-            ),
+-        )
+-        .await
+-        .expect("foreground startup wait should return after app-server exits");
+-
+-        let ForegroundStartupResult::AppServerExited(error) = startup else {
+-            panic!("expected app-server exit before ready");
+-        };
+-
+-        assert_eq!(
+-            error.to_string(),
+-            "foreground app-server exited before remote control became ready"
+-        );
+-    }
+-}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
 index 0000000..34d5167
