@@ -110,6 +110,77 @@ jobs:
           RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
             -p codex-core -E 'not test(suite)'
 
+  check-windows:
+    name: Windows check
+    runs-on: windows-2022
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        shell: bash
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          targets: x86_64-pc-windows-msvc
+      - name: Expose MSVC SDK environment
+        shell: pwsh
+        env:
+          TARGET: x86_64-pc-windows-msvc
+        run: |
+          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
+      - name: Configure rusty_v8 artifact overrides (Windows)
+        shell: bash
+        env:
+          TARGET: x86_64-pc-windows-msvc
+        run: |
+          set -euo pipefail
+          cd "${TREE_DIR}"
+          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
+          release_tag="rusty-v8-v${version}"
+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
+          binding_dir="${RUNNER_TEMP}/rusty_v8"
+          profile="ptrcomp_sandbox_release"
+          archive_name="rusty_v8_${profile}_${TARGET}.lib.gz"
+          binding_name="src_binding_${profile}_${TARGET}.rs"
+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
+          archive_path="${binding_dir}/${archive_name}"
+          binding_path="${binding_dir}/${binding_name}"
+          checksums_path="${binding_dir}/${checksums_name}"
+          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
+          mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
+          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
+          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
+            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
+            exit 1
+          fi
+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
+      # Type-check the Windows-only code paths (self-update swap, sandbox
+      # helpers) on a native runner. Cross-checking from Linux is impossible
+      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
+      - name: Type-check the CLI for Windows
+        shell: bash
+        run: |
+          cd "${CODE_DIR}"
+          cargo check --target x86_64-pc-windows-msvc -p codex-cli
+      - name: Type-check the TUI for Windows
+        shell: bash
+        run: |
+          cd "${CODE_DIR}"
+          cargo check --target x86_64-pc-windows-msvc -p codex-tui
+
   codespell:
     name: Codespell
     uses: ./.github/workflows/codespell.yml
@@ -127,6 +198,7 @@ jobs:
       - build
       - test-tui
       - test-core
+      - check-windows
       - codespell
       - repo-checks
     runs-on: ubuntu-24.04

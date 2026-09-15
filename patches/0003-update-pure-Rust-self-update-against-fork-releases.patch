@@ -1,4 +1,4 @@
-From 87de6a6751e41f3474d67ec07d189e95f69d65fa Mon Sep 17 00:00:00 2001
+From 9eef9b1166729de9b4f4859513d879a9c4191228 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
@@ -24,7 +24,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/main.rs                      | 297 ++-----
  codex-rs/cli/src/plugin_cmd.rs                |  23 +
  codex-rs/cli/src/remote_control_cmd.rs        | 779 ------------------
- codex-rs/cli/src/self_update.rs               | 547 ++++++++++++
+ codex-rs/cli/src/self_update.rs               | 552 +++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 --
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
  ...pdate_available_history_cell_snapshot.snap |  11 -
@@ -38,7 +38,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/tui/src/updates.rs                   |  53 +-
  codex-rs/utils/cli/src/fork.rs                |  14 +
  codex-rs/utils/cli/src/lib.rs                 |   3 +
- 34 files changed, 783 insertions(+), 3926 deletions(-)
+ 34 files changed, 788 insertions(+), 3926 deletions(-)
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mac.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mod.rs
@@ -4421,10 +4421,10 @@ index bd0f16b..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..34d5167
+index 0000000..96eed77
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,547 @@
+@@ -0,0 +1,552 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -4585,6 +4585,10 @@ index 0000000..34d5167
 +
 +    #[cfg(target_os = "windows")]
 +    {
++        // Windows stages beside the running binary and resolves every write
++        // from its own location, so the install-context directories the Unix
++        // path needs are intentionally unused here.
++        let _ = (release_dir, resources_dir);
 +        return stage_windows_update(&staging_dir).await;
 +    }
 +
@@ -4691,8 +4695,9 @@ index 0000000..34d5167
 +    // Wait on the process handle rather than polling so a slow shutdown cannot
 +    // race the swap; the handle closes on exit even when the process fails.
 +    unsafe {
++        // `HANDLE` is an `isize` in windows-sys; a null handle is 0.
 +        let handle = OpenProcess(PROCESS_SYNCHRONIZE, /*bInheritHandle*/ 0, parent_pid);
-+        if !handle.is_null() {
++        if handle != 0 {
 +            WaitForSingleObject(handle, INFINITE);
 +            let _ = CloseHandle(handle);
 +        }

@@ -172,6 +172,16 @@ rust-v0.154.0 upgrades:
   cargo work while the final link runs. Run long builds detached
   (`setsid nohup ... &`) and poll the log, so an outer tool timeout never
   kills a half-finished compile or link.
+- `cargo nextest` defaults to one process per CPU, and this workspace's tests
+  spawn sandboxes, PTYs, and servers, so an unconstrained run on a 20-core
+  host can exhaust memory on its own. Always pass a thread cap --
+  `cargo nextest run -j 2` -- and set `CARGO_BUILD_JOBS=2` for the build phase
+  that precedes it. Run the `codex-tui` and `codex-core` suites one at a time,
+  never alongside another cargo invocation, and write logs under
+  `$HOME/tmp/` rather than `/tmp` (which is periodically cleaned and can lose
+  a long run's output). `codex-cli`'s own test suite is not a CI gate; build
+  it (`--bin codex`) instead of running its full suite unless the change is
+  CLI-specific.
 - A deterministic single-test failure is not automatically an upgrade
   regression. Before treating it as one, check in order: which assert
   actually fired (read the panic, not just the test name), whether the
@@ -253,8 +263,10 @@ rust-v0.154.0 upgrades:
 Tests use `cargo-nextest` in the bootstrapped tree:
 
 ```sh
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
+CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
+  cargo nextest run -j 2 --no-fail-fast -p codex-tui
+CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
+  cargo nextest run -j 2 --no-fail-fast \
   -p codex-core -E 'not test(suite)'   # sandbox-dependent suite::* tests need self-hosted runners
 ```
 
