@@ -1,4 +1,4 @@
-From 76c7fe92506939c88fa259b22a6b62abb5c79547 Mon Sep 17 00:00:00 2001
+From 426a7de21a06fb266cd928013a6a4363cec596fe Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -7,7 +7,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  .codespellignore                              |   1 +
  .gitignore                                    |   4 +
  BASE_TAG                                      |   1 +
- README.md                                     | 378 +++++++++++++++---
+ README.md                                     | 379 +++++++++++++++---
  codex-rs/Cargo.lock                           | 302 +++++++-------
  .../tui/src/app/tests/safety_buffering.rs     |   5 +-
  scripts/bootstrap.sh                          |  30 ++
@@ -15,7 +15,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/gen-patches.sh                        | 107 +++++
  scripts/patch-modules.conf                    | 184 +++++++++
  scripts/update.sh                             | 121 ++++++
- 11 files changed, 1112 insertions(+), 205 deletions(-)
+ 11 files changed, 1113 insertions(+), 205 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -54,10 +54,10 @@ index 0000000..d3717a3
 @@ -0,0 +1 @@
 +rust-v0.154.0
 diff --git a/README.md b/README.md
-index 06b02fc..4f65236 100644
+index 06b02fc..ad9f92b 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,351 @@
+@@ -1,81 +1,352 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -362,7 +362,7 @@ index 06b02fc..4f65236 100644
 +- The version number itself **matches the upstream base tag** (e.g. `0.154.0`),
 +  so version parsing stays plain semver and fork release tags stay clean.
 +
-+### Release & CI (Linux CI; Linux + Windows releases)
++### Release & CI (Linux CI + Windows check)
 +
 +- **Release matrix**: `x86_64-unknown-linux-musl` and
 +  `x86_64-pc-windows-msvc` (upstream ships macOS/ARM64/app-server bundles;
@@ -400,10 +400,11 @@ index 06b02fc..4f65236 100644
 +
 +The seven modules are `infra` (patch-queue tooling, lockfile, README),
 +`rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
-+interrupt), `privacy` (no startup network chatter), `distribution`
-+(Linux-only CI, Linux + Windows releases), and `identity` (branding). Every file changed by the
-+fork is owned by exactly one module; `check-patch-modules.sh` enforces the
-+partition at export time (gen-patches), during upgrades (update.sh), in CI
++interrupt), `privacy` (no startup network chatter), `distribution` (Linux CI +
++Windows check, Linux + Windows releases), and `identity` (branding). Every
++file changed by the fork is owned by exactly one module;
++`check-patch-modules.sh` enforces the partition at export time (gen-patches),
++during upgrades (update.sh), in CI
 +(repo-checks), and locally (pre-commit).
 +
 +Workflow: a **new feature** adds a section to `patch-modules.conf` and a
@@ -2170,7 +2171,7 @@ index 0000000..f49b884
 +find "${output_dir}" -name '*.patch' | sort
 diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
 new file mode 100644
-index 0000000..7d73ad6
+index 0000000..6bb8787
 --- /dev/null
 +++ b/scripts/patch-modules.conf
 @@ -0,0 +1,184 @@
@@ -2330,7 +2331,7 @@ index 0000000..7d73ad6
 +codex-rs/tui/src/tooltips.rs
 +
 +[distribution]
-+subject: ci: Linux-only cargo CI, fork release workflow, and installer
++subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 +.github/*
 +install.sh
 +patches/*

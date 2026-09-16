@@ -1,4 +1,4 @@
-From c841fae37553dea1ff96168e7a5624166c1719a5 Mon Sep 17 00:00:00 2001
+From ec63df94ab1eaf1c90ebf78e52abca911b0a83b1 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: input: single Esc is a no-op, double Esc interrupts

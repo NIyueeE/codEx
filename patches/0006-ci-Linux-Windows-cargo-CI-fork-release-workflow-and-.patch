@@ -1,7 +1,7 @@
-From 5da497f9be1d291241ff19d594e36e9243a5907e Mon Sep 17 00:00:00 2001
+From a5d95f740560381d25ba0bad61f8d2f5149e80eb Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
-Subject: ci: Linux-only cargo CI, fork release workflow, and installer
+Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
  .github/scripts/install-musl-build-tools.sh   |   12 +-

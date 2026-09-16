@@ -208,7 +208,7 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 - 版本号本身**与上游基础 tag 保持一致**(如 `0.154.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
-### 发布与 CI(CI 仅 Linux;release 含 Linux + Windows)
+### 发布与 CI(Linux CI + Windows 检查)
 
 - **发布矩阵**:`x86_64-unknown-linux-musl` 与 `x86_64-pc-windows-msvc`
   (上游发布 macOS/ARM64/app-server 包;本分支不发布)。每个目标各发布两个
@@ -244,7 +244,8 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
 `updates`(纯 Rust 自更新)、`input`(双击 Esc 中断)、`privacy`(启动无网络
-请求)、`distribution`(CI 仅 Linux,release 含 Linux + Windows)与 `identity`(品牌标识)。
+请求)、`distribution`(Linux CI + Windows 检查,release 含 Linux + Windows)与
+`identity`(品牌标识)。
 分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
 (gen-patches)、升级(update.sh)、CI(repo-checks)和本地提交(pre-commit)
 四处强制校验这一划分。
