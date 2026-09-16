@@ -1,4 +1,4 @@
-From 22f4fe278cc52749836b224451a5220c9e79d7a4 Mon Sep 17 00:00:00 2001
+From 3d06f79a005fedce8545d000b67aba050aedeb3b Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -14,9 +14,9 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/bootstrap.sh                          |  55 +++
  scripts/check-patch-modules.sh                | 239 +++++++++++
  scripts/gen-patches.sh                        | 107 +++++
- scripts/patch-modules.conf                    | 185 +++++++++
+ scripts/patch-modules.conf                    | 187 +++++++++
  scripts/update.sh                             | 121 ++++++
- 12 files changed, 1197 insertions(+), 207 deletions(-)
+ 12 files changed, 1199 insertions(+), 207 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -2268,10 +2268,10 @@ index 0000000..f49b884
 +find "${output_dir}" -name '*.patch' | sort
 diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
 new file mode 100644
-index 0000000..d45e5a9
+index 0000000..6c1ef8e
 --- /dev/null
 +++ b/scripts/patch-modules.conf
-@@ -0,0 +1,185 @@
+@@ -0,0 +1,187 @@
 +# codEx patch-module manifest.
 +#
 +# The fork's delta to upstream is organized as exactly one patch per module,
@@ -2332,6 +2332,7 @@ index 0000000..d45e5a9
 +subject: update: pure-Rust self-update against fork releases
 +codex-rs/cli/Cargo.toml
 +codex-rs/cli/src/main.rs
++codex-rs/cli/src/release_metadata.rs
 +codex-rs/cli/src/self_update.rs
 +codex-rs/cli/src/wsl_paths.rs
 +codex-rs/cli/src/doctor/updates.rs
@@ -2344,6 +2345,7 @@ index 0000000..d45e5a9
 +codex-rs/cli/src/doctor/desktop_tests.rs
 +codex-rs/cli/src/remote_control_cmd.rs
 +codex-rs/utils/cli/src/fork.rs
++codex-rs/utils/cli/src/fork_tests.rs
 +codex-rs/utils/cli/src/lib.rs
 +codex-rs/app-server-daemon/src/lib.rs
 +codex-rs/app-server-daemon/src/update_loop.rs

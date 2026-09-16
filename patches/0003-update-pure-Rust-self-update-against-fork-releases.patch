@@ -1,4 +1,4 @@
-From 32b2a980753b41d1dd359829816f0ec950457805 Mon Sep 17 00:00:00 2001
+From d81336f725badb4c9b51ef6e3503f05110cb29e9 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
@@ -20,11 +20,12 @@ Subject: update: pure-Rust self-update against fork releases
  .../src/doctor/desktop/windows_security.rs    | 232 ------
  .../doctor/desktop/windows_security_tests.rs  |  85 --
  codex-rs/cli/src/doctor/desktop_tests.rs      |  97 ---
- codex-rs/cli/src/doctor/updates.rs            | 462 +----------
- codex-rs/cli/src/main.rs                      | 297 ++-----
+ codex-rs/cli/src/doctor/updates.rs            | 469 +----------
+ codex-rs/cli/src/main.rs                      | 298 ++-----
  codex-rs/cli/src/plugin_cmd.rs                |  23 +
+ codex-rs/cli/src/release_metadata.rs          | 124 +++
  codex-rs/cli/src/remote_control_cmd.rs        | 779 ------------------
- codex-rs/cli/src/self_update.rs               | 552 +++++++++++++
+ codex-rs/cli/src/self_update.rs               | 522 ++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 --
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
  ...pdate_available_history_cell_snapshot.snap |  11 -
@@ -36,9 +37,10 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/tui/src/update_prompt.rs             |   7 +-
  codex-rs/tui/src/update_versions.rs           |  23 +-
  codex-rs/tui/src/updates.rs                   |  53 +-
- codex-rs/utils/cli/src/fork.rs                |  14 +
- codex-rs/utils/cli/src/lib.rs                 |   3 +
- 34 files changed, 788 insertions(+), 3926 deletions(-)
+ codex-rs/utils/cli/src/fork.rs                |  59 ++
+ codex-rs/utils/cli/src/fork_tests.rs          |  32 +
+ codex-rs/utils/cli/src/lib.rs                 |   6 +
+ 36 files changed, 970 insertions(+), 3926 deletions(-)
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mac.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mod.rs
@@ -50,12 +52,14 @@ Subject: update: pure-Rust self-update against fork releases
  delete mode 100644 codex-rs/cli/src/doctor/desktop/windows_security.rs
  delete mode 100644 codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
  delete mode 100644 codex-rs/cli/src/doctor/desktop_tests.rs
+ create mode 100644 codex-rs/cli/src/release_metadata.rs
  delete mode 100644 codex-rs/cli/src/remote_control_cmd.rs
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
  create mode 100644 codex-rs/utils/cli/src/fork.rs
+ create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
 index a9cd34f..1c08b1f 100644
@@ -2510,7 +2514,7 @@ index b5bd937..0000000
 -    .expect("desktop log fixture should be created");
 -}
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
-index fbad7d9..e0d16f4 100644
+index fbad7d9..1e1fd1d 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
 +++ b/codex-rs/cli/src/doctor/updates.rs
 @@ -5,8 +5,6 @@
@@ -2848,7 +2852,7 @@ index fbad7d9..e0d16f4 100644
  fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
      details.push(format!("version cache: {}", version_file.display()));
      match std::fs::read_to_string(version_file) {
-@@ -389,31 +97,22 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
+@@ -389,57 +97,46 @@ fn push_cached_version_details(details: &mut Vec<String>, version_file: &Path) {
  
  fn update_action_label(context: &InstallContext) -> &'static str {
      match &context.method {
@@ -2889,7 +2893,15 @@ index fbad7d9..e0d16f4 100644
  async fn fetch_latest_github_release_version(
      client: &RouteAwareClientPool,
  ) -> Result<String, String> {
-@@ -422,24 +121,15 @@ async fn fetch_latest_github_release_version(
++    // The REST API call below is limited to 60 unauthenticated requests per
++    // hour per IP, so prefer the release redirect, which is not limited.
++    if let Some(version) = crate::release_metadata::fetch_latest_version_via_redirect(client).await
++    {
++        return Ok(version);
++    }
++
+     #[derive(Deserialize)]
+     struct ReleaseInfo {
          tag_name: String,
      }
  
@@ -2917,7 +2929,7 @@ index fbad7d9..e0d16f4 100644
  async fn http_get_json<T>(client: &RouteAwareClientPool, url: &str) -> Result<T, String>
  where
      T: for<'de> Deserialize<'de>,
-@@ -497,6 +187,8 @@ struct VersionInfo {
+@@ -497,6 +194,8 @@ struct VersionInfo {
  #[cfg(test)]
  mod tests {
      use super::*;
@@ -2926,7 +2938,7 @@ index fbad7d9..e0d16f4 100644
      use pretty_assertions::assert_eq;
  
      #[tokio::test]
-@@ -566,117 +258,6 @@ mod tests {
+@@ -566,117 +265,6 @@ mod tests {
          }
      }
  
@@ -3044,7 +3056,7 @@ index fbad7d9..e0d16f4 100644
      #[test]
      fn is_newer_compares_plain_semver() {
          assert_eq!(is_newer("1.2.4", "1.2.3"), Some(true));
-@@ -691,14 +272,19 @@ mod tests {
+@@ -691,14 +279,19 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -3068,7 +3080,7 @@ index fbad7d9..e0d16f4 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 50aa973..bdf5f5c 100644
+index 50aa973..62fd85b 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -3099,11 +3111,12 @@ index 50aa973..bdf5f5c 100644
  mod doctor;
  #[cfg(test)]
  #[path = "exec_server_args_tests.rs"]
-@@ -70,18 +64,15 @@ mod mcp_cmd;
+@@ -70,18 +64,16 @@ mod mcp_cmd;
  mod migrate_rollouts;
  mod plugin_cmd;
  mod queue_cmd;
 -mod remote_control_cmd;
++mod release_metadata;
  #[cfg(target_os = "windows")]
  mod sandbox_setup;
 +mod self_update;
@@ -3119,7 +3132,7 @@ index 50aa973..bdf5f5c 100644
  use doctor::DoctorCommand;
  use state_db_recovery as local_state_db;
  
-@@ -111,13 +102,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -111,13 +103,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -3139,7 +3152,7 @@ index 50aa973..bdf5f5c 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -143,6 +138,14 @@ struct MultitoolCli {
+@@ -143,6 +139,14 @@ struct MultitoolCli {
      subcommand: Option<Subcommand>,
  }
  
@@ -3154,7 +3167,7 @@ index 50aa973..bdf5f5c 100644
  #[derive(Debug, clap::Subcommand)]
  enum Subcommand {
      /// Browse all agent sessions on the shared local app-server daemon.
-@@ -170,18 +173,11 @@ enum Subcommand {
+@@ -170,18 +174,11 @@ enum Subcommand {
      /// [experimental] Run the app server or related tooling.
      AppServer(AppServerCommand),
  
@@ -3175,7 +3188,7 @@ index 50aa973..bdf5f5c 100644
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
      Doctor(DoctorCommand),
-@@ -221,10 +217,6 @@ enum Subcommand {
+@@ -221,10 +218,6 @@ enum Subcommand {
      /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
      Fork(ForkCommand),
  
@@ -3186,7 +3199,7 @@ index 50aa973..bdf5f5c 100644
      /// Internal: run the responses API proxy.
      #[clap(hide = true)]
      ResponsesApiProxy(ResponsesApiProxyArgs),
-@@ -787,12 +779,6 @@ enum AppServerDaemonSubcommand {
+@@ -787,12 +780,6 @@ enum AppServerDaemonSubcommand {
      /// Restart the local app server daemon.
      Restart,
  
@@ -3199,7 +3212,7 @@ index 50aa973..bdf5f5c 100644
      /// Stop the local app server daemon.
      Stop,
  
-@@ -864,7 +850,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -864,7 +851,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -3208,7 +3221,7 @@ index 50aa973..bdf5f5c 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -886,79 +872,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -886,79 +873,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -3308,7 +3321,7 @@ index 50aa973..bdf5f5c 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -970,10 +916,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -970,10 +917,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -3321,7 +3334,7 @@ index 50aa973..bdf5f5c 100644
      }
  }
  
-@@ -1221,7 +1167,7 @@ async fn cli_main(
+@@ -1221,7 +1168,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3330,7 +3343,7 @@ index 50aa973..bdf5f5c 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1378,16 +1324,6 @@ async fn cli_main(
+@@ -1378,16 +1325,6 @@ async fn cli_main(
                      AppServerDaemonSubcommand::Restart => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
                      }
@@ -3347,7 +3360,7 @@ index 50aa973..bdf5f5c 100644
                      AppServerDaemonSubcommand::Stop => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
                      }
-@@ -1439,29 +1375,6 @@ async fn cli_main(
+@@ -1439,29 +1376,6 @@ async fn cli_main(
                  }
              }
          }
@@ -3377,7 +3390,7 @@ index 50aa973..bdf5f5c 100644
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1489,7 +1402,7 @@ async fn cli_main(
+@@ -1489,7 +1403,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3386,7 +3399,7 @@ index 50aa973..bdf5f5c 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1576,7 +1489,7 @@ async fn cli_main(
+@@ -1576,7 +1490,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3395,7 +3408,7 @@ index 50aa973..bdf5f5c 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1642,13 +1555,13 @@ async fn cli_main(
+@@ -1642,13 +1556,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -3411,7 +3424,7 @@ index 50aa973..bdf5f5c 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1664,19 +1577,6 @@ async fn cli_main(
+@@ -1664,19 +1578,6 @@ async fn cli_main(
              )
              .await?;
          }
@@ -3431,7 +3444,7 @@ index 50aa973..bdf5f5c 100644
          Some(Subcommand::Sandbox(mut sandbox_cli)) => {
              let config_profile = sandbox_cli
                  .config_profile
-@@ -2556,17 +2456,13 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2556,17 +2457,13 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -3450,7 +3463,7 @@ index 50aa973..bdf5f5c 100644
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2616,12 +2512,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2616,12 +2513,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Bootstrap(_) => "app-server daemon bootstrap",
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
@@ -3463,7 +3476,7 @@ index 50aa973..bdf5f5c 100644
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop => "app-server daemon pid-update-loop",
-@@ -2655,14 +2545,6 @@ fn updater_http_client_factory(
+@@ -2655,14 +2546,6 @@ fn updater_http_client_factory(
      }
  }
  
@@ -3478,7 +3491,7 @@ index 50aa973..bdf5f5c 100644
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -3758,7 +3640,24 @@ mod tests {
+@@ -3758,7 +3641,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -3504,7 +3517,7 @@ index 50aa973..bdf5f5c 100644
      }
  
      #[test]
-@@ -4534,31 +4433,20 @@ mod tests {
+@@ -4534,31 +4434,20 @@ mod tests {
      }
  
      #[test]
@@ -3550,7 +3563,7 @@ index 50aa973..bdf5f5c 100644
      }
  
      #[test]
-@@ -4873,24 +4761,17 @@ mod tests {
+@@ -4873,24 +4762,17 @@ mod tests {
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -3634,6 +3647,136 @@ index e82200b..a1791b3 100644
      if marketplace_name.is_some_and(|name| name != REMOTE_GLOBAL_MARKETPLACE_NAME) {
          return Ok(RemoteMarketplaceListing::default());
      }
+diff --git a/codex-rs/cli/src/release_metadata.rs b/codex-rs/cli/src/release_metadata.rs
+new file mode 100644
+index 0000000..af3ee05
+--- /dev/null
++++ b/codex-rs/cli/src/release_metadata.rs
+@@ -0,0 +1,124 @@
++//! Resolution of the codEx fork's newest published release version.
++//!
++//! `codex update` and `codex doctor` both need to know which tag the fork
++//! published last. The GitHub REST API answers that question, but it allows
++//! only 60 unauthenticated requests per hour per source IP, so a shared or
++//! NATed address can exhaust the quota without any local mistake -- which then
++//! blocks updates with a bare `403 rate limit exceeded`.
++//!
++//! `https://github.com/<repo>/releases/latest` redirects to the same tag
++//! outside the REST API limit, so that redirect is tried first and the API is
++//! kept only as a fallback (authenticated with `GITHUB_TOKEN`/`GH_TOKEN` when
++//! either is set).
++
++use std::time::Duration;
++
++use anyhow::Context;
++use codex_http_client::RouteAwareClientPool;
++use codex_utils_cli::latest_release_redirect_url;
++use codex_utils_cli::latest_release_url;
++use codex_utils_cli::strip_version_prefix;
++use codex_utils_cli::version_from_release_url;
++use http::Method;
++use http::StatusCode;
++use http::header::AUTHORIZATION;
++use http::header::LOCATION;
++use http::header::USER_AGENT;
++
++/// `User-Agent` sent with release-metadata requests. GitHub rejects REST API
++/// requests without one.
++const USER_AGENT_VALUE: &str = concat!(
++    "codex-cli/",
++    env!("CARGO_PKG_VERSION"),
++    " (codEx fork updater)"
++);
++/// Environment variables holding a token that raises the REST API rate limit.
++const TOKEN_ENV_VARS: [&str; 2] = ["GITHUB_TOKEN", "GH_TOKEN"];
++/// Timeout for a single metadata lookup.
++const METADATA_TIMEOUT: Duration = Duration::from_secs(30);
++
++/// Resolves the version of the fork's newest published release.
++pub(crate) async fn fetch_latest_version(client: &RouteAwareClientPool) -> anyhow::Result<String> {
++    if let Some(version) = fetch_latest_version_via_redirect(client).await {
++        return Ok(version);
++    }
++    fetch_latest_version_via_api(client).await
++}
++
++/// Resolves the newest version from the `github.com` release redirect.
++///
++/// Costs no REST API quota. Returns `None` when the response neither carries a
++/// `Location` header nor redirects to a release tag, so callers can fall back
++/// to the API.
++pub(crate) async fn fetch_latest_version_via_redirect(
++    client: &RouteAwareClientPool,
++) -> Option<String> {
++    let response = client
++        .request(Method::HEAD, latest_release_redirect_url())
++        .header(USER_AGENT, USER_AGENT_VALUE)
++        .timeout(METADATA_TIMEOUT)
++        .send()
++        .await
++        .ok()?;
++    response
++        .headers()
++        .get(LOCATION)
++        .and_then(|value| value.to_str().ok())
++        .and_then(version_from_release_url)
++        .or_else(|| version_from_release_url(response.url().as_str()))
++}
++
++/// Resolves the newest version from the GitHub REST API.
++async fn fetch_latest_version_via_api(client: &RouteAwareClientPool) -> anyhow::Result<String> {
++    #[derive(serde::Deserialize)]
++    struct ReleaseInfo {
++        tag_name: String,
++    }
++
++    let request = client
++        .get(latest_release_url())
++        .header(USER_AGENT, USER_AGENT_VALUE)
++        .timeout(METADATA_TIMEOUT);
++    let request = match github_token() {
++        Some(token) => request.header(AUTHORIZATION, format!("Bearer {token}")),
++        None => request,
++    };
++    let response = request
++        .send()
++        .await
++        .context("failed to reach codEx release metadata")?;
++    let status = response.status();
++    let ReleaseInfo { tag_name } = response
++        .error_for_status()
++        .map_err(|err| with_quota_hint(status, anyhow::Error::new(err)))
++        .context("release metadata request failed")?
++        .json::<ReleaseInfo>()
++        .await
++        .context("failed to parse release metadata")?;
++    strip_version_prefix(&tag_name)
++        .ok_or_else(|| anyhow::anyhow!("latest release tag `{tag_name}` does not name a version"))
++}
++
++/// Explains how to recover from an exhausted unauthenticated API quota.
++fn with_quota_hint(status: StatusCode, err: anyhow::Error) -> anyhow::Error {
++    if !matches!(
++        status,
++        StatusCode::FORBIDDEN | StatusCode::TOO_MANY_REQUESTS
++    ) {
++        return err;
++    }
++    err.context(
++        "GitHub allows 60 unauthenticated API requests per hour per IP address; \
++         set GITHUB_TOKEN or GH_TOKEN to raise the limit, or retry after the quota resets",
++    )
++}
++
++/// Token from the environment that raises the GitHub REST API rate limit.
++fn github_token() -> Option<String> {
++    TOKEN_ENV_VARS.into_iter().find_map(|name| {
++        std::env::var(name)
++            .ok()
++            .map(|token| token.trim().to_string())
++            .filter(|token| !token.is_empty())
++    })
++}
 diff --git a/codex-rs/cli/src/remote_control_cmd.rs b/codex-rs/cli/src/remote_control_cmd.rs
 deleted file mode 100644
 index bd0f16b..0000000
@@ -4421,10 +4564,10 @@ index bd0f16b..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..96eed77
+index 0000000..49ef6b9
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,552 @@
+@@ -0,0 +1,522 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -4445,7 +4588,6 @@ index 0000000..96eed77
 +use codex_install_context::InstallContext;
 +use codex_install_context::InstallMethod;
 +use codex_utils_cli::FORK_REPO;
-+use codex_utils_cli::latest_release_url;
 +use flate2::read::GzDecoder;
 +use http::HeaderValue;
 +use http::header::USER_AGENT;
@@ -4533,7 +4675,12 @@ index 0000000..96eed77
 +        );
 +    };
 +
-+    let latest_version = fetch_latest_version().await?;
++    let client = RouteAwareClientPool::new(
++        HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
++        ClientRouteClass::Other,
++    );
++
++    let latest_version = crate::release_metadata::fetch_latest_version(&client).await?;
 +    println!(
 +        "Found codEx {latest_version} (current: {})",
 +        env!("CARGO_PKG_VERSION")
@@ -4543,11 +4690,6 @@ index 0000000..96eed77
 +    let checksum_name = checksum_asset_name(target);
 +    let archive_url = asset_download_url(&archive_name);
 +    let checksum_url = asset_download_url(&checksum_name);
-+
-+    let client = RouteAwareClientPool::new(
-+        HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
-+        ClientRouteClass::Other,
-+    );
 +
 +    println!("Downloading {archive_name}...");
 +    let archive_bytes = download_bytes(&client, &archive_url).await?;
@@ -4733,35 +4875,6 @@ index 0000000..96eed77
 +        .spawn()
 +        .with_context(|| format!("failed to relaunch {}", target.display()))?;
 +    Ok(())
-+}
-+
-+async fn fetch_latest_version() -> anyhow::Result<String> {
-+    #[derive(serde::Deserialize)]
-+    struct ReleaseInfo {
-+        tag_name: String,
-+    }
-+
-+    let client = RouteAwareClientPool::new(
-+        HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
-+        ClientRouteClass::Other,
-+    );
-+    let response = client
-+        .get(latest_release_url())
-+        .header(USER_AGENT, user_agent())
-+        .timeout(Duration::from_secs(30))
-+        .send()
-+        .await
-+        .context("failed to reach codEx release metadata")?;
-+    let ReleaseInfo { tag_name } = response
-+        .error_for_status()
-+        .context("release metadata request failed")?
-+        .json::<ReleaseInfo>()
-+        .await
-+        .context("failed to parse release metadata")?;
-+    Ok(tag_name
-+        .trim_start_matches("rust-v")
-+        .trim_start_matches('v')
-+        .to_string())
 +}
 +
 +async fn download_bytes(client: &RouteAwareClientPool, url: &str) -> anyhow::Result<Vec<u8>> {
@@ -5570,10 +5683,10 @@ index b801426..a8dc0d9 100644
          .await?
 diff --git a/codex-rs/utils/cli/src/fork.rs b/codex-rs/utils/cli/src/fork.rs
 new file mode 100644
-index 0000000..6b69db1
+index 0000000..71f1c12
 --- /dev/null
 +++ b/codex-rs/utils/cli/src/fork.rs
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,59 @@
 +//! Identity of the codEx fork.
 +//!
 +//! The fork publishes its own release artifacts and update metadata from this
@@ -5585,11 +5698,94 @@ index 0000000..6b69db1
 +pub const FORK_REPO: &str = "NIyueeE/codEx";
 +
 +/// URL of the GitHub API "latest release" endpoint for the fork.
++///
++/// GitHub allows only 60 unauthenticated REST API requests per hour per source
++/// IP, which a shared address can exhaust without any local mistake, so
++/// [`latest_release_redirect_url`] is preferred and this endpoint is a fallback.
 +pub fn latest_release_url() -> String {
 +    format!("https://api.github.com/repos/{FORK_REPO}/releases/latest")
 +}
++
++/// URL that redirects to the fork's newest release page.
++///
++/// `github.com` is not subject to the REST API request limit, and the redirect
++/// target names the newest tag, so callers resolve the latest version here
++/// first.
++pub fn latest_release_redirect_url() -> String {
++    format!("https://github.com/{FORK_REPO}/releases/latest")
++}
++
++/// Extracts a bare version from a `github.com` release URL.
++///
++/// Handles the page a `/releases/latest` redirect lands on
++/// (`https://github.com/o/r/releases/tag/rust-v0.154.0`) as well as release
++/// asset URLs (`https://github.com/o/r/releases/download/rust-v0.154.0/x.tar.gz`),
++/// which carry the tag in the same position. Returns `None` for any other URL,
++/// including `/releases/latest` itself when a response was not a redirect.
++pub fn version_from_release_url(url: &str) -> Option<String> {
++    let (_, rest) = url.split_once("/releases/")?;
++    let (kind, tail) = rest.split_once('/')?;
++    if kind != "tag" && kind != "download" {
++        return None;
++    }
++    strip_version_prefix(tail.split('/').next()?)
++}
++
++/// Strips the `rust-v`/`v` prefix from a release tag.
++///
++/// Returns `None` for an empty tag so callers can report a missing version
++/// instead of propagating an empty string.
++pub fn strip_version_prefix(tag: &str) -> Option<String> {
++    let version = tag
++        .strip_prefix("rust-v")
++        .or_else(|| tag.strip_prefix('v'))
++        .unwrap_or(tag);
++    (!version.is_empty()).then(|| version.to_string())
++}
++
++#[cfg(test)]
++#[path = "fork_tests.rs"]
++mod tests;
+diff --git a/codex-rs/utils/cli/src/fork_tests.rs b/codex-rs/utils/cli/src/fork_tests.rs
+new file mode 100644
+index 0000000..93a2a8b
+--- /dev/null
++++ b/codex-rs/utils/cli/src/fork_tests.rs
+@@ -0,0 +1,32 @@
++use pretty_assertions::assert_eq;
++
++use super::version_from_release_url;
++
++#[test]
++fn version_from_release_url_reads_tag_and_download_urls() {
++    let cases = [
++        (
++            "https://github.com/NIyueeE/codEx/releases/tag/rust-v0.154.0",
++            Some("0.154.0"),
++        ),
++        ("/releases/tag/rust-v0.154.0", Some("0.154.0")),
++        (
++            "https://github.com/NIyueeE/codEx/releases/download/rust-v0.154.0/codex-x86_64-unknown-linux-musl.tar.gz",
++            Some("0.154.0"),
++        ),
++        (
++            "https://github.com/NIyueeE/codEx/releases/tag/v1.2.3",
++            Some("1.2.3"),
++        ),
++        ("https://github.com/NIyueeE/codEx/releases/latest", None),
++        ("https://github.com/NIyueeE/codEx", None),
++        ("", None),
++    ];
++    for (url, expected) in cases {
++        assert_eq!(
++            version_from_release_url(url).as_deref(),
++            expected,
++            "unexpected version for {url}"
++        );
++    }
++}
 diff --git a/codex-rs/utils/cli/src/lib.rs b/codex-rs/utils/cli/src/lib.rs
-index 633638e..d919c1a 100644
+index 633638e..b989481 100644
 --- a/codex-rs/utils/cli/src/lib.rs
 +++ b/codex-rs/utils/cli/src/lib.rs
 @@ -1,5 +1,6 @@
@@ -5599,12 +5795,15 @@ index 633638e..d919c1a 100644
  pub(crate) mod format_env_display;
  mod resume_command;
  mod sandbox_mode_cli_arg;
-@@ -8,6 +9,8 @@ mod shared_options;
+@@ -8,6 +9,11 @@ mod shared_options;
  pub use approval_mode_cli_arg::ApprovalModeCliArg;
  pub use codex_protocol::config_types::ProfileV2Name;
  pub use config_override::CliConfigOverrides;
 +pub use fork::FORK_REPO;
++pub use fork::latest_release_redirect_url;
 +pub use fork::latest_release_url;
++pub use fork::strip_version_prefix;
++pub use fork::version_from_release_url;
  pub use format_env_display::format_env_display;
  pub use resume_command::resume_command;
  pub use resume_command::resume_hint;

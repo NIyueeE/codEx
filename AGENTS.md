@@ -256,6 +256,18 @@ rust-v0.154.0 upgrades:
   only `.gitignore`, whose two copies legitimately differ. Files no module
   claims (`README.zh.md`, `.pre-commit-config.yaml`) are slim-only and are
   skipped automatically.
+- The fork's release lookup must never depend on the GitHub REST API. Its
+  unauthenticated quota is 60 requests per hour per source IP, which a shared
+  or NATed address exhausts without any local mistake, and the resulting
+  `403 rate limit exceeded` blocks `codex update` outright (seen in the wild on
+  a home connection). `codex update` and `codex doctor` therefore resolve the
+  newest tag from the `github.com/<repo>/releases/latest` redirect, which costs
+  no quota, and only fall back to
+  `api.github.com/repos/<repo>/releases/latest`, which they authenticate with
+  `GITHUB_TOKEN`/`GH_TOKEN` when either is set. Keep that order when resolving
+  conflicts in `cli/src/release_metadata.rs`, `cli/src/self_update.rs`, and
+  `utils/cli/src/fork.rs`; the asset downloads already use the
+  `/releases/latest/download/...` endpoint, which is likewise unlimited.
 - Upstream 0.154.0 added workspace members that need system headers the
   fork's CI never builds (`voice-host` pulls gstreamer/glib through
   `pkg-config`). A bare `cargo check --workspace` therefore fails on a
