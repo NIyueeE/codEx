@@ -48,6 +48,14 @@ cargo fmt --check                   # rustfmt check
 - `pre-commit install` — local hooks (codespell, README ASCII check,
   patch-module layout check, `cargo fmt --check`, config schema fixture
   check, patch export drift check)
+- Reproduce the Codespell job locally with the same version the hook pins,
+  without touching the system Python (which is externally managed here and
+  has no working `ensurepip`, so `pip install` and `python3 -m venv` both
+  fail):
+
+  ```sh
+  git ls-files -z | xargs -0 uvx --from codespell==2.4.3 codespell -I .codespellignore
+  ```
 
 ## Headless-only policy
 
