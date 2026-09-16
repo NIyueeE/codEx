@@ -39,8 +39,12 @@ cargo fmt --check                   # rustfmt check
   (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
   It refuses to run in the slim repo (no upstream history), and refuses to
   export any tree or patch set that violates `patch-modules.conf`
-- `bash scripts/check-patch-modules.sh --tree DIR [--patches DIR]` — validate
-  the module manifest against a tree and/or an exported patches/ dir
+- `bash scripts/check-patch-modules.sh --tree DIR [--patches DIR] [--slim DIR]`
+  — validate the module manifest against a tree and/or an exported patches/
+  dir. `--slim .` (from the slim repo root) additionally byte-compares every
+  fork-owned file that exists in both the slim repo and the tree, so the slim
+  copy cannot drift from the queue it publishes; only `.gitignore` is exempt
+  (the tree keeps upstream's version plus the generated `/patches/`)
 - `pre-commit install` — local hooks (codespell, README ASCII check,
   patch-module layout check, `cargo fmt --check`, config schema fixture
   check, patch export drift check)
@@ -233,6 +237,17 @@ rust-v0.154.0 upgrades:
   `git log --oneline <base>..HEAD -- scripts/patch-modules.conf` that
   exactly the infra commit touches the file, and diff the two copies
   afterwards.
+- The dual-copy rule is broader than the manifest: every fork-owned file
+  that exists at the slim root *and* in the bootstrapped tree must be
+  byte-identical in both, and the list is not just `scripts/`: `README.md`,
+  `.codespellignore`, `.codespellrc`, `install.sh`, `.github/workflows/*`,
+  `.github/actions/*` and `.github/scripts/*` are all carried by the queue.
+  Editing the tree copy without folding the change back into the slim root
+  (or vice versa) is invisible until the next upgrade, so
+  `check-patch-modules.sh --slim .` now fails CI on any divergence; exempt
+  only `.gitignore`, whose two copies legitimately differ. Files no module
+  claims (`README.zh.md`, `.pre-commit-config.yaml`) are slim-only and are
+  skipped automatically.
 - Upstream 0.154.0 added workspace members that need system headers the
   fork's CI never builds (`voice-host` pulls gstreamer/glib through
   `pkg-config`). A bare `cargo check --workspace` therefore fails on a

@@ -29,7 +29,13 @@ jobs:
       - name: Validate patch-module layout
         run: |
           bash scripts/check-patch-modules.sh --patches patches
-          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
+          if [[ "${TREE_DIR}" == "tree" ]]; then
+            # Slim repo: the tree carries a copy of every fork-owned file that
+            # lives here, so the queue cannot drift from what we publish.
+            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}" --slim .
+          else
+            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
+          fi
 
       - name: Verify codex-tui does not import codex-core directly
         run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"

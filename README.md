@@ -216,6 +216,34 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 - Update banners/notices, when enabled, point at this fork's releases and tell
   you to run `codex update`.
 
+### Headless only: no closed-source surfaces
+
+codEx is built for headless, self-hosted use in TUI and CLI. Every entry point
+that pulled in OpenAI's closed-source products or vendor-run services is
+removed, not merely disabled:
+
+- **`codex app` and the Desktop launcher.** The subcommand, its
+  `AppCommand`, and the `desktop_app/` downloader are gone. On macOS it used to
+  fetch a closed-source `.dmg`; on Windows it opened a vendor install page.
+- **`/app` and the `codex://` handoff.** The slash command, its `AppEvent`,
+  and the platform launchers (including the PowerShell path that queried the
+  `OpenAI.Codex` AppX package) are gone, so the TUI can no longer deep-link
+  into the Desktop app.
+- **Desktop probes in `codex doctor`.** The `desktop` module, the appcast and
+  Windows Store update feeds, and the Sparkle-staging inspection are removed;
+  `doctor` no longer contacts `persistent.oaistatic.com`.
+- **Desktop-app tooltips.** Startup tips no longer advertise the Desktop app
+  on any platform; the paid promo slot now only offers Fast mode.
+- **`codex cloud`** (Codex Cloud task browser) and **`codex remote-control`**
+  plus the daemon's `enable-remote-control` / `disable-remote-control` toggles,
+  which paired a local daemon with the vendor relay.
+- **The remote plugin marketplace** (`openai-curated-remote`, served from the
+  chatgpt.com backend) is refused. Local and Git marketplaces still work.
+
+Kept on purpose: the model/API backend the agent actually talks to, and the
+Windows sandbox plumbing, which references vendor package identities only to
+authorize sandbox IPC on the same machine.
+
 ### Branding
 
 - `codex --version` prints
@@ -226,7 +254,7 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 - The version number itself **matches the upstream base tag** (e.g. `0.154.0`),
   so version parsing stays plain semver and fork release tags stay clean.
 
-### Release & CI (Linux CI; Linux + Windows releases)
+### Release & CI (Linux CI + Windows check)
 
 - **Release matrix**: `x86_64-unknown-linux-musl` and
   `x86_64-pc-windows-msvc` (upstream ships macOS/ARM64/app-server bundles;
@@ -264,10 +292,11 @@ per commit):
 
 The seven modules are `infra` (patch-queue tooling, lockfile, README),
 `rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
-interrupt), `privacy` (no startup network chatter), `distribution`
-(Linux-only CI, Linux + Windows releases), and `identity` (branding). Every file changed by the
-fork is owned by exactly one module; `check-patch-modules.sh` enforces the
-partition at export time (gen-patches), during upgrades (update.sh), in CI
+interrupt), `privacy` (no startup network chatter), `distribution` (Linux CI +
+Windows check, Linux + Windows releases), and `identity` (branding). Every
+file changed by the fork is owned by exactly one module;
+`check-patch-modules.sh` enforces the partition at export time (gen-patches),
+during upgrades (update.sh), in CI
 (repo-checks), and locally (pre-commit).
 
 Workflow: a **new feature** adds a section to `patch-modules.conf` and a

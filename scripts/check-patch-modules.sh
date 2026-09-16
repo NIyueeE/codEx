@@ -5,10 +5,14 @@
 #   check-patch-modules.sh --tree DIR      validate a bootstrapped tree
 #   check-patch-modules.sh --patches DIR   validate an exported patches/ dir
 #   check-patch-modules.sh --tree DIR --patches DIR
+#   check-patch-modules.sh --tree DIR --slim DIR
 #
 # Tree checks: exactly one commit per manifest module, in order, with the
 # exact subjects, and every fork-delta file owned by exactly one module.
 # Patch checks: one patch per module, matching subjects, file ownership.
+# Slim checks (--slim, requires --tree): every fork-owned file that exists in
+# both repositories has identical content, so the slim repo cannot silently
+# drift from the queue it publishes.
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "$0")" && pwd)"
@@ -85,6 +89,43 @@ check_tree() { # $1 tree dir
     done < <(git -C "$tree" diff --no-renames --name-only "${base}..HEAD")
 }
 
+# Fork-owned files that intentionally differ between the slim repo and the
+# bootstrapped tree, and therefore must not be compared:
+#   .gitignore - the slim repo ignores only its scratch trees, the tree keeps
+#                upstream's .gitignore plus the fork's generated /patches/.
+sync_ignore=(".gitignore")
+
+sync_ignored() { # $1 file -> 0 when the file is excluded from the sync check
+    local file="$1" pat
+    for pat in "${sync_ignore[@]}"; do
+        case "$file" in ($pat) return 0 ;; esac
+    done
+    return 1
+}
+
+check_slim_tree() { # $1 slim root, $2 tree root
+    local slim="$1" tree="$2" file slug cand
+    while IFS= read -r file; do
+        [[ -n "$file" ]] || continue
+        slug=""
+        for cand in "${order[@]}"; do
+            if module_matches "$file" "$cand"; then
+                slug="$cand"
+                break
+            fi
+        done
+        # Files no module owns are not part of the queue (README.zh.md, the
+        # pre-commit config, ...), so the tree is not expected to carry them.
+        [[ -n "$slug" ]] || continue
+        sync_ignored "$file" && continue
+        [[ -e "${tree}/${file}" ]] || continue
+        if ! cmp -s "${slim}/${file}" "${tree}/${file}"; then
+            note "--slim: ${file} (owned by ${slug}) differs between ${slim} and ${tree}"
+            fail=1
+        fi
+    done < <(git -C "$slim" ls-files)
+}
+
 check_patches() { # $1 patches dir
     local dir="$1" i num slug subject file
     local -a patch_files=()
@@ -127,15 +168,21 @@ check_patches() { # $1 patches dir
 
 tree_arg=""
 patches_arg=""
+slim_arg=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --tree) tree_arg="$2"; shift 2 ;;
         --patches) patches_arg="$2"; shift 2 ;;
+        --slim) slim_arg="$2"; shift 2 ;;
         *) note "unknown argument: $1"; exit 2 ;;
     esac
 done
 if [[ -z "$tree_arg" && -z "$patches_arg" ]]; then
     note "give --tree DIR and/or --patches DIR"
+    exit 2
+fi
+if [[ -n "$slim_arg" && -z "$tree_arg" ]]; then
+    note "--slim requires --tree"
     exit 2
 fi
 
@@ -171,6 +218,14 @@ done
 if [[ -n "$tree_arg" ]]; then
     [[ -d "$tree_arg" ]] || { note "--tree ${tree_arg} does not exist"; exit 1; }
     check_tree "$tree_arg"
+fi
+if [[ -n "$slim_arg" ]]; then
+    [[ -d "$slim_arg" ]] || { note "--slim ${slim_arg} does not exist"; exit 1; }
+    if ! git -C "$slim_arg" rev-parse --git-dir >/dev/null 2>&1; then
+        note "--slim ${slim_arg} is not a git repository"
+        exit 1
+    fi
+    check_slim_tree "$slim_arg" "$tree_arg"
 fi
 if [[ -n "$patches_arg" ]]; then
     [[ -d "$patches_arg" ]] || { note "--patches ${patches_arg} does not exist"; exit 1; }

@@ -1,4 +1,4 @@
-From a5d95f740560381d25ba0bad61f8d2f5149e80eb Mon Sep 17 00:00:00 2001
+From 8651b727ca8fe8527bea6881169cb410bc86a4e0 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -15,7 +15,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/python-runtime-release.yml  |  100 -
  .github/workflows/python-sdk-release.yml      |  237 ---
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   71 +-
+ .github/workflows/repo-checks.yml             |   79 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ----
  .github/workflows/rust-ci-full.yml            |  574 ------
  .github/workflows/rust-ci.yml                 |  263 ---
@@ -48,7 +48,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 44 files changed, 651 insertions(+), 7872 deletions(-)
+ 44 files changed, 658 insertions(+), 7873 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -1610,10 +1610,10 @@ index 96a0768..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index be2b9aa..3ce7027 100644
+index be2b9aa..562d2d4 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -6,62 +6,49 @@ on:
+@@ -6,62 +6,55 @@ on:
  jobs:
    build-test:
      runs-on: ubuntu-latest
@@ -1629,12 +1629,13 @@ index be2b9aa..3ce7027 100644
            persist-credentials: false
  
 -      - uses: ./.github/actions/setup-ci
+-
+-      - name: Verify codex-rs Cargo manifests inherit workspace settings
+-        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +        with:
 +          components: rustfmt
- 
--      - name: Verify codex-rs Cargo manifests inherit workspace settings
--        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
++
 +      - name: Bootstrap tree if needed
 +        run: |
 +          if [[ ! -d codex-rs ]]; then
@@ -1642,17 +1643,23 @@ index be2b9aa..3ce7027 100644
 +          fi
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
- 
--      - name: Verify codex-tui does not import codex-core directly
--        run: python3 .github/scripts/verify_tui_core_boundary.py
++
 +      - name: Validate patch-module layout
 +        run: |
 +          bash scripts/check-patch-modules.sh --patches patches
-+          bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
++          if [[ "${TREE_DIR}" == "tree" ]]; then
++            # Slim repo: the tree carries a copy of every fork-owned file that
++            # lives here, so the queue cannot drift from what we publish.
++            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}" --slim .
++          else
++            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
++          fi
  
+       - name: Verify codex-tui does not import codex-core directly
+-        run: python3 .github/scripts/verify_tui_core_boundary.py
+-
 -      - name: Verify Bazel clippy flags match Cargo workspace lints
 -        run: python3 .github/scripts/verify_bazel_clippy_lints.py
-+      - name: Verify codex-tui does not import codex-core directly
 +        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
  
        - name: Test Codex package builder

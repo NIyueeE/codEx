@@ -1,4 +1,4 @@
-From dad9578e5cd461b2ecfe79b772cdeaf2d577a77e Mon Sep 17 00:00:00 2001
+From fb614a83bc92f6e43b6e027344a8cd2b6134b135 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: config: disable update checks and announcement fetches by default

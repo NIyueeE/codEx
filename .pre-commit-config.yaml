@@ -50,7 +50,7 @@ repos:
           - |
             tree_args=()
             if [[ -d tree ]]; then
-              tree_args=(--tree tree)
+              tree_args=(--tree tree --slim .)
             fi
             bash scripts/check-patch-modules.sh "${tree_args[@]}" --patches patches
 
