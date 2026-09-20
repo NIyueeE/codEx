@@ -1,4 +1,4 @@
-From a2cf179c0f67ab471f36f2a37ff06c6da3bde641 Mon Sep 17 00:00:00 2001
+From a077fa5e78d18aeb6c6268314f353125d973f017 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback

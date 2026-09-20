@@ -1,10 +1,10 @@
-From 6ce8476d1b3c9e5880688351726f39f96c7dec77 Mon Sep 17 00:00:00 2001
+From 335751332c58fcd9494e83f948eba290e853c0b7 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
 
 ---
- .codespellignore                              |   2 +
+ .codespellignore                              |   3 +
  .codespellrc                                  |   4 +-
  .gitignore                                    |   4 +
  BASE_TAG                                      |   1 +
@@ -16,7 +16,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/gen-patches.sh                        | 107 +++++
  scripts/patch-modules.conf                    | 195 +++++++++
  scripts/update.sh                             | 125 ++++++
- 12 files changed, 1213 insertions(+), 209 deletions(-)
+ 12 files changed, 1214 insertions(+), 209 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -25,10 +25,10 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  create mode 100644 scripts/update.sh
 
 diff --git a/.codespellignore b/.codespellignore
-index 4f3c8c3..9fefcae 100644
+index 4f3c8c3..4a1284b 100644
 --- a/.codespellignore
 +++ b/.codespellignore
-@@ -1,7 +1,9 @@
+@@ -1,7 +1,10 @@
  iTerm
  iTerm2
 +codEx
@@ -38,6 +38,7 @@ index 4f3c8c3..9fefcae 100644
  te
  TE
 +Resul
++backgroun
 diff --git a/.codespellrc b/.codespellrc
 index 838b7e8..43535b8 100644
 --- a/.codespellrc
