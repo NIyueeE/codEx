@@ -1,4 +1,4 @@
-From a077fa5e78d18aeb6c6268314f353125d973f017 Mon Sep 17 00:00:00 2001
+From c24561c7d2cc157a1de91df6959661dd8daf3670 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -9,7 +9,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/core/src/config/config_tests.rs      |   35 +
  codex-rs/core/src/config/mod.rs               |   29 +-
  codex-rs/thread-manager-sample/src/main.rs    |    3 +
- codex-rs/tui/Cargo.toml                       |    1 +
+ codex-rs/tui/Cargo.toml                       |    3 +-
  codex-rs/tui/src/app/event_dispatch.rs        |  149 +-
  codex-rs/tui/src/app/history_ui.rs            |  123 +-
  codex-rs/tui/src/app/history_ui_tests.rs      |   29 -
@@ -31,7 +31,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 27 files changed, 4008 insertions(+), 408 deletions(-)
+ 27 files changed, 4009 insertions(+), 409 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/history_ui_tests.rs
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
@@ -224,7 +224,7 @@ index 47ab3e0..55ff4cf 100644
          analytics_enabled: Some(false),
          feedback_enabled: false,
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index f72429a..a323b2f 100644
+index f72429a..0c26087 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
 @@ -82,6 +82,7 @@ diffy = { workspace = true }
@@ -235,6 +235,22 @@ index f72429a..a323b2f 100644
  itertools = { workspace = true }
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
+@@ -128,6 +129,7 @@ url = { workspace = true }
+ urlencoding = { workspace = true }
+ webbrowser = { workspace = true }
+ uuid = { workspace = true }
++http = { workspace = true }
+ 
+ codex-windows-sandbox = { workspace = true }
+ tokio-util = { workspace = true, features = ["time"] }
+@@ -162,7 +164,6 @@ codex-utils-cargo-bin = { workspace = true }
+ assert_matches = { workspace = true }
+ chrono = { workspace = true, features = ["serde"] }
+ futures = { workspace = true }
+-http = { workspace = true }
+ insta = { workspace = true }
+ pretty_assertions = { workspace = true }
+ rand = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
 index bcd076f..1bdfdb1 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
