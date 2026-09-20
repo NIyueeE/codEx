@@ -1,4 +1,4 @@
-From 217a0cabe29ddc39a7c56e286e1147dff2513bcf Mon Sep 17 00:00:00 2001
+From 34cf0c27325c996f1ce62573446138ef8c8332b9 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: input: single Esc is a no-op, double Esc interrupts
@@ -57,7 +57,9 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ...g_hooks_share_background_activity_row.snap |   4 +-
  ...__overlapping_hook_live_cell_snapshot.snap |   8 +-
  ..._tests__preamble_keeps_working_status.snap |   2 +-
- ...a_restores_recreated_status_indicator.snap |   2 +-
+ ...get__tests__reasoning_activity_row_80.snap |   2 +-
+ ...a_restores_recreated_status_indicator.snap |   3 +-
+ ...get__tests__replayed_in_progress_turn.snap |   4 +-
  ..._review_queues_user_messages_snapshot.snap |   2 +-
  ...g_hooks_share_background_activity_row.snap |   4 +-
  ...rked_side_question_while_task_running.snap |   2 +-
@@ -107,7 +109,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  ...hly_credit_details_in_narrow_terminal.snap |   2 +-
  ...ipt_overlay_status_rate_limit_refresh.snap |   4 +-
  codex-rs/tui/src/status_indicator_widget.rs   |  25 ++-
- 103 files changed, 458 insertions(+), 479 deletions(-)
+ 105 files changed, 461 insertions(+), 483 deletions(-)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_then_esc_hint.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_ctrl_c_hint_survives_esc.snap} (93%)
  rename codex-rs/tui/src/bottom_pane/snapshots/{codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_backtrack.snap => codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_closes_shortcut_overlay.snap} (89%)
  delete mode 100644 codex-rs/tui/src/bottom_pane/snapshots/codex_tui__bottom_pane__chat_composer__tests__footer_mode_esc_hint_from_overlay.snap
@@ -117,7 +119,7 @@ Subject: input: single Esc is a no-op, double Esc interrupts
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__app__tests__side_backtrack_rejection_reports_unavailable_message.snap
 
 diff --git a/codex-rs/tui/src/app/input.rs b/codex-rs/tui/src/app/input.rs
-index fbf1d98..80abf1c 100644
+index a599bc6..288ddac 100644
 --- a/codex-rs/tui/src/app/input.rs
 +++ b/codex-rs/tui/src/app/input.rs
 @@ -4,7 +4,6 @@
@@ -138,7 +140,7 @@ index fbf1d98..80abf1c 100644
                  self.set_key_chord_hint_override(Some(vec![
                      (
                          format!("{} …", prefix.display_label()),
-@@ -426,48 +422,29 @@ impl App {
+@@ -438,48 +434,29 @@ impl App {
              return;
          }
  
@@ -200,7 +202,7 @@ index fbf1d98..80abf1c 100644
                  self.chat_widget.handle_key_event(key_event);
              }
              _ => {
-@@ -559,26 +536,6 @@ impl App {
+@@ -571,26 +548,6 @@ impl App {
                  && matches!(key_event.code, KeyCode::Char('c' | 'd')))
      }
  
@@ -242,10 +244,10 @@ index 65750af..c1c6a46 100644
          self.inline_banner.as_ref().is_some_and(|banner| {
              banner.visible.get()
 diff --git a/codex-rs/tui/src/bottom_pane/chat_composer.rs b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-index 967c712..57de648 100644
+index b5639c0..fa6bcd3 100644
 --- a/codex-rs/tui/src/bottom_pane/chat_composer.rs
 +++ b/codex-rs/tui/src/bottom_pane/chat_composer.rs
-@@ -255,7 +255,6 @@ use super::footer::GoalStatusIndicator;
+@@ -257,7 +257,6 @@ use super::footer::GoalStatusIndicator;
  use super::footer::SummaryLeft;
  use super::footer::can_show_left_with_context;
  use super::footer::context_window_line;
@@ -253,7 +255,7 @@ index 967c712..57de648 100644
  use super::footer::footer_height;
  use super::footer::footer_hint_items_width;
  use super::footer::footer_line_width;
-@@ -412,7 +411,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
+@@ -416,7 +415,6 @@ fn parent_owned_command_is_allowed(command: SlashCommand, args: &str) -> bool {
                  | SlashCommand::New
                  | SlashCommand::Clear
                  | SlashCommand::Resume
@@ -261,7 +263,7 @@ index 967c712..57de648 100644
                  | SlashCommand::Side
                  | SlashCommand::Btw
                  | SlashCommand::Agents
-@@ -557,6 +555,10 @@ pub(crate) struct ChatComposer {
+@@ -562,6 +560,10 @@ pub(crate) struct ChatComposer {
      worktrees_enabled: bool,
      windows_degraded_sandbox_active: bool,
      side_conversation_active: bool,
@@ -272,7 +274,7 @@ index 967c712..57de648 100644
      history_search: Option<HistorySearchSession>,
      vim_history: VimHistory,
      submit_keys: Vec<KeyBinding>,
-@@ -654,7 +656,7 @@ impl ChatComposer {
+@@ -659,7 +661,7 @@ impl ChatComposer {
              footer: FooterState {
                  quit_shortcut_expires_at: None,
                  quit_shortcut_key: key_hint::ctrl(KeyCode::Char('c')),
@@ -281,7 +283,7 @@ index 967c712..57de648 100644
                  use_shift_enter_hint,
                  mode: FooterMode::ComposerEmpty,
                  hint_override: None,
-@@ -721,6 +723,8 @@ impl ChatComposer {
+@@ -728,6 +730,8 @@ impl ChatComposer {
              worktrees_enabled: false,
              windows_degraded_sandbox_active: false,
              side_conversation_active: false,
@@ -290,7 +292,7 @@ index 967c712..57de648 100644
              history_search: None,
              vim_history: VimHistory::default(),
              submit_keys: vec![key_hint::plain(KeyCode::Enter)],
-@@ -1952,6 +1956,40 @@ impl ChatComposer {
+@@ -1957,6 +1961,40 @@ impl ChatComposer {
      }
  
      /// Clear the "press again to quit" hint immediately.
@@ -331,7 +333,7 @@ index 967c712..57de648 100644
      pub fn clear_quit_shortcut_hint(&mut self, has_focus: bool) {
          self.footer.quit_shortcut_expires_at = None;
          self.footer.mode = reset_mode_after_activity(self.footer.mode);
-@@ -2159,14 +2197,12 @@ impl ChatComposer {
+@@ -2164,14 +2202,12 @@ impl ChatComposer {
          if self.handle_empty_prompt_shortcut(&key_event) {
              return (InputResult::None, true);
          }
@@ -351,7 +353,7 @@ index 967c712..57de648 100644
          }
          let ActivePopup::File(popup) = &mut self.popups.active else {
              unreachable!();
-@@ -3543,13 +3579,13 @@ impl ChatComposer {
+@@ -3548,13 +3584,13 @@ impl ChatComposer {
              return (InputResult::None, true);
          }
          if key_event.code == KeyCode::Esc {
@@ -371,7 +373,7 @@ index 967c712..57de648 100644
          } else {
              self.footer.mode = reset_mode_after_activity(self.footer.mode);
          }
-@@ -3883,20 +3919,10 @@ impl ChatComposer {
+@@ -3888,20 +3924,10 @@ impl ChatComposer {
  
      fn footer_props(&self) -> FooterProps {
          let mode = self.footer_mode();
@@ -393,7 +395,7 @@ index 967c712..57de648 100644
              use_shift_enter_hint: self.footer.use_shift_enter_hint,
              is_task_running: self.is_task_running,
              queue_submissions: self.queue_submissions,
-@@ -3913,7 +3939,6 @@ impl ChatComposer {
+@@ -3918,7 +3944,6 @@ impl ChatComposer {
                  queue: self.footer.queue_key,
                  insert_newline: self.footer.insert_newline_key,
                  external_editor: self.footer.external_editor_key,
@@ -401,7 +403,7 @@ index 967c712..57de648 100644
                  show_transcript: self.footer.show_transcript_key,
                  history_search: self.footer.history_search_key,
                  reasoning_down: self.footer.reasoning_down_key,
-@@ -3942,8 +3967,10 @@ impl ChatComposer {
+@@ -3947,8 +3972,10 @@ impl ChatComposer {
  
          match self.footer.mode {
              FooterMode::HistorySearch => FooterMode::HistorySearch,
@@ -413,7 +415,7 @@ index 967c712..57de648 100644
              FooterMode::QuitShortcutReminder if self.quit_shortcut_hint_visible() => {
                  FooterMode::QuitShortcutReminder
              }
-@@ -3952,7 +3979,7 @@ impl ChatComposer {
+@@ -3957,7 +3984,7 @@ impl ChatComposer {
              {
                  FooterMode::QuitShortcutReminder
              }
@@ -422,7 +424,7 @@ index 967c712..57de648 100644
              FooterMode::ComposerEmpty | FooterMode::ComposerHasDraft => base_mode,
          }
      }
-@@ -4428,12 +4455,20 @@ impl ChatComposer {
+@@ -4433,12 +4460,20 @@ impl ChatComposer {
          self.footer.context_window_pending = pending;
      }
  
@@ -449,7 +451,7 @@ index 967c712..57de648 100644
          }
      }
  
-@@ -4705,7 +4740,7 @@ impl ChatComposer {
+@@ -4707,7 +4742,7 @@ impl ChatComposer {
                      FooterMode::HistorySearch
                      | FooterMode::QuitShortcutReminder
                      | FooterMode::ShortcutOverlay
@@ -458,7 +460,7 @@ index 967c712..57de648 100644
                  };
                  let show_queue_hint = match footer_props.mode {
                      FooterMode::ComposerHasDraft => footer_props.is_task_running,
-@@ -4713,7 +4748,7 @@ impl ChatComposer {
+@@ -4715,7 +4750,7 @@ impl ChatComposer {
                      | FooterMode::QuitShortcutReminder
                      | FooterMode::ComposerEmpty
                      | FooterMode::ShortcutOverlay
@@ -467,7 +469,7 @@ index 967c712..57de648 100644
                  };
                  let custom_height = self.custom_footer_height();
                  let footer_hint_height =
-@@ -4849,16 +4884,15 @@ impl ChatComposer {
+@@ -4851,16 +4886,15 @@ impl ChatComposer {
                                      footer_props.key_hints,
                                  ))
                              }
@@ -488,7 +490,7 @@ index 967c712..57de648 100644
                              | FooterMode::QuitShortcutReminder
                              | FooterMode::ShortcutOverlay
                      ) {
-@@ -5407,7 +5441,6 @@ mod tests {
+@@ -5410,7 +5444,6 @@ mod tests {
              "footer_mode_shortcut_overlay",
              /*enhanced_keys_supported*/ true,
              |composer| {
@@ -496,7 +498,7 @@ index 967c712..57de648 100644
                  let _ = composer
                      .handle_key_event(KeyEvent::new(KeyCode::Char('?'), KeyModifiers::NONE));
              },
-@@ -5447,7 +5480,7 @@ mod tests {
+@@ -5450,7 +5483,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -505,7 +507,7 @@ index 967c712..57de648 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  composer.show_quit_shortcut_hint(
-@@ -5459,7 +5492,7 @@ mod tests {
+@@ -5462,7 +5495,7 @@ mod tests {
          );
  
          snapshot_composer_state(
@@ -514,7 +516,7 @@ index 967c712..57de648 100644
              /*enhanced_keys_supported*/ true,
              |composer| {
                  let _ = composer
-@@ -5468,25 +5501,6 @@ mod tests {
+@@ -5471,25 +5504,6 @@ mod tests {
              },
          );
  
@@ -540,7 +542,7 @@ index 967c712..57de648 100644
          snapshot_composer_state(
              "footer_mode_hidden_while_typing",
              /*enhanced_keys_supported*/ true,
-@@ -6103,7 +6117,6 @@ mod tests {
+@@ -6106,7 +6120,6 @@ mod tests {
          let _ = composer.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
  
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
@@ -548,7 +550,7 @@ index 967c712..57de648 100644
      }
  
      #[test]
-@@ -6141,7 +6154,6 @@ mod tests {
+@@ -6144,7 +6157,6 @@ mod tests {
              Some("Vim: Normal".magenta())
          );
          assert_eq!(composer.footer.mode, FooterMode::ComposerEmpty);
@@ -570,7 +572,7 @@ index 009c483..e8c79eb 100644
      pub(super) mode: FooterMode,
      pub(super) hint_override: Option<Vec<(String, String)>>,
 diff --git a/codex-rs/tui/src/bottom_pane/footer.rs b/codex-rs/tui/src/bottom_pane/footer.rs
-index 997866b..85cc571 100644
+index d5cbd09..e028174 100644
 --- a/codex-rs/tui/src/bottom_pane/footer.rs
 +++ b/codex-rs/tui/src/bottom_pane/footer.rs
 @@ -66,7 +66,6 @@ use ratatui::widgets::Widget;
@@ -688,7 +690,7 @@ index 997866b..85cc571 100644
      }
  }
  
-@@ -886,7 +874,6 @@ pub(crate) fn footer_hint_items_line(items: &[(String, String)]) -> Line<'static
+@@ -894,7 +882,6 @@ pub(crate) fn footer_hint_items_line(items: &[(String, String)]) -> Line<'static
  #[derive(Clone, Copy, Debug)]
  struct ShortcutsState {
      use_shift_enter_hint: bool,
@@ -696,7 +698,7 @@ index 997866b..85cc571 100644
      is_task_running: bool,
      queue_submissions: bool,
      is_wsl: bool,
-@@ -898,19 +885,12 @@ fn quit_shortcut_reminder_line(key: KeyBinding) -> Line<'static> {
+@@ -906,19 +893,12 @@ fn quit_shortcut_reminder_line(key: KeyBinding) -> Line<'static> {
      Line::from(vec![key.into(), " again to quit".into()]).dim()
  }
  
@@ -722,7 +724,7 @@ index 997866b..85cc571 100644
  }
  
  fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
-@@ -921,7 +901,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
+@@ -929,7 +909,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
      let mut file_paths = Line::from("");
      let mut paste_image = Line::from("");
      let mut external_editor = Line::from("");
@@ -730,7 +732,7 @@ index 997866b..85cc571 100644
      let mut history_search = Line::from("");
      let mut quit = Line::from("");
      let mut show_transcript = Line::from("");
-@@ -939,7 +918,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
+@@ -947,7 +926,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
                  ShortcutId::FilePaths => file_paths = text,
                  ShortcutId::PasteImage => paste_image = text,
                  ShortcutId::ExternalEditor => external_editor = text,
@@ -738,7 +740,7 @@ index 997866b..85cc571 100644
                  ShortcutId::HistorySearch => history_search = text,
                  ShortcutId::Quit => quit = text,
                  ShortcutId::ShowTranscript => show_transcript = text,
-@@ -958,7 +936,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
+@@ -966,7 +944,6 @@ fn shortcut_overlay_lines(state: ShortcutsState) -> Vec<Line<'static>> {
          file_paths,
          paste_image,
          external_editor,
@@ -746,7 +748,7 @@ index 997866b..85cc571 100644
          history_search,
          quit,
          reasoning_down,
-@@ -1053,7 +1030,6 @@ enum ShortcutId {
+@@ -1061,7 +1038,6 @@ enum ShortcutId {
      FilePaths,
      PasteImage,
      ExternalEditor,
@@ -754,7 +756,7 @@ index 997866b..85cc571 100644
      HistorySearch,
      Quit,
      ShowTranscript,
-@@ -1112,7 +1088,6 @@ impl ShortcutDescriptor {
+@@ -1120,7 +1096,6 @@ impl ShortcutDescriptor {
              ShortcutId::InsertNewline => state.key_hints.insert_newline,
              ShortcutId::QueueMessageTab => state.key_hints.queue,
              ShortcutId::ExternalEditor => state.key_hints.external_editor,
@@ -762,7 +764,7 @@ index 997866b..85cc571 100644
              ShortcutId::ShowTranscript => state.key_hints.show_transcript,
              ShortcutId::HistorySearch => state.key_hints.history_search,
              ShortcutId::ReasoningDown => state.key_hints.reasoning_down,
-@@ -1135,17 +1110,6 @@ impl ShortcutDescriptor {
+@@ -1143,17 +1118,6 @@ impl ShortcutDescriptor {
                      line.push_span(" to submit message");
                  }
              }
@@ -780,7 +782,7 @@ index 997866b..85cc571 100644
              ShortcutId::Quit => {
                  if state.is_task_running {
                      line.push_span(" to interrupt");
-@@ -1237,15 +1201,6 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
+@@ -1245,15 +1209,6 @@ const SHORTCUTS: &[ShortcutDescriptor] = &[
          prefix: "",
          label: " to edit in external editor",
      },
@@ -796,7 +798,7 @@ index 997866b..85cc571 100644
      ShortcutDescriptor {
          id: ShortcutId::HistorySearch,
          bindings: &[ShortcutBinding {
-@@ -1351,16 +1306,16 @@ mod tests {
+@@ -1396,16 +1351,16 @@ mod tests {
                      FooterMode::ComposerHasDraft => false,
                      FooterMode::HistorySearch
                      | FooterMode::QuitShortcutReminder
@@ -817,7 +819,7 @@ index 997866b..85cc571 100644
                  };
                  let status_line_active = uses_passive_footer_status_layout(props);
                  let passive_status_line = if status_line_active {
-@@ -1492,8 +1447,7 @@ mod tests {
+@@ -1537,8 +1492,7 @@ mod tests {
                      let show_context = can_show_left_and_context
                          && !matches!(
                              props.mode,
@@ -827,7 +829,7 @@ index 997866b..85cc571 100644
                                  | FooterMode::QuitShortcutReminder
                                  | FooterMode::ShortcutOverlay
                          );
-@@ -1585,7 +1539,6 @@ mod tests {
+@@ -1630,7 +1584,6 @@ mod tests {
              "footer_shortcuts_default",
              FooterProps {
                  mode: FooterMode::ComposerEmpty,
@@ -835,7 +837,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: false,
                  queue_submissions: false,
-@@ -1603,7 +1556,6 @@ mod tests {
+@@ -1648,7 +1601,6 @@ mod tests {
              "footer_shortcuts_shift_and_esc",
              FooterProps {
                  mode: FooterMode::ShortcutOverlay,
@@ -843,7 +845,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: true,
                  is_task_running: false,
                  queue_submissions: false,
-@@ -1624,7 +1576,6 @@ mod tests {
+@@ -1669,7 +1621,6 @@ mod tests {
              "footer_shortcuts_collaboration_modes_enabled",
              FooterProps {
                  mode: FooterMode::ShortcutOverlay,
@@ -851,7 +853,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: false,
                  queue_submissions: false,
-@@ -1642,7 +1593,6 @@ mod tests {
+@@ -1687,7 +1638,6 @@ mod tests {
              "footer_shortcuts_running",
              FooterProps {
                  mode: FooterMode::ShortcutOverlay,
@@ -859,7 +861,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: true,
                  queue_submissions: false,
-@@ -1660,7 +1610,6 @@ mod tests {
+@@ -1705,7 +1655,6 @@ mod tests {
              "footer_ctrl_c_quit_idle",
              FooterProps {
                  mode: FooterMode::QuitShortcutReminder,
@@ -867,7 +869,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: false,
                  queue_submissions: false,
-@@ -1678,7 +1627,6 @@ mod tests {
+@@ -1723,7 +1672,6 @@ mod tests {
              "footer_ctrl_c_quit_running",
              FooterProps {
                  mode: FooterMode::QuitShortcutReminder,
@@ -875,7 +877,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: true,
                  queue_submissions: false,
-@@ -1692,47 +1640,10 @@ mod tests {
+@@ -1737,47 +1685,10 @@ mod tests {
              },
          );
  
@@ -923,7 +925,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: true,
                  queue_submissions: false,
-@@ -1752,7 +1663,6 @@ mod tests {
+@@ -1797,7 +1708,6 @@ mod tests {
              "footer_context_tokens_used",
              FooterProps {
                  mode: FooterMode::ComposerEmpty,
@@ -931,7 +933,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: false,
                  queue_submissions: false,
-@@ -1772,7 +1682,6 @@ mod tests {
+@@ -1817,7 +1727,6 @@ mod tests {
              "footer_composer_has_draft_queue_hint_enabled",
              FooterProps {
                  mode: FooterMode::ComposerHasDraft,
@@ -939,7 +941,7 @@ index 997866b..85cc571 100644
                  use_shift_enter_hint: false,
                  is_task_running: true,
                  queue_submissions: false,
-@@ -1788,7 +1697,6 @@ mod tests {
+@@ -1833,7 +1742,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -947,7 +949,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1817,7 +1725,6 @@ mod tests {
+@@ -1862,7 +1770,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -955,7 +957,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: true,
              queue_submissions: false,
-@@ -1839,7 +1746,6 @@ mod tests {
+@@ -1884,7 +1791,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -963,7 +965,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1856,7 +1762,6 @@ mod tests {
+@@ -1901,7 +1807,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerHasDraft,
@@ -971,7 +973,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: true,
              queue_submissions: false,
-@@ -1873,7 +1778,6 @@ mod tests {
+@@ -1918,7 +1823,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerHasDraft,
@@ -979,7 +981,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1890,7 +1794,6 @@ mod tests {
+@@ -1935,7 +1839,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -987,7 +989,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1921,7 +1824,6 @@ mod tests {
+@@ -1966,7 +1869,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -995,7 +997,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1944,7 +1846,6 @@ mod tests {
+@@ -1989,7 +1891,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -1003,7 +1005,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1968,7 +1869,6 @@ mod tests {
+@@ -2013,7 +1914,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -1011,7 +1013,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -1993,7 +1893,6 @@ mod tests {
+@@ -2038,7 +1938,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -1019,7 +1021,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -2010,7 +1909,6 @@ mod tests {
+@@ -2055,7 +1954,6 @@ mod tests {
  
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -1027,7 +1029,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -2030,7 +1928,6 @@ mod tests {
+@@ -2075,7 +1973,6 @@ mod tests {
      fn footer_status_line_truncates_to_keep_mode_indicator() {
          let props = FooterProps {
              mode: FooterMode::ComposerEmpty,
@@ -1035,7 +1037,7 @@ index 997866b..85cc571 100644
              use_shift_enter_hint: false,
              is_task_running: false,
              queue_submissions: false,
-@@ -2094,7 +1991,6 @@ mod tests {
+@@ -2139,7 +2036,6 @@ mod tests {
          let actual_key = descriptor
              .binding_for(ShortcutsState {
                  use_shift_enter_hint: false,
@@ -1044,10 +1046,10 @@ index 997866b..85cc571 100644
                  queue_submissions: false,
                  is_wsl,
 diff --git a/codex-rs/tui/src/bottom_pane/mod.rs b/codex-rs/tui/src/bottom_pane/mod.rs
-index f249fad..6112591 100644
+index 8c75f87..5ca25ef 100644
 --- a/codex-rs/tui/src/bottom_pane/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/mod.rs
-@@ -190,6 +190,8 @@ pub(crate) use selection_tabs::SelectionTab;
+@@ -194,6 +194,8 @@ pub(crate) use selection_tabs::SelectionTab;
  ///
  /// Keeping a single value ensures Ctrl+C and Ctrl+D behave identically.
  pub(crate) const QUIT_SHORTCUT_TIMEOUT: Duration = Duration::from_secs(1);
@@ -1056,7 +1058,7 @@ index f249fad..6112591 100644
  
  const APPROVAL_PROMPT_TYPING_IDLE_DELAY: Duration = Duration::from_secs(1);
  
-@@ -258,7 +260,6 @@ pub(crate) struct BottomPane {
+@@ -262,7 +264,6 @@ pub(crate) struct BottomPane {
      enhanced_keys_supported: bool,
      disable_paste_burst: bool,
      is_task_running: bool,
@@ -1064,7 +1066,7 @@ index f249fad..6112591 100644
      animations_enabled: bool,
  
      /// Inline status indicator shown above the composer while a task is running.
-@@ -345,7 +346,6 @@ impl BottomPane {
+@@ -349,7 +350,6 @@ impl BottomPane {
              unified_exec_footer: UnifiedExecFooter::new(),
              pending_input_preview: PendingInputPreview::new(),
              pending_thread_approvals: PendingThreadApprovals::new(),
@@ -1072,7 +1074,7 @@ index f249fad..6112591 100644
              animations_enabled,
              context_window_percent: None,
              context_window_used_tokens: None,
-@@ -1149,11 +1149,51 @@ impl BottomPane {
+@@ -1164,11 +1164,51 @@ impl BottomPane {
          self.request_redraw();
      }
  
@@ -1124,7 +1126,7 @@ index f249fad..6112591 100644
      #[cfg(test)]
      pub(crate) fn status_indicator_visible(&self) -> bool {
          self.status_widget().is_some()
-@@ -1164,22 +1204,6 @@ impl BottomPane {
+@@ -1179,22 +1219,6 @@ impl BottomPane {
          self.composer.status_line_text()
      }
  
@@ -1147,7 +1149,7 @@ index f249fad..6112591 100644
      pub fn set_task_running(&mut self, running: bool) {
          let was_running = self.is_task_running;
          self.is_task_running = running;
-@@ -1604,6 +1628,7 @@ impl BottomPane {
+@@ -1619,6 +1643,7 @@ impl BottomPane {
      /// Return true when the pane is in the regular composer state without any
      /// overlays or popups and not running a task. This is the safe context to
      /// use Esc-Esc for backtracking from the main view.
@@ -1155,7 +1157,7 @@ index f249fad..6112591 100644
      pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
          !self.is_task_running
              && !self.questions.as_ref().is_some_and(|q| q.expanded)
-@@ -3343,7 +3368,7 @@ mod tests {
+@@ -3358,7 +3383,7 @@ mod tests {
      }
  
      #[test]
@@ -1164,7 +1166,7 @@ index f249fad..6112591 100644
          let (tx_raw, mut rx) = unbounded_channel::<AppEvent>();
          let tx = AppEventSender::new(tx_raw);
          let mut pane = BottomPane::new(BottomPaneParams {
-@@ -3362,16 +3387,20 @@ mod tests {
+@@ -3377,16 +3402,20 @@ mod tests {
          pane.handle_key_event(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE));
  
          assert!(
@@ -1227,7 +1229,7 @@ index 34ea099..4b6d62c 100644
              Self::push_section_header(&mut lines, width, Line::from(header));
  
 diff --git a/codex-rs/tui/src/bottom_pane/request_user_input/mod.rs b/codex-rs/tui/src/bottom_pane/request_user_input/mod.rs
-index 6b3dcda..22d778a 100644
+index 06ac2fe..be4debe 100644
 --- a/codex-rs/tui/src/bottom_pane/request_user_input/mod.rs
 +++ b/codex-rs/tui/src/bottom_pane/request_user_input/mod.rs
 @@ -624,10 +624,14 @@ impl RequestUserInputOverlay {
@@ -1249,7 +1251,7 @@ index 6b3dcda..22d778a 100644
          {
              tips.push(FooterTip::new(format!(
                  "{} to interrupt",
-@@ -1215,7 +1219,8 @@ impl BottomPaneView for RequestUserInputOverlay {
+@@ -1183,7 +1187,8 @@ impl BottomPaneView for RequestUserInputOverlay {
              && !(matches!(key_event.code, KeyCode::Esc)
                  && self.has_options()
                  && self.notes_ui_visible())
@@ -1259,7 +1261,7 @@ index 6b3dcda..22d778a 100644
      }
  
      fn handle_key_event(&mut self, key_event: KeyEvent) {
-@@ -1235,7 +1240,8 @@ impl BottomPaneView for RequestUserInputOverlay {
+@@ -1203,7 +1208,8 @@ impl BottomPaneView for RequestUserInputOverlay {
              return;
          }
  
@@ -1561,10 +1563,10 @@ index 4e8763c..36adc0e 100644
      Second detail line                          
                                                  
 diff --git a/codex-rs/tui/src/chatwidget/constructor.rs b/codex-rs/tui/src/chatwidget/constructor.rs
-index f45ae82..224a6e5 100644
+index e0be308..0885aab 100644
 --- a/codex-rs/tui/src/chatwidget/constructor.rs
 +++ b/codex-rs/tui/src/chatwidget/constructor.rs
-@@ -234,6 +234,7 @@ impl ChatWidget {
+@@ -237,6 +237,7 @@ impl ChatWidget {
              pending_notification: None,
              quit_shortcut_expires_at: None,
              quit_shortcut_key: None,
@@ -1573,7 +1575,7 @@ index f45ae82..224a6e5 100644
              last_rendered_width: std::cell::Cell::new(None),
              feedback,
 diff --git a/codex-rs/tui/src/chatwidget/interaction.rs b/codex-rs/tui/src/chatwidget/interaction.rs
-index e669e13..9d10583 100644
+index 959a577..2da8c4b 100644
 --- a/codex-rs/tui/src/chatwidget/interaction.rs
 +++ b/codex-rs/tui/src/chatwidget/interaction.rs
 @@ -47,6 +47,7 @@ impl ChatWidget {
@@ -1592,7 +1594,7 @@ index e669e13..9d10583 100644
              self.copy_last_agent_markdown();
              return;
          }
-@@ -114,6 +116,7 @@ impl ChatWidget {
+@@ -118,6 +120,7 @@ impl ChatWidget {
                  self.bottom_pane.clear_quit_shortcut_hint();
                  self.quit_shortcut_expires_at = None;
                  self.quit_shortcut_key = None;
@@ -1600,7 +1602,7 @@ index e669e13..9d10583 100644
              }
              _ => {}
          }
-@@ -133,7 +136,8 @@ impl ChatWidget {
+@@ -137,7 +140,8 @@ impl ChatWidget {
  
          const REVIEW_STEER_UNAVAILABLE_MESSAGE: &str = "Steer messages aren't supported during /review. Press Ctrl+C now to cancel the review.";
  
@@ -1610,7 +1612,7 @@ index e669e13..9d10583 100644
              && self.review.is_review_mode
              && (!self.input_queue.pending_steers.is_empty()
                  || !self.input_queue.rejected_steers_queue.is_empty())
-@@ -652,6 +656,63 @@ impl ChatWidget {
+@@ -656,6 +660,63 @@ impl ChatWidget {
          self.bottom_pane.show_quit_shortcut_hint(key);
      }
  
@@ -2051,19 +2053,47 @@ index 65070af..d745d3b 100644
  "                                                                                "
  "                                                                                "
  "› Ask Codex to do anything                                                      "
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_activity_row_80.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_activity_row_80.snap
+index 862a70d..d329580 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_activity_row_80.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_activity_row_80.snap
+@@ -2,4 +2,4 @@
+ source: tui/src/chatwidget/tests/reasoning_status_tests.rs
+ expression: terminal.backend()
+ ---
+-"• Preparing evidence report (42s • esc to interrupt) · 1 background terminal ru…"
++"• Preparing evidence report (42s • esc esc to stop reply) · 1 background termin…"
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_delta_restores_recreated_status_indicator.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_delta_restores_recreated_status_indicator.snap
-index 9201be6..cd74275 100644
+index c107219..868fbd4 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_delta_restores_recreated_status_indicator.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__reasoning_delta_restores_recreated_status_indicator.snap
-@@ -3,7 +3,7 @@ source: tui/src/chatwidget/tests/status_and_layout.rs
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/chatwidget/tests/status_and_layout.rs
+-assertion_line: 4833
  expression: normalized_backend_snapshot(terminal.backend())
  ---
  "                                                                                "
--"• Checking files (0s • esc to interrupt) · 1 background terminal running · /ps …"
-+"• Checking files (0s • esc esc to stop reply) · 1 background terminal running ·…"
+-"• Checking files and preparing a response (0s • esc to interrupt) · 1 backgroun…"
++"• Checking files and preparing a response (0s • esc esc to stop reply) · 1 back…"
  "                                                                                "
  "                                                                                "
  "› Ask Codex to do anything                                                      "
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__replayed_in_progress_turn.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__replayed_in_progress_turn.snap
+index 4ce4e7e..ede4ced 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__replayed_in_progress_turn.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__replayed_in_progress_turn.snap
+@@ -1,8 +1,8 @@
+ ---
+ source: tui/src/chatwidget/tests/history_replay.rs
+-expression: "normalize_completion_timestamps(& (render_bottom_popup(&chat, 80)))"
++expression: "normalize_snapshot_paths(render_bottom_popup(&chat, 80))"
+ ---
+-• Working (0s • esc to interrupt)
++• Working (0s • esc esc to stop reply)
+ 
+ 
+ › Ask Codex to do anything
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__review_queues_user_messages_snapshot.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__review_queues_user_messages_snapshot.snap
 index 691523b..be0c8e6 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__review_queues_user_messages_snapshot.snap
@@ -2152,10 +2182,10 @@ index e76f552..e371fe8 100644
  
  
 diff --git a/codex-rs/tui/src/chatwidget/status_surfaces.rs b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-index 17f437c..e42fdf0 100644
+index 1059d78..57f5383 100644
 --- a/codex-rs/tui/src/chatwidget/status_surfaces.rs
 +++ b/codex-rs/tui/src/chatwidget/status_surfaces.rs
-@@ -762,7 +762,7 @@ impl ChatWidget {
+@@ -767,7 +767,7 @@ impl ChatWidget {
                  let label = limit_label_for_window(window.window_minutes, is_secondary);
                  self.status_line_limit_display(Some(window), &label)
              }
@@ -2165,10 +2195,10 @@ index 17f437c..e42fdf0 100644
                  .status_line_context_window_size()
                  .map(|cws| format!("{} window", format_tokens_compact(cws))),
 diff --git a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
-index e7617cc..f32345d 100644
+index 6e538ad..6e4a7a9 100644
 --- a/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/popups_and_settings.rs
-@@ -3571,6 +3571,15 @@ async fn personality_selection_popup_snapshot() {
+@@ -3608,6 +3608,15 @@ async fn personality_selection_popup_snapshot() {
      assert_chatwidget_snapshot!("personality_selection_popup", popup);
  }
  
@@ -2185,10 +2215,10 @@ index e7617cc..f32345d 100644
  async fn skills_menu_default_mentions_shortcut_snapshot() {
      let (mut chat, _rx, _op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
 diff --git a/codex-rs/tui/src/chatwidget/tests/review_mode.rs b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-index e5b643b..b7022bd 100644
+index f947b36..092dd73 100644
 --- a/codex-rs/tui/src/chatwidget/tests/review_mode.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/review_mode.rs
-@@ -856,7 +856,10 @@ async fn esc_interrupt_sends_all_pending_steers_immediately_and_keeps_existing_d
+@@ -858,7 +858,10 @@ async fn esc_interrupt_sends_all_pending_steers_immediately_and_keeps_existing_d
      chat.bottom_pane
          .set_composer_text("still editing".to_string(), Vec::new(), Vec::new());
  
@@ -2200,7 +2230,7 @@ index e5b643b..b7022bd 100644
      next_interrupt_op(&mut op_rx);
  
      chat.on_interrupted_turn(TurnAbortReason::Interrupted);
-@@ -909,8 +912,8 @@ async fn esc_with_pending_steers_overrides_agent_command_interrupt_behavior() {
+@@ -911,8 +914,8 @@ async fn esc_with_pending_steers_overrides_agent_command_interrupt_behavior() {
  
      chat.bottom_pane
          .set_composer_text("/subagents ".to_string(), Vec::new(), Vec::new());
@@ -2211,7 +2241,7 @@ index e5b643b..b7022bd 100644
      next_interrupt_op(&mut op_rx);
      assert_eq!(chat.bottom_pane.composer_text(), "/subagents ");
  }
-@@ -1028,6 +1031,39 @@ async fn ctrl_c_interrupts_without_arming_quit_when_double_press_disabled() {
+@@ -1030,6 +1033,39 @@ async fn ctrl_c_interrupts_without_arming_quit_when_double_press_disabled() {
      assert!(!chat.bottom_pane.quit_shortcut_hint_visible());
  }
  
@@ -2291,10 +2321,10 @@ index afab6e1..4bac0c3 100644
  • Queued follow-up inputs
  
 diff --git a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-index 6e68f77..f7b140d 100644
+index 0569ae2..bc714d7 100644
 --- a/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/status_and_layout.rs
-@@ -2150,13 +2150,15 @@ async fn ctrl_c_interrupt_pauses_active_goal_turn() {
+@@ -2175,13 +2175,15 @@ async fn ctrl_c_interrupt_pauses_active_goal_turn() {
  
  #[tokio::test]
  async fn esc_interrupt_pauses_active_goal_turn() {
@@ -2314,7 +2344,7 @@ index 6e68f77..f7b140d 100644
  
      update_thread_goal(&mut chat, thread_id, AppThreadGoalStatus::Paused);
 diff --git a/codex-rs/tui/src/chatwidget/turn_runtime.rs b/codex-rs/tui/src/chatwidget/turn_runtime.rs
-index 0d53036..ef883dd 100644
+index 388af9d..c38672b 100644
 --- a/codex-rs/tui/src/chatwidget/turn_runtime.rs
 +++ b/codex-rs/tui/src/chatwidget/turn_runtime.rs
 @@ -88,6 +88,7 @@ impl ChatWidget {
@@ -2326,13 +2356,13 @@ index 0d53036..ef883dd 100644
          self.bottom_pane.ensure_status_indicator();
          self.bottom_pane.reset_status_timer(Duration::ZERO);
 diff --git a/codex-rs/tui/src/keymap.rs b/codex-rs/tui/src/keymap.rs
-index 4591732..55d7851 100644
+index f3b85c4..859e11f 100644
 --- a/codex-rs/tui/src/keymap.rs
 +++ b/codex-rs/tui/src/keymap.rs
-@@ -1499,7 +1499,9 @@ impl RuntimeKeymap {
-             },
-             chords: Arc::default(),
+@@ -1567,7 +1567,9 @@ impl RuntimeKeymap {
              chat: ChatKeymap {
+                 toggle_voice_mute: default_bindings![ctrl(KeyCode::Char('x'))],
+                 chord_hints: Arc::default(),
 -                interrupt_turn: default_bindings![plain(KeyCode::Esc)],
 +                // codEx: Esc is no longer bound to interrupt by default; a
 +                // double Esc at the app level stops the running reply.
@@ -2340,7 +2370,7 @@ index 4591732..55d7851 100644
                  decrease_reasoning_effort: default_bindings![
                      alt(KeyCode::Char(',')),
                      shift(KeyCode::Down)
-@@ -2727,10 +2729,7 @@ mod tests {
+@@ -2807,10 +2809,7 @@ mod tests {
              vec![key_hint::ctrl(KeyCode::Char('l'))]
          );
          assert_eq!(runtime.app.toggle_fast_mode, Vec::new());
@@ -2352,7 +2382,7 @@ index 4591732..55d7851 100644
          assert_eq!(
              runtime.chat.decrease_reasoning_effort,
              vec![
-@@ -3610,13 +3609,10 @@ mod tests {
+@@ -3690,13 +3689,10 @@ mod tests {
      }
  
      #[test]
@@ -2369,10 +2399,10 @@ index 4591732..55d7851 100644
          keymap.chat.interrupt_turn = Some(one("f12"));
          let runtime = RuntimeKeymap::from_config(&keymap).expect("remapped keymap should parse");
 diff --git a/codex-rs/tui/src/keymap_setup.rs b/codex-rs/tui/src/keymap_setup.rs
-index bdfd96e..02757dd 100644
+index a2b5edc..a24c955 100644
 --- a/codex-rs/tui/src/keymap_setup.rs
 +++ b/codex-rs/tui/src/keymap_setup.rs
-@@ -1060,6 +1060,7 @@ mod tests {
+@@ -1080,6 +1080,7 @@ mod tests {
          let params = build_keymap_picker_params(&runtime, &TuiKeymap::default());
          let unbound_tab = selection_tab(&params, KEYMAP_UNBOUND_TAB_ID);
  
@@ -2380,7 +2410,7 @@ index bdfd96e..02757dd 100644
          assert_eq!(
              unbound_tab
                  .items
-@@ -1073,6 +1074,7 @@ mod tests {
+@@ -1093,6 +1094,7 @@ mod tests {
              vec![
                  ("Open Agents", Some("unbound"), false),
                  ("Toggle Vim Mode", Some("unbound"), false),
@@ -2389,10 +2419,10 @@ index bdfd96e..02757dd 100644
                  ("Next Permission Mode", Some("unbound"), false),
                  ("Kill Whole Line", Some("unbound"), false),
 diff --git a/codex-rs/tui/src/lib.rs b/codex-rs/tui/src/lib.rs
-index 3d9650d..cc2b79d 100644
+index 43591ec..c7dca82 100644
 --- a/codex-rs/tui/src/lib.rs
 +++ b/codex-rs/tui/src/lib.rs
-@@ -175,8 +175,6 @@ mod motion;
+@@ -176,8 +176,6 @@ mod motion;
  mod multi_agents;
  mod named_session_lookup;
  mod notifications;
@@ -2401,7 +2431,7 @@ index 3d9650d..cc2b79d 100644
  pub(crate) mod onboarding;
  mod oss_selection;
  mod pager_overlay;
-@@ -184,6 +182,7 @@ pub(crate) mod public_widgets;
+@@ -185,6 +183,7 @@ pub(crate) mod public_widgets;
  mod render;
  mod resize_reflow_cap;
  mod resume_picker;
@@ -2443,15 +2473,15 @@ index 0a6af7a..00a28c2 100644
  Increase Reasoning Effort | alt-., shift-up | Chat increase_reasoning_effort Increase Reasoning Effort Increase reasoning effort. alt-., shift-up Default
  Previous Permission Mode | unbound | Chat previous_permission_mode Previous Permission Mode Switch to the previous available permission mode. unbound Default
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
-index 7253b12..8fe5fe2 100644
+index a5a09e4..faadc60 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_custom.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  141 actions, 1 customized, 5 unbound.
-+  141 actions, 1 customized, 6 unbound.
+-  145 actions, 1 customized, 5 unbound.
++  145 actions, 1 customized, 6 unbound.
  
 -  [All]  Common  Customized (1)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
 +  [All]  Common  Customized (1)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
@@ -2459,15 +2489,15 @@ index 7253b12..8fe5fe2 100644
    Type to search shortcuts
  › Global       - Open Agents                unbound
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
-index 009afe8..84562c1 100644
+index 6163a99..15811c4 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_fast_mode_enabled.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  142 actions, 0 customized, 6 unbound.
-+  142 actions, 0 customized, 7 unbound.
+-  146 actions, 0 customized, 6 unbound.
++  146 actions, 0 customized, 7 unbound.
  
 -  [All]  Common  Customized (0)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
 +  [All]  Common  Customized (0)  Unbound (7)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
@@ -2475,16 +2505,16 @@ index 009afe8..84562c1 100644
    Type to search shortcuts
  › Global       - Open Agents                unbound
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
-index 1c0a3e9..d0b6da9 100644
+index 76535cd..1625c7e 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_first_actions.snap
 @@ -5,7 +5,7 @@ expression: snapshot
- tab: All (141 selectable)
+ tab: All (145 selectable)
  tab: Common (20 selectable)
  tab: Customized (0) (0 selectable)
 -tab: Unbound (5) (5 selectable)
 +tab: Unbound (6) (6 selectable)
- tab: App (16 selectable)
+ tab: App (17 selectable)
  tab: Composer (5 selectable)
  tab: Editor (17 selectable)
 @@ -22,7 +22,7 @@ Clear Terminal | ctrl-l | Global clear_terminal Clear Terminal Clear the termina
@@ -2497,31 +2527,31 @@ index 1c0a3e9..d0b6da9 100644
  Increase Reasoning Effort | alt-., shift-up | Chat increase_reasoning_effort Increase Reasoning Effort Increase reasoning effort. alt-., shift-up Default
  Previous Permission Mode | unbound | Chat previous_permission_mode Previous Permission Mode Switch to the previous available permission mode. unbound Default
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
-index 0afe5b5..3128634 100644
+index 1ce9c49..aa293fe 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_global_chord.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  141 actions, 1 customized, 5 unbound.
-+  141 actions, 1 customized, 6 unbound.
+-  145 actions, 1 customized, 6 unbound.
++  145 actions, 1 customized, 7 unbound.
  
--  [All]  Common  Customized (1)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
-+  [All]  Common  Customized (1)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
+-  [All]  Common  Customized (1)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
++  [All]  Common  Customized (1)  Unbound (7)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
  
    Type to search shortcuts
  › Global       - Open Agents                unbound
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
-index 2871899..3ad88e3 100644
+index 4c6d34e..d3d91f7 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_narrow.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 78)"
  
    Keymap
    All configurable shortcuts.
--  141 actions, 0 customized, 5 unbound.
-+  141 actions, 0 customized, 6 unbound.
+-  145 actions, 0 customized, 5 unbound.
++  145 actions, 0 customized, 6 unbound.
  
 -  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim
 +  [All]  Common  Customized (0)  Unbound (6)  App  Composer  Editor  Vim
@@ -2529,15 +2559,15 @@ index 2871899..3ad88e3 100644
  
    Type to search shortcuts
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
-index 08ffd0c..3c29aae 100644
+index 1c72983..4806616 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_picker_wide.snap
 @@ -5,9 +5,9 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  141 actions, 0 customized, 5 unbound.
-+  141 actions, 0 customized, 6 unbound.
+-  145 actions, 0 customized, 5 unbound.
++  145 actions, 0 customized, 6 unbound.
  
 -  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
 +  [All]  Common  Customized (0)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
@@ -2545,15 +2575,15 @@ index 08ffd0c..3c29aae 100644
    Type to search shortcuts
  › Global       - Open Agents                unbound
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_question_actions.snap b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_question_actions.snap
-index 1f661cf..31573d1 100644
+index b16b7e0..ea89ff5 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_question_actions.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__keymap_setup__tests__keymap_question_actions.snap
 @@ -5,12 +5,12 @@ expression: "render_picker(params, 120)"
  
    Keymap
    All configurable shortcuts.
--  141 actions, 0 customized, 5 unbound.
-+  141 actions, 0 customized, 6 unbound.
+-  145 actions, 0 customized, 5 unbound.
++  145 actions, 0 customized, 6 unbound.
  
 -  [All]  Common  Customized (0)  Unbound (5)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
 +  [All]  Common  Customized (0)  Unbound (6)  App  Composer  Editor  Vim  Navigation  Agents  Approval  Debug
@@ -2860,10 +2890,10 @@ index 9dce4bf..f2cfe7b 100644
  │ Visit https://chatgpt.com/codex/settings/usage for up-to-date             │
  │ information on rate limits and credits                                    │
 diff --git a/codex-rs/tui/src/status_indicator_widget.rs b/codex-rs/tui/src/status_indicator_widget.rs
-index 19b0fa2..53fa811 100644
+index a6cfe78..cab79b1 100644
 --- a/codex-rs/tui/src/status_indicator_widget.rs
 +++ b/codex-rs/tui/src/status_indicator_widget.rs
-@@ -231,14 +231,23 @@ impl StatusIndicator<'_> {
+@@ -243,14 +243,23 @@ impl StatusIndicator<'_> {
          if !spans.is_empty() {
              spans.push(" ".into());
          }

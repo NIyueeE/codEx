@@ -1,12 +1,13 @@
-From d81336f725badb4c9b51ef6e3503f05110cb29e9 Mon Sep 17 00:00:00 2001
+From d8df3d886f0b679ec5deb714b1721b4d816ce920 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: update: pure-Rust self-update against fork releases
 
 ---
- codex-rs/app-server-daemon/src/lib.rs         |   7 +-
- codex-rs/app-server-daemon/src/update_loop.rs | 124 +--
- .../src/update_loop_tests.rs                  |  84 --
+ codex-rs/app-server-daemon/src/lib.rs         |  14 +-
+ .../app-server-daemon/src/manual_update.rs    | 249 ------
+ codex-rs/app-server-daemon/src/update_loop.rs | 540 ++----------
+ .../src/update_loop_tests.rs                  | 522 +-----------
  codex-rs/cli/Cargo.toml                       |   4 +
  codex-rs/cli/src/app_cmd.rs                   |  25 -
  codex-rs/cli/src/desktop_app/mac.rs           | 512 ------------
@@ -21,10 +22,10 @@ Subject: update: pure-Rust self-update against fork releases
  .../doctor/desktop/windows_security_tests.rs  |  85 --
  codex-rs/cli/src/doctor/desktop_tests.rs      |  97 ---
  codex-rs/cli/src/doctor/updates.rs            | 469 +----------
- codex-rs/cli/src/main.rs                      | 298 ++-----
+ codex-rs/cli/src/main.rs                      | 306 ++-----
  codex-rs/cli/src/plugin_cmd.rs                |  23 +
  codex-rs/cli/src/release_metadata.rs          | 124 +++
- codex-rs/cli/src/remote_control_cmd.rs        | 779 ------------------
+ codex-rs/cli/src/remote_control_cmd.rs        | 780 ------------------
  codex-rs/cli/src/self_update.rs               | 522 ++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |  59 --
  codex-rs/tui/src/history_cell/notices.rs      |  19 +-
@@ -36,11 +37,12 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/tui/src/update_action.rs             | 106 +--
  codex-rs/tui/src/update_prompt.rs             |   7 +-
  codex-rs/tui/src/update_versions.rs           |  23 +-
- codex-rs/tui/src/updates.rs                   |  53 +-
+ codex-rs/tui/src/updates.rs                   |  81 +-
  codex-rs/utils/cli/src/fork.rs                |  59 ++
  codex-rs/utils/cli/src/fork_tests.rs          |  32 +
  codex-rs/utils/cli/src/lib.rs                 |   6 +
- 36 files changed, 970 insertions(+), 3926 deletions(-)
+ 37 files changed, 1062 insertions(+), 4981 deletions(-)
+ delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mac.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mod.rs
@@ -62,10 +64,24 @@ Subject: update: pure-Rust self-update against fork releases
  create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index a9cd34f..1c08b1f 100644
+index ccb1be9..1e3f45d 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
-@@ -701,16 +701,11 @@ impl Daemon {
+@@ -270,13 +270,6 @@ pub async fn run_pid_update_loop(
+     update_loop::run(http_client_factory).await
+ }
+ 
+-pub async fn update() -> Result<UpdateOutput> {
+-    ensure_supported_platform()?;
+-    #[cfg(windows)]
+-    backend::windows::ensure_not_elevated()?;
+-    update_loop::request_manual_update(&Daemon::from_environment()?).await
+-}
+-
+ #[cfg(any(unix, windows))]
+ fn ensure_supported_platform() -> Result<()> {
+     Ok(())
+@@ -875,16 +868,11 @@ impl Daemon {
          }
  
          let managed_codex_path = self.managed_codex_bin.display();
@@ -83,14 +99,278 @@ index a9cd34f..1c08b1f 100644
               Then rerun the command you just tried."
          ))
      }
+diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
+deleted file mode 100644
+index 743b6e4..0000000
+--- a/codex-rs/app-server-daemon/src/manual_update.rs
++++ /dev/null
+@@ -1,249 +0,0 @@
+-//! Forwards manual requests to the updater and reports its install and restart result.
+-
+-use anyhow::Context;
+-use anyhow::Result;
+-use codex_uds::UnixStream;
+-use tokio::io::AsyncReadExt;
+-use tokio::io::AsyncWriteExt;
+-use tokio::time::Duration;
+-use tokio::time::sleep;
+-use tokio::time::timeout;
+-
+-use super::InstallerHttp;
+-use super::Signal;
+-use super::UpdateLoopControl;
+-use super::UpdateTrigger;
+-use super::selected_release;
+-use super::update_once;
+-use crate::Daemon;
+-use crate::RestartIfRunningOutcome;
+-use crate::UpdateOutput;
+-use crate::UpdateStatus;
+-use crate::client;
+-use crate::managed_install::executable_identity;
+-use crate::managed_install::managed_codex_version;
+-
+-pub(crate) async fn request(daemon: &Daemon) -> Result<UpdateOutput> {
+-    let socket_path = daemon.manual_update_socket_path();
+-    let mut replacement_deadline = None;
+-    'request: loop {
+-        let mut connection = if let Some(deadline) = replacement_deadline {
+-            loop {
+-                if let Ok(connection) = UnixStream::connect(&socket_path).await {
+-                    break connection;
+-                }
+-                // A one-shot updater may exit after accepting the connection but
+-                // before reading our request. Give a successor time to appear,
+-                // then return to the normal startup path if none owns the PID.
+-                if tokio::time::Instant::now() + Duration::from_secs(29) >= deadline {
+-                    let settings = daemon.load_settings().await?;
+-                    if !crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings))
+-                        .is_starting_or_running()
+-                        .await?
+-                    {
+-                        replacement_deadline = None;
+-                        continue 'request;
+-                    }
+-                }
+-                anyhow::ensure!(
+-                    tokio::time::Instant::now() < deadline,
+-                    "timed out waiting for the replacement daemon updater"
+-                );
+-                sleep(Duration::from_millis(50)).await;
+-            }
+-        } else {
+-            match UnixStream::connect(&socket_path).await {
+-                Ok(connection) => connection,
+-                Err(_) => {
+-                    let _operation_lock = daemon.acquire_operation_lock().await?;
+-                    if let Ok(connection) = UnixStream::connect(&socket_path).await {
+-                        connection
+-                    } else {
+-                        let settings = daemon.load_settings().await?;
+-                        if !daemon.is_stable_standalone_release()?
+-                            || (daemon.running_backend_instance(&settings).await?.is_none()
+-                                && client::probe(&daemon.socket_path).await.is_ok())
+-                        {
+-                            return unsupported(daemon).await;
+-                        }
+-                        crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings))
+-                            .stop()
+-                            .await?;
+-                        let current_exe = std::env::current_exe()?;
+-                        let worker = crate::backend::pid_update_loop_backend(
+-                            daemon.backend_paths_with_bin(&settings, &current_exe),
+-                        );
+-                        worker.start().await?;
+-                        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
+-                        loop {
+-                            if let Ok(connection) = UnixStream::connect(&socket_path).await {
+-                                break connection;
+-                            }
+-                            anyhow::ensure!(
+-                                tokio::time::Instant::now() < deadline,
+-                                "timed out waiting for the daemon updater to accept a manual request"
+-                            );
+-                            sleep(Duration::from_millis(50)).await;
+-                        }
+-                    }
+-                }
+-            }
+-        };
+-        let mut response = Vec::new();
+-        let transport = async {
+-            #[cfg(windows)]
+-            connection.ensure_non_elevated_peer()?;
+-            connection.write_all(b"update\n").await?;
+-            connection
+-                .take(16 * 1024)
+-                .read_to_end(&mut response)
+-                .await?;
+-            Ok::<_, std::io::Error>(())
+-        }
+-        .await;
+-        if response.is_empty() {
+-            if transport
+-                .as_ref()
+-                .is_err_and(|err| err.kind() == std::io::ErrorKind::PermissionDenied)
+-            {
+-                transport?;
+-            }
+-            let deadline = replacement_deadline
+-                .get_or_insert_with(|| tokio::time::Instant::now() + Duration::from_secs(30));
+-            anyhow::ensure!(
+-                tokio::time::Instant::now() < *deadline,
+-                "daemon updater disconnected before responding"
+-            );
+-            sleep(Duration::from_millis(50)).await;
+-            continue;
+-        }
+-        transport?;
+-        let outcome: std::result::Result<UpdateOutput, String> =
+-            serde_json::from_slice(&response).context("invalid response from daemon updater")?;
+-        return outcome.map_err(anyhow::Error::msg);
+-    }
+-}
+-
+-const UNSUPPORTED_MESSAGE: &str = "This command requires a CLI-managed daemon and a stable latest-channel standalone install; update this installation with its owning installer.";
+-
+-async fn unsupported(daemon: &Daemon) -> Result<UpdateOutput> {
+-    let managed_codex_path = daemon.current_managed_codex_bin()?;
+-    Ok(UpdateOutput {
+-        status: UpdateStatus::Unsupported,
+-        installed_version: managed_codex_version(&managed_codex_path).await.ok(),
+-        running_version: client::probe(&daemon.socket_path)
+-            .await
+-            .ok()
+-            .map(|info| info.app_server_version),
+-        managed_codex_path,
+-        message: UNSUPPORTED_MESSAGE.to_string(),
+-    })
+-}
+-
+-pub(super) async fn handle_request(
+-    mut connection: UnixStream,
+-    http: &impl InstallerHttp,
+-    daemon: &Daemon,
+-    running_updater_identity: &crate::managed_install::ExecutableIdentity,
+-    terminate: &mut Signal,
+-) -> Result<RequestDisposition> {
+-    #[cfg(windows)]
+-    if connection.ensure_non_elevated_peer().is_err() {
+-        return Ok(RequestDisposition::Unchanged);
+-    }
+-    let mut request = [0; 7];
+-    if !matches!(
+-        timeout(Duration::from_secs(5), connection.read_exact(&mut request)).await,
+-        Ok(Ok(_))
+-    ) || &request != b"update\n"
+-    {
+-        return Ok(RequestDisposition::Unchanged);
+-    }
+-    let result = run(http, daemon, running_updater_identity, terminate).await;
+-    let interrupted = result.as_ref().err().is_some_and(|err| {
+-        err.downcast_ref::<std::io::Error>()
+-            .is_some_and(|err| err.kind() == std::io::ErrorKind::Interrupted)
+-    });
+-    let unsupported = result
+-        .as_ref()
+-        .is_ok_and(|output| output.status == UpdateStatus::Unsupported);
+-    let outcome: std::result::Result<UpdateOutput, String> =
+-        result.map_err(|err| format!("{err:#}"));
+-    let sent = connection.write_all(&serde_json::to_vec(&outcome)?).await;
+-    if interrupted {
+-        return Ok(RequestDisposition::Stop);
+-    }
+-    sent?;
+-    Ok(if unsupported {
+-        RequestDisposition::Unchanged
+-    } else {
+-        RequestDisposition::Continue
+-    })
+-}
+-
+-pub(super) enum RequestDisposition {
+-    Continue,
+-    Unchanged,
+-    Stop,
+-}
+-
+-pub(super) async fn run(
+-    http: &impl InstallerHttp,
+-    daemon: &Daemon,
+-    running_updater_identity: &crate::managed_install::ExecutableIdentity,
+-    terminate: &mut Signal,
+-) -> Result<UpdateOutput> {
+-    let settings = daemon.load_settings().await?;
+-    let managed_running = daemon.running_backend_instance(&settings).await?.is_some();
+-    if !daemon.is_stable_standalone_release()?
+-        || (!managed_running && client::probe(&daemon.socket_path).await.is_ok())
+-    {
+-        return unsupported(daemon).await;
+-    }
+-
+-    let managed_codex_path = daemon.current_managed_codex_bin()?;
+-    let (_, previous_release, _) = selected_release(daemon)?;
+-    let previous_identity = executable_identity(&managed_codex_path).await?;
+-    let (control, restart) = update_once(
+-        http,
+-        daemon,
+-        running_updater_identity,
+-        terminate,
+-        UpdateTrigger::Manual,
+-    )
+-    .await?;
+-    if matches!(control, UpdateLoopControl::Stop) {
+-        return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
+-    }
+-    let current_managed_codex_path = daemon.current_managed_codex_bin()?;
+-    let installed_version = Some(managed_codex_version(&current_managed_codex_path).await?);
+-    let updated = previous_release != selected_release(daemon)?.1
+-        || previous_identity != executable_identity(&current_managed_codex_path).await?;
+-    let running_version = client::probe(&daemon.socket_path)
+-        .await
+-        .ok()
+-        .map(|info| info.app_server_version);
+-    let message = match restart {
+-        Some(RestartIfRunningOutcome::Restarted) => {
+-            "The managed installation is ready and the running daemon was restarted. Active or queued work may have been interrupted."
+-        }
+-        Some(RestartIfRunningOutcome::AlreadyCurrent) => {
+-            "The managed installation and running daemon are already current; the daemon was left running."
+-        }
+-        Some(RestartIfRunningOutcome::NotRunning) => {
+-            "The managed installation is ready; no daemon was running when the updater checked."
+-        }
+-        _ => unreachable!("successful manual update has a restart outcome"),
+-    };
+-    Ok(UpdateOutput {
+-        status: if updated {
+-            UpdateStatus::Updated
+-        } else {
+-            UpdateStatus::NoUpdate
+-        },
+-        managed_codex_path: current_managed_codex_path,
+-        installed_version,
+-        running_version,
+-        message: message.to_string(),
+-    })
+-}
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 06c9b01..039180b 100644
+index 2fe7850..857bd1f 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -2,19 +2,14 @@
+@@ -1,77 +1,46 @@
+-//! Owns scheduled and manual installs, daemon restarts, and updater replacement.
++//! Owns scheduled update checks, daemon restarts, and updater replacement.
++//!
++//! The codEx fork never auto-installs from a remote script: upstream's loop
++//! piped https://chatgpt.com/codex/install.sh into /bin/sh, which would
++//! replace codEx with upstream Codex. Updates go through `codex update`
++//! against fork releases; this loop only supervises the managed binary and
++//! re-executes the updater when an external update changed it.
  
- #[cfg(unix)]
- use std::process::Command as StdCommand;
+-use std::path::Path;
+-#[cfg(unix)]
+-use std::process::Command as StdCommand;
 -use std::process::Stdio;
  use std::time::Duration;
  
@@ -101,81 +381,462 @@ index 06c9b01..039180b 100644
 -use codex_http_client::RouteAwareClientPool;
  use futures::FutureExt;
  #[cfg(unix)]
- use std::os::unix::process::CommandExt;
+-use std::os::unix::process::CommandExt;
 -use tokio::io::AsyncWriteExt;
 -use tokio::process::Command;
- #[cfg(unix)]
+-#[cfg(unix)]
  use tokio::signal::unix::Signal;
  #[cfg(unix)]
-@@ -34,12 +29,8 @@ use crate::managed_install::resolved_managed_codex_bin;
+ use tokio::signal::unix::SignalKind;
+ #[cfg(unix)]
+ use tokio::signal::unix::signal;
+-use tokio::time::Instant;
+ use tokio::time::sleep;
+-use tokio::time::sleep_until;
+ 
+ use crate::Daemon;
+ use crate::RestartIfRunningOutcome;
+ use crate::RestartMode;
+ use crate::managed_install::ExecutableIdentity;
+ use crate::managed_install::executable_identity;
+-use crate::managed_install::resolved_managed_codex_bin;
+-#[cfg(windows)]
+-use crate::settings::DaemonSettings;
+-use crate::settings::UpdaterSettings;
+-
+-#[path = "manual_update.rs"]
+-mod manual_update;
+-pub(crate) use manual_update::request as request_manual_update;
+ 
  const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
  const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
- const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
 -#[cfg(unix)]
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
 -#[cfg(windows)]
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.ps1";
- 
+-
 -pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
-+pub(crate) async fn run(_http_client_factory: HttpClientFactory) -> Result<()> {
-     #[cfg(unix)]
-     let mut terminate =
-         signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
-@@ -59,10 +50,6 @@ pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
-     let running_updater_identity = current_updater_identity().await?;
-     #[cfg(windows)]
-     updater.mark_ready().await?;
 -    let http = RouteAwareClientPool::new_without_request_logging(
 -        http_client_factory,
 -        ClientRouteClass::Other,
 -    );
-     if sleep_or_terminate(INITIAL_UPDATE_DELAY, &mut terminate).await {
-         return Ok(());
-     }
-@@ -71,7 +58,7 @@ pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
-         // must stop instead of installing again without ownership.
-         #[cfg(windows)]
-         updater.wait_for_ownership().await?;
--        match update_once(&http, &running_updater_identity, &mut terminate).await {
+-    run_with_http(
+-        &http,
+-        &Daemon::from_environment()?,
+-        &current_updater_identity().await?,
+-    )
+-    .await
+-}
++const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+ 
+-async fn run_with_http(
+-    http: &impl InstallerHttp,
+-    daemon: &Daemon,
+-    running_updater_identity: &ExecutableIdentity,
+-) -> Result<()> {
++pub(crate) async fn run(_http_client_factory: HttpClientFactory) -> Result<()> {
+     #[cfg(unix)]
+     let mut terminate =
+         signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
+     #[cfg(windows)]
+     let updater = {
+         // Updater ownership needs only paths, not settings that may be mid-edit.
+-        crate::backend::pid_update_loop_backend(daemon.backend_paths(&DaemonSettings::default()))
++        let daemon = Daemon::from_environment()?;
++        crate::backend::pid_update_loop_backend(
++            daemon.backend_paths(&daemon.load_settings().await?),
++        )
+     };
+     #[cfg(windows)]
+     updater.wait_for_ownership().await?;
+@@ -79,164 +48,24 @@ async fn run_with_http(
+     let mut terminate = Signal;
+     #[cfg(windows)]
+     let _installer_job = crate::backend::windows::updater_job()?;
+-    let socket_path = daemon.manual_update_socket_path();
+-    codex_uds::prepare_private_socket_directory(
+-        socket_path
+-            .parent()
+-            .context("updater socket has no parent")?,
+-    )
+-    .await?;
+-    if socket_path.exists() {
+-        tokio::fs::remove_file(&socket_path).await?;
+-    }
+-    let mut listener = Some(codex_uds::UnixListener::bind(&socket_path).await?);
++    let running_updater_identity = current_updater_identity().await?;
+     #[cfg(windows)]
+     updater.mark_ready().await?;
+-    let needs_managed_handoff =
+-        match resolved_managed_codex_bin(&daemon.current_managed_codex_bin()?).await {
+-            Ok(managed_bin) => {
+-                executable_identity(&managed_bin).await.ok().as_ref()
+-                    != Some(running_updater_identity)
+-            }
+-            Err(_) => true,
+-        };
+-    let auto_update_enabled = UpdaterSettings::load(&daemon.settings_file)
+-        .await
+-        .map(|settings| settings.auto_update_enabled)
+-        .unwrap_or(true);
+-    let mut next_check = Instant::now()
+-        + if needs_managed_handoff || !auto_update_enabled {
+-            Duration::from_secs(15)
+-        } else {
+-            INITIAL_UPDATE_DELAY
+-        };
+-    let mut manual_handoff_pending = needs_managed_handoff;
++    if sleep_or_terminate(INITIAL_UPDATE_DELAY, &mut terminate).await {
++        return Ok(());
++    }
+     loop {
+-        tokio::select! {
+-            biased;
+-            _ = terminate.recv() => return Ok(()),
+-            connection = listener.as_mut().context("updater listener closed")?.accept() => {
+-                let connection = connection.context("failed to accept updater request")?;
+-                let disposition = match manual_update::handle_request(connection, http, daemon, running_updater_identity, &mut terminate).await {
+-                    Ok(manual_update::RequestDisposition::Stop) => return Ok(()),
+-                    Ok(disposition) => disposition,
+-                    Err(_) => manual_update::RequestDisposition::Continue,
+-                };
+-                if UpdaterSettings::load(&daemon.settings_file)
+-                    .await
+-                    .is_ok_and(|settings| !settings.auto_update_enabled)
+-                {
+-                    // Drain requests queued during this one-shot update before exiting.
+-                    next_check = Instant::now() + Duration::from_millis(100);
+-                    continue;
+-                }
+-                if matches!(disposition, manual_update::RequestDisposition::Unchanged) {
+-                    continue;
+-                }
+-                manual_handoff_pending = true;
+-                next_check = Instant::now();
+-            }
+-            _ = sleep_until(next_check) => {
+-                match UpdaterSettings::load(&daemon.settings_file).await {
+-                    Ok(settings) if !settings.auto_update_enabled => return Ok(()),
+-                    Err(_) => {
+-                        next_check = Instant::now() + Duration::from_secs(60);
+-                        continue;
+-                    }
+-                    Ok(_) => {}
+-                }
+-                // Failed successor cleanup leaves its PID published. The predecessor
+-                // must stop instead of installing again without ownership.
+-                #[cfg(windows)]
+-                updater.wait_for_ownership().await?;
+-                if manual_handoff_pending {
+-                    if !daemon.is_stable_standalone_release()? {
+-                        if !daemon.has_latest_selection_marker() {
+-                            return Ok(());
+-                        }
+-                        next_check = Instant::now() + Duration::from_secs(30);
+-                        continue;
+-                    }
+-                    match adopt_managed_updater(daemon, running_updater_identity, &mut listener).await {
+-                        Ok(UpdateLoopControl::Stop) => return Ok(()),
+-                        Ok(UpdateLoopControl::Continue) => {
+-                            manual_handoff_pending = false;
+-                            let Some(delay) = next_update_delay(daemon).await else {
+-                                return Ok(());
+-                            };
+-                            next_check = Instant::now() + delay;
+-                        }
+-                        Err(err) => {
+-                            if listener.is_none() {
+-                                return Err(err);
+-                            }
+-                            eprintln!("warning: failed to refresh managed updater: {err:#}");
+-                            next_check = Instant::now() + Duration::from_secs(30);
+-                        }
+-                    }
+-                    continue;
+-                }
+-                match update_once(http, daemon, running_updater_identity, &mut terminate, UpdateTrigger::Scheduled).await {
+-                    Ok((UpdateLoopControl::Continue, Some(_))) => {
+-                        manual_handoff_pending = true;
+-                        next_check = Instant::now();
+-                        continue;
+-                    }
+-                    Ok((UpdateLoopControl::Continue, None)) | Err(_) => {}
+-                    Ok((UpdateLoopControl::Stop, _)) => return Ok(()),
+-                }
+-                let Some(delay) = next_update_delay(daemon).await else {
+-                    return Ok(());
+-                };
+-                next_check = Instant::now() + delay;
+-            }
++        // Failed successor cleanup leaves its PID published. The predecessor
++        // must stop instead of installing again without ownership.
++        #[cfg(windows)]
++        updater.wait_for_ownership().await?;
 +        match update_once(&running_updater_identity, &mut terminate).await {
-             Ok(UpdateLoopControl::Continue) | Err(_) => {}
-             Ok(UpdateLoopControl::Stop) => return Ok(()),
++            Ok(UpdateLoopControl::Continue) | Err(_) => {}
++            Ok(UpdateLoopControl::Stop) => return Ok(()),
          }
-@@ -94,18 +81,14 @@ enum UpdateLoopControl {
+-    }
+-}
+-
+-async fn next_update_delay(daemon: &Daemon) -> Option<Duration> {
+-    match UpdaterSettings::load(&daemon.settings_file).await {
+-        Ok(settings) if !settings.auto_update_enabled => None,
+-        Ok(settings) => Some(settings.update_interval(Duration::from_secs(60))),
+-        Err(_) => Some(Duration::from_secs(60)),
+-    }
+-}
+-
+-async fn adopt_managed_updater(
+-    daemon: &Daemon,
+-    running_identity: &ExecutableIdentity,
+-    listener: &mut Option<codex_uds::UnixListener>,
+-) -> Result<UpdateLoopControl> {
+-    let managed_bin = resolved_managed_codex_bin(&daemon.current_managed_codex_bin()?).await?;
+-    if executable_identity(&managed_bin).await? == *running_identity {
+-        return Ok(UpdateLoopControl::Continue);
+-    }
+-    if !crate::managed_install::supports_daemon_update_loop(&managed_bin).await {
+-        return Ok(UpdateLoopControl::Stop);
+-    }
+-    #[cfg(unix)]
+-    {
+-        let _ = listener;
+-        reexec_managed_updater(&managed_bin).map(|_| UpdateLoopControl::Stop)
+-    }
+-    #[cfg(windows)]
+-    {
+-        let replacement = crate::backend::pid_update_loop_backend(
+-            daemon.backend_paths_with_bin(&daemon.load_settings().await?, &managed_bin),
+-        );
+-        listener.take();
+-        if let Err(err) = replacement.replace_current_updater().await {
+-            // A failed replacement may still own the PID if its cleanup could
+-            // not terminate the successor. Never reopen our request socket then.
+-            replacement.wait_for_ownership().await?;
+-            let socket_path = daemon.manual_update_socket_path();
+-            if socket_path.exists() {
+-                tokio::fs::remove_file(&socket_path).await?;
+-            }
+-            *listener = Some(codex_uds::UnixListener::bind(&socket_path).await?);
+-            return Err(err);
++        if sleep_or_terminate(UPDATE_INTERVAL, &mut terminate).await {
++            return Ok(());
+         }
+-        Ok(UpdateLoopControl::Stop)
+     }
  }
  
+@@ -252,83 +81,18 @@ enum UpdateLoopControl {
+     Stop,
+ }
+ 
+-#[derive(Clone, Copy, PartialEq, Eq)]
+-enum UpdateTrigger {
+-    Scheduled,
+-    Manual,
+-}
+-
  async fn update_once(
--    http: &RouteAwareClientPool,
+-    http: &impl InstallerHttp,
+-    daemon: &Daemon,
      running_updater_identity: &ExecutableIdentity,
      terminate: &mut Signal,
- ) -> Result<UpdateLoopControl> {
+-    trigger: UpdateTrigger,
+-) -> Result<(UpdateLoopControl, Option<RestartIfRunningOutcome>)> {
+-    if trigger == UpdateTrigger::Scheduled
+-        && !UpdaterSettings::load(&daemon.settings_file)
+-            .await?
+-            .auto_update_enabled
+-    {
+-        return Ok((UpdateLoopControl::Stop, None));
+-    }
+-    if release_selection_unstable(daemon, trigger)? {
+-        // An installer can be between changing current and publishing its
+-        // latest-channel marker. Retry after the interval instead of exiting.
+-        return Ok((UpdateLoopControl::Continue, None));
+-    }
+-    let (_codex_home, _, previous_release) = selected_release(daemon)?;
+-    let script = tokio::select! {
+-        result = fetch_installer_script(http) => result?,
+-        _ = terminate.recv() => return Ok((UpdateLoopControl::Stop, None)),
+-    };
+-    anyhow::ensure!(
+-        script
+-            .windows(b"CODEX_INSTALL_IF_LATEST".len())
+-            .any(|window| window == b"CODEX_INSTALL_IF_LATEST"),
+-        "standalone installer does not support guarded updates"
+-    );
+-    if trigger == UpdateTrigger::Scheduled
+-        && !UpdaterSettings::load(&daemon.settings_file)
+-            .await?
+-            .auto_update_enabled
+-    {
+-        return Ok((UpdateLoopControl::Stop, None));
+-    }
+-    if release_selection_unstable(daemon, trigger)? {
+-        return Ok((UpdateLoopControl::Continue, None));
+-    }
 -    #[cfg(unix)]
--    install_latest_standalone(http).await?;
+-    if matches!(
+-        run_installer_script(&script, &previous_release, _codex_home, terminate.recv()).await?,
+-        UpdateLoopControl::Stop
+-    ) {
+-        return Ok((UpdateLoopControl::Stop, None));
+-    }
 -    #[cfg(windows)]
 -    tokio::select! {
--        result = install_latest_standalone(http) => result?,
--        _ = terminate.recv() => return Ok(UpdateLoopControl::Stop),
+-        result = run_installer_script(&script, &previous_release) => { result?; },
+-        _ = terminate.recv() => return Ok((UpdateLoopControl::Stop, None)),
+-    }
+-    if release_selection_unstable(daemon, trigger)? {
+-        return Ok((UpdateLoopControl::Continue, None));
 -    }
 -
-+    // The codEx fork never auto-installs from a remote script: upstream's
-+    // loop piped https://chatgpt.com/codex/install.sh into /bin/sh, which
-+    // would replace codEx with upstream Codex. Updates go through `codex
-+    // update` against fork releases; this loop only supervises the managed
-+    // binary and re-executes the updater when an external update changed it.
-     let daemon = Daemon::from_environment()?;
-     let managed_codex_bin = resolved_managed_codex_bin(&daemon.managed_codex_bin).await?;
-     let managed_identity = executable_identity(&managed_codex_bin).await?;
-@@ -172,98 +155,7 @@ pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Res
-     })
+-    let managed_codex_bin =
+-        resolved_managed_codex_bin(&daemon.current_managed_codex_bin()?).await?;
+-    let restart_mode = match trigger {
+-        UpdateTrigger::Manual => RestartMode::IfBinaryOrVersionChanged,
+-        UpdateTrigger::Scheduled
+-            if executable_identity(&managed_codex_bin).await? != *running_updater_identity =>
+-        {
+-            RestartMode::Always
+-        }
+-        UpdateTrigger::Scheduled => RestartMode::IfVersionChanged,
+-    };
++) -> Result<UpdateLoopControl> {
++    let daemon = Daemon::from_environment()?;
++    let managed_codex_bin = daemon.current_managed_codex_bin()?;
++    let managed_identity = executable_identity(&managed_codex_bin).await?;
++    let restart_mode = update_modes_for_identities(running_updater_identity, &managed_identity);
+ 
+     loop {
+         if terminate.recv().now_or_never().flatten().is_some() {
+-            return Ok((UpdateLoopControl::Stop, None));
++            return Ok(UpdateLoopControl::Stop);
+         }
+         match daemon
+             .try_restart_if_running(restart_mode, &managed_codex_bin)
+@@ -336,240 +100,48 @@ async fn update_once(
+         {
+             RestartIfRunningOutcome::Busy => {
+                 if sleep_or_terminate(RESTART_RETRY_INTERVAL, terminate).await {
+-                    return Ok((UpdateLoopControl::Stop, None));
++                    return Ok(UpdateLoopControl::Stop);
+                 }
+             }
+             RestartIfRunningOutcome::Restarted => {
+-                return Ok((
+-                    UpdateLoopControl::Continue,
+-                    Some(RestartIfRunningOutcome::Restarted),
+-                ));
+-            }
+-            RestartIfRunningOutcome::NotRunning => {
+-                return Ok((
+-                    UpdateLoopControl::Continue,
+-                    Some(RestartIfRunningOutcome::NotRunning),
+-                ));
+-            }
+-            RestartIfRunningOutcome::AlreadyCurrent
+-                if trigger == UpdateTrigger::Manual
+-                    && restart_mode == RestartMode::IfBinaryOrVersionChanged =>
+-            {
+-                anyhow::ensure!(
+-                    daemon.is_stable_standalone_release()?
+-                        && resolved_managed_codex_bin(&daemon.current_managed_codex_bin()?).await?
+-                            == managed_codex_bin,
+-                    "managed daemon changed during the update; retry"
+-                );
+-                return Ok((
+-                    UpdateLoopControl::Continue,
+-                    Some(RestartIfRunningOutcome::AlreadyCurrent),
+-                ));
+-            }
+-            RestartIfRunningOutcome::NotReady | RestartIfRunningOutcome::AlreadyCurrent => {
+-                anyhow::ensure!(
+-                    trigger != UpdateTrigger::Manual,
+-                    "managed daemon could not restart; retry when it is ready"
+-                );
+-                return Ok((
+-                    if daemon.is_stable_standalone_release()? {
+-                        UpdateLoopControl::Continue
+-                    } else {
+-                        UpdateLoopControl::Stop
+-                    },
+-                    None,
+-                ));
++                #[cfg(windows)]
++                if executable_identity(&managed_codex_bin).await? != *running_updater_identity {
++                    // The managed binary replaced this updater, so the request
++                    // socket now belongs to the successor. Stop instead of
++                    // serving requests the install no longer routes here.
++                    return Ok(UpdateLoopControl::Stop);
++                }
++                return Ok(UpdateLoopControl::Continue);
+             }
++            RestartIfRunningOutcome::NotRunning
++            | RestartIfRunningOutcome::NotReady
++            | RestartIfRunningOutcome::AlreadyCurrent => return Ok(UpdateLoopControl::Continue),
+         }
+     }
  }
  
--async fn install_latest_standalone(http: &impl InstallerHttp) -> Result<()> {
--    let script = fetch_installer_script(http).await?;
+-fn release_selection_unstable(daemon: &Daemon, trigger: UpdateTrigger) -> Result<bool> {
+-    if daemon.is_stable_standalone_release()? {
+-        return Ok(false);
+-    }
+-    anyhow::ensure!(
+-        trigger != UpdateTrigger::Manual,
+-        "standalone install selection changed during the update"
+-    );
+-    Ok(true)
+-}
 -
+-fn selected_release(daemon: &Daemon) -> Result<(&Path, std::path::PathBuf, String)> {
+-    let home = daemon
+-        .settings_file
+-        .parent()
+-        .and_then(Path::parent)
+-        .context("daemon settings path has no Codex home")?;
+-    let release = std::fs::canonicalize(home.join("packages/standalone/current"))?;
+-    let name = release
+-        .file_name()
+-        .context("managed release has no name")?
+-        .to_string_lossy()
+-        .into_owned();
+-    Ok((home, release, name))
+-}
+-
+ async fn current_updater_identity() -> Result<ExecutableIdentity> {
+     let current_exe =
+         std::env::current_exe().context("failed to resolve current updater executable")?;
+     executable_identity(&current_exe).await
+ }
+ 
+-#[cfg(unix)]
+-pub(crate) fn reexec_managed_updater(managed_codex_bin: &std::path::Path) -> Result<()> {
+-    let err = StdCommand::new(managed_codex_bin)
+-        .args(["app-server", "daemon", "pid-update-loop"])
+-        .exec();
+-    Err(err).with_context(|| {
+-        format!(
+-            "failed to replace updater with managed Codex binary {}",
+-            managed_codex_bin.display()
+-        )
+-    })
+-}
+-
+-async fn run_installer_script(
+-    script: &[u8],
+-    previous_release: &str,
+-    #[cfg(unix)] codex_home: &Path,
+-    #[cfg(unix)] terminate: impl std::future::Future<Output = Option<()>>,
+-) -> Result<UpdateLoopControl> {
 -    #[cfg(unix)]
 -    let mut command = {
 -        let mut command = Command::new("/bin/sh");
 -        command.arg("-s");
+-        command.process_group(0);
 -        command
 -    };
 -    #[cfg(windows)]
@@ -183,11 +844,15 @@ index 06c9b01..039180b 100644
 -        let mut command = Command::new("powershell.exe");
 -        command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
 -        command.args(["-NoLogo", "-NoProfile", "-NonInteractive", "-ExecutionPolicy", "Bypass", "-Command", "try { Invoke-Expression ([Console]::In.ReadToEnd()) } catch { Write-Error $_; exit 1 }"])
--            .env("CODEX_NON_INTERACTIVE", "1")
 -            .kill_on_drop(true);
 -        command
 -    };
 -    let mut child = command
+-        .env("CODEX_RELEASE", "latest")
+-        .env("CODEX_NON_INTERACTIVE", "1")
+-        .env("CODEX_INSTALL_IF_LATEST", "1")
+-        .env("CODEX_UPDATE_FROM_RELEASE", previous_release)
+-        .kill_on_drop(true)
 -        .stdin(Stdio::piped())
 -        .stdout(Stdio::null())
 -        .stderr(Stdio::null())
@@ -197,21 +862,62 @@ index 06c9b01..039180b 100644
 -        .stdin
 -        .take()
 -        .context("standalone Codex updater stdin was unavailable")?;
--    stdin
--        .write_all(&script)
--        .await
--        .context("failed to pass standalone Codex updater to shell")?;
+-    #[cfg(unix)]
+-    let mut terminate = std::pin::pin!(terminate);
+-    #[cfg(unix)]
+-    let write_result = tokio::select! {
+-        result = stdin.write_all(script) => Some(result),
+-        _ = &mut terminate => None,
+-    };
+-    #[cfg(windows)]
+-    let write_result = Some(stdin.write_all(script).await);
 -    drop(stdin);
--    let status = child
--        .wait()
--        .await
--        .context("failed to wait for standalone Codex updater")?;
+-    #[cfg(unix)]
+-    if write_result.is_none() {
+-        cancel_installer(&mut child, codex_home).await;
+-        return Ok(UpdateLoopControl::Stop);
+-    }
+-    write_result
+-        .context("installer write was cancelled")?
+-        .context("failed to pass standalone Codex updater to shell")?;
+-    #[cfg(unix)]
+-    let status = tokio::select! {
+-        result = child.wait() => result,
+-        _ = &mut terminate => {
+-            cancel_installer(&mut child, codex_home).await;
+-            return Ok(UpdateLoopControl::Stop);
+-        }
+-    };
+-    #[cfg(windows)]
+-    let status = child.wait().await;
+-    let status = status.context("failed to wait for standalone Codex updater")?;
 -
 -    if status.success() {
--        Ok(())
+-        Ok(UpdateLoopControl::Continue)
 -    } else {
 -        anyhow::bail!("standalone Codex updater exited with status {status}")
 -    }
+-}
+-
+-#[cfg(unix)]
+-async fn cancel_installer(child: &mut tokio::process::Child, codex_home: &Path) {
+-    let Some(pid) = child.id().and_then(|pid| libc::pid_t::try_from(pid).ok()) else {
+-        return;
+-    };
+-    // Let the shell's EXIT/TERM trap release the installer lock first.
+-    unsafe { libc::kill(-pid, libc::SIGTERM) };
+-    sleep(Duration::from_secs(2)).await;
+-    // Keep the shell unreaped until after the group kill, so its PID cannot
+-    // be reused while descendants that ignored TERM are still running.
+-    unsafe { libc::kill(-pid, libc::SIGKILL) };
+-    // A forced kill can bypass the shell trap on hosts using the mkdir lock.
+-    // The lock is ours only if its recorded owner is this still-unreaped shell.
+-    let lock = codex_home.join("packages/standalone/install.lock.d");
+-    if std::fs::read_to_string(lock.join("pid")).is_ok_and(|owner| owner.trim() == pid.to_string())
+-    {
+-        let _ = std::fs::remove_dir_all(lock);
+-    }
+-    let _ = child.wait().await;
 -}
 -
 -async fn fetch_installer_script(http: &impl InstallerHttp) -> Result<Vec<u8>> {
@@ -230,7 +936,8 @@ index 06c9b01..039180b 100644
 -}
 -
 -/// HTTP boundary used to download the standalone installer.
--///
++/// Picks how hard to restart the daemon for an identity change.
+ ///
 -/// Implementations must issue a GET for the supplied URL, return exact response bytes for a
 -/// successful status, and report a non-success status without buffering its response body.
 -trait InstallerHttp: Send + Sync {
@@ -257,35 +964,56 @@ index 06c9b01..039180b 100644
 -            .context("failed to read standalone Codex updater")?
 -            .to_vec();
 -        Ok(InstallerResponse::Success(body))
--    }
--}
--
++/// A matching identity only needs a version check, while a replaced managed
++/// binary must be restarted even when its version string still matches.
++fn update_modes_for_identities(
++    running_updater_identity: &ExecutableIdentity,
++    managed_identity: &ExecutableIdentity,
++) -> RestartMode {
++    if running_updater_identity == managed_identity {
++        RestartMode::IfVersionChanged
++    } else {
++        RestartMode::Always
+     }
+ }
+ 
 -#[cfg(test)]
 +#[cfg(all(test, unix))]
  #[path = "update_loop_tests.rs"]
  mod tests;
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index bb2a87f..cf27069 100644
+index ff2b177..ac50a95 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1,11 +1,5 @@
+@@ -1,517 +1,27 @@
 -use std::sync::Mutex;
+-#[cfg(unix)]
+-use std::time::Duration;
 -
  use pretty_assertions::assert_eq;
+-#[cfg(unix)]
+-use tempfile::TempDir;
  
 -use super::INSTALL_URL;
 -use super::InstallerHttp;
 -use super::InstallerResponse;
 -use super::fetch_installer_script;
- use super::update_modes_for_identities;
- use crate::RestartMode;
- use crate::UpdaterRefreshMode;
-@@ -35,81 +29,3 @@ fn changed_updater_forces_refresh_even_when_version_may_match() {
-         )
-     );
- }
--
+-#[cfg(unix)]
+-use super::manual_update::run as manual_update_once;
+-#[cfg(unix)]
+-use crate::Daemon;
+-#[cfg(unix)]
+-use crate::UpdateOutput;
+-#[cfg(unix)]
+-use crate::UpdateStatus;
+-#[cfg(unix)]
+-use crate::managed_install::executable_identity;
+-#[cfg(unix)]
++use super::update_modes_for_identities;
++use crate::RestartMode;
+ use crate::managed_install::executable_identity_from_bytes;
+ 
 -#[tokio::test]
 -async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
 -    let script = b"#!/bin/sh\nprintf 'update bytes'\n".to_vec();
@@ -343,6 +1071,420 @@ index bb2a87f..cf27069 100644
 -    }
 -}
 -
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn cancelling_installer_stops_children_and_releases_fallback_lock() {
+-    let home = tempfile::TempDir::new().expect("home");
+-    let ready = home.path().join("ready");
+-    let delayed = home.path().join("delayed");
+-    let lock = home.path().join("packages/standalone/install.lock.d");
+-    let script = format!(
+-        "mkdir -p '{lock}'\necho $$ > '{lock}/pid'\n(trap '' TERM; echo ready > '{ready}'; sleep 4; echo late > '{delayed}') &\nwait\n",
+-        lock = lock.display(),
+-        ready = ready.display(),
+-        delayed = delayed.display(),
+-    );
+-    let (cancel, cancelled) = tokio::sync::oneshot::channel();
+-    let ready_for_signal = ready.clone();
+-    let signal_sender = tokio::spawn(async move {
+-        let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+-        while !ready_for_signal.exists() {
+-            assert!(
+-                tokio::time::Instant::now() < deadline,
+-                "installer did not start"
+-            );
+-            tokio::time::sleep(Duration::from_millis(20)).await;
+-        }
+-        cancel.send(()).expect("cancel installer");
+-    });
+-    let result = tokio::time::timeout(
+-        Duration::from_secs(10),
+-        super::run_installer_script(script.as_bytes(), "0.150.0-test", home.path(), async {
+-            cancelled.await.ok()
+-        }),
+-    )
+-    .await
+-    .expect("installer cancellation timed out")
+-    .expect("installer cancellation failed");
+-    signal_sender.await.expect("signal sender");
+-    assert!(matches!(result, super::UpdateLoopControl::Stop));
+-    assert!(!lock.exists());
+-    tokio::time::sleep(Duration::from_secs(3)).await;
+-    assert!(!delayed.exists());
+-}
+-
+-#[cfg(unix)]
+-fn manual_update_daemon(home: &TempDir) -> (Daemon, String) {
+-    use std::os::unix::fs::PermissionsExt;
+-
+-    let target = if cfg!(target_os = "macos") {
+-        format!("{}-apple-darwin", std::env::consts::ARCH)
+-    } else {
+-        format!("{}-unknown-linux-musl", std::env::consts::ARCH)
+-    };
+-    let release = format!("1.0.0-{target}");
+-    let standalone = home.path().join("packages/standalone");
+-    let bin = standalone.join("releases").join(&release).join("codex");
+-    std::fs::create_dir_all(bin.parent().expect("binary parent")).expect("release directory");
+-    std::fs::write(
+-        &bin,
+-        b"#!/bin/sh\nif [ \"$1\" = '--version' ]; then echo codex 1.0.0; else exec sleep 30; fi\n",
+-    )
+-    .expect("managed binary");
+-    std::fs::set_permissions(&bin, std::fs::Permissions::from_mode(0o755))
+-        .expect("executable binary");
+-    std::os::unix::fs::symlink(format!("releases/{release}"), standalone.join("current"))
+-        .expect("current release");
+-    std::fs::write(standalone.join("auto-update-version"), &release).expect("latest marker");
+-    let state = home.path().join("app-server-daemon");
+-    (
+-        Daemon {
+-            socket_path: home.path().join("app-server-control/server.sock"),
+-            pid_file: state.join("app-server.pid"),
+-            update_pid_file: state.join("app-server-updater.pid"),
+-            operation_lock_file: state.join("daemon.lock"),
+-            settings_file: state.join("settings.json"),
+-            managed_codex_bin: standalone.join("current/codex"),
+-        },
+-        release,
+-    )
+-}
+-
+-#[cfg(unix)]
+-fn test_terminate() -> tokio::signal::unix::Signal {
+-    tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())
+-        .expect("install test signal handler")
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn manual_request_retries_after_updater_replacement() {
+-    use tokio::io::AsyncReadExt;
+-    use tokio::io::AsyncWriteExt;
+-
+-    let home = TempDir::new().expect("home");
+-    let (daemon, _) = manual_update_daemon(&home);
+-    let socket_path = daemon.manual_update_socket_path();
+-    codex_uds::prepare_private_socket_directory(socket_path.parent().expect("socket parent"))
+-        .await
+-        .expect("socket directory");
+-    let mut listener = codex_uds::UnixListener::bind(&socket_path)
+-        .await
+-        .expect("old updater socket");
+-    let expected = UpdateOutput {
+-        status: UpdateStatus::NoUpdate,
+-        managed_codex_path: daemon.managed_codex_bin.clone(),
+-        installed_version: None,
+-        running_version: None,
+-        message: "already current".to_string(),
+-    };
+-    let reply = expected.clone();
+-    let server = tokio::spawn(async move {
+-        let mut old = listener.accept().await.expect("first connection");
+-        let mut request = [0; 7];
+-        old.read_exact(&mut request).await.expect("first request");
+-        drop(old);
+-        drop(listener);
+-        tokio::fs::remove_file(&socket_path)
+-            .await
+-            .expect("remove old socket");
+-        let mut successor = codex_uds::UnixListener::bind(&socket_path)
+-            .await
+-            .expect("successor socket");
+-        let mut connection = successor.accept().await.expect("retried connection");
+-        connection
+-            .read_exact(&mut request)
+-            .await
+-            .expect("retried request");
+-        connection
+-            .write_all(&serde_json::to_vec(&Ok::<_, String>(reply)).expect("serialize response"))
+-            .await
+-            .expect("send response");
+-    });
++#[test]
++fn unchanged_updater_uses_version_based_restart() {
+     assert_eq!(
+-        super::manual_update::request(&daemon)
+-            .await
+-            .expect("request survives handoff"),
+-        expected
++        update_modes_for_identities(
++            &executable_identity_from_bytes(b"same"),
++            &executable_identity_from_bytes(b"same"),
++        ),
++        RestartMode::IfVersionChanged
+     );
+-    server.await.expect("replacement task");
+ }
+ 
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn manual_request_recovers_when_one_shot_updater_exits() {
+-    use tokio::io::AsyncReadExt;
+-
+-    let home = TempDir::new().expect("home");
+-    let (daemon, _) = manual_update_daemon(&home);
+-    let socket_path = daemon.manual_update_socket_path();
+-    codex_uds::prepare_private_socket_directory(socket_path.parent().expect("socket parent"))
+-        .await
+-        .expect("socket directory");
+-    let mut listener = codex_uds::UnixListener::bind(&socket_path)
+-        .await
+-        .expect("one-shot updater socket");
+-    let server = tokio::spawn(async move {
+-        let mut connection = listener.accept().await.expect("request connection");
+-        let mut request = [0; 7];
+-        connection.read_exact(&mut request).await.expect("request");
+-        drop(connection);
+-        drop(listener);
+-        tokio::fs::remove_file(socket_path)
+-            .await
+-            .expect("remove exited updater socket");
+-    });
+-    // Without the marker, the ordinary startup path reports unsupported. A
+-    // retry that only waits for a successor would time out instead.
+-    std::fs::remove_file(home.path().join("packages/standalone/auto-update-version"))
+-        .expect("remove latest marker");
+-    let result = tokio::time::timeout(
+-        Duration::from_secs(5),
+-        super::manual_update::request(&daemon),
+-    )
+-    .await
+-    .expect("retry should return to normal startup")
+-    .expect("unsupported response");
+-    assert_eq!(result.status, UpdateStatus::Unsupported);
+-    server.await.expect("updater task");
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn unsupported_request_preserves_updater_schedule() {
+-    use tokio::io::AsyncReadExt;
+-    use tokio::io::AsyncWriteExt;
+-
+-    let home = TempDir::new().expect("home");
+-    let (daemon, _) = manual_update_daemon(&home);
+-    let daemon = std::sync::Arc::new(daemon);
+-    let identity = executable_identity(&daemon.managed_codex_bin)
+-        .await
+-        .expect("updater identity");
+-    let socket_path = daemon.manual_update_socket_path();
+-    let http = FakeInstallerHttp::new(InstallerResponse::Success(Vec::new()));
+-    let updater_daemon = std::sync::Arc::clone(&daemon);
+-    let worker =
+-        tokio::spawn(async move { super::run_with_http(&http, &updater_daemon, &identity).await });
+-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+-    while !socket_path.exists() {
+-        assert!(
+-            tokio::time::Instant::now() < deadline,
+-            "updater did not listen"
+-        );
+-        tokio::time::sleep(Duration::from_millis(20)).await;
+-    }
+-    std::fs::remove_file(home.path().join("packages/standalone/auto-update-version"))
+-        .expect("remove latest selection");
+-    let mut malformed = codex_uds::UnixStream::connect(&socket_path)
+-        .await
+-        .expect("connect malformed request");
+-    malformed
+-        .write_all(b"upd")
+-        .await
+-        .expect("send partial request");
+-    malformed.shutdown().await.expect("disconnect request");
+-    let mut discarded = Vec::new();
+-    malformed
+-        .read_to_end(&mut discarded)
+-        .await
+-        .expect("rejected request");
+-    tokio::time::sleep(Duration::from_millis(100)).await;
+-    assert!(!worker.is_finished(), "malformed request stopped updater");
++#[test]
++fn changed_updater_forces_refresh_even_when_version_may_match() {
+     assert_eq!(
+-        super::manual_update::request(&daemon)
+-            .await
+-            .expect("unsupported response")
+-            .status,
+-        UpdateStatus::Unsupported
+-    );
+-    tokio::time::sleep(Duration::from_millis(100)).await;
+-    assert!(!worker.is_finished(), "unsupported request stopped updater");
+-    worker.abort();
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn manual_update_restarts_managed_daemon_with_automatic_updates_disabled() {
+-    use futures::SinkExt;
+-    use futures::StreamExt;
+-    use tokio::io::AsyncReadExt;
+-    use tokio::io::AsyncWriteExt;
+-
+-    let home = TempDir::new().expect("home");
+-    let (daemon, release) = manual_update_daemon(&home);
+-    let daemon = std::sync::Arc::new(daemon);
+-    std::fs::create_dir_all(daemon.settings_file.parent().expect("state directory"))
+-        .expect("state directory");
+-    std::fs::write(
+-        &daemon.settings_file,
+-        r#"{"updater":{"autoUpdateEnabled":false}}"#,
+-    )
+-    .expect("disabled updater");
+-    std::fs::create_dir_all(daemon.socket_path.parent().expect("socket parent"))
+-        .expect("socket directory");
+-    let mut listener = codex_uds::UnixListener::bind(&daemon.socket_path)
+-        .await
+-        .expect("control listener");
+-    let codex_home = home.path().to_path_buf();
+-    let server = tokio::spawn(async move {
+-        loop {
+-            let connection = listener.accept().await.expect("control connection");
+-            let mut websocket = tokio_tungstenite::accept_async(connection)
+-                .await
+-                .expect("websocket handshake");
+-            websocket
+-                .next()
+-                .await
+-                .expect("initialize request")
+-                .expect("frame");
+-            let version = if std::fs::read_to_string(
+-                codex_home.join("packages/standalone/auto-update-version"),
+-            )
+-            .expect("selected release")
+-            .starts_with("1.1.0")
+-            {
+-                "1.1.0"
+-            } else {
+-                "1.0.0"
+-            };
+-            websocket.send(tokio_tungstenite::tungstenite::Message::Text(
+-                serde_json::json!({"id": 1, "result": {
+-                    "userAgent": format!("codex_app_server_daemon/{version}"),
+-                    "codexHome": codex_home, "platformFamily": "unix", "platformOs": std::env::consts::OS,
+-                }}).to_string().into(),
+-            )).await.expect("initialize response");
+-            websocket
+-                .next()
+-                .await
+-                .expect("initialized notification")
+-                .expect("frame");
+-        }
+-    });
+-    let settings = crate::settings::DaemonSettings::default();
+-    let backend = crate::backend::pid_backend(daemon.backend_paths(&settings));
+-    backend.start().await.expect("start daemon");
+-    let current_pid = || {
+-        serde_json::from_slice::<serde_json::Value>(
+-            &std::fs::read(&daemon.pid_file).expect("daemon PID record"),
+-        )
+-        .expect("PID JSON")["pid"]
+-            .as_u64()
+-            .expect("PID")
+-    };
+-    let before = current_pid();
+-    let next = release.replacen("1.0.0", "1.1.0", 1);
+-    let standalone = home.path().join("packages/standalone");
+-    let ready = home.path().join("installer-ready");
+-    let proceed = home.path().join("installer-proceed");
+-    let script = format!(
+-        "#!/bin/sh\n# CODEX_INSTALL_IF_LATEST\ntest \"$CODEX_INSTALL_IF_LATEST\" = 1 || exit 4\nif [ \"$CODEX_UPDATE_FROM_RELEASE\" = '{next}' ]; then exit 0; fi\ntest \"$CODEX_UPDATE_FROM_RELEASE\" = '{release}' || exit 5\ntouch '{ready}'\nwhile [ ! -e '{proceed}' ]; do sleep .05; done\nmkdir -p '{root}/releases/{next}/bin'\nprintf '#!/bin/sh\\nif [ \"$1\" = --version ]; then echo codex 1.1.0; else exec sleep 30; fi\\n' > '{root}/releases/{next}/bin/codex'\nchmod +x '{root}/releases/{next}/bin/codex'\nln -sfn 'releases/{next}' '{root}/current'\nprintf '{next}' > '{root}/auto-update-version'\n",
+-        root = standalone.display(),
+-        ready = ready.display(),
+-        proceed = proceed.display(),
+-    );
+-    let http = FakeInstallerHttp::new(InstallerResponse::Success(script.into_bytes()));
+-    let updater_daemon = std::sync::Arc::clone(&daemon);
+-    let worker = tokio::spawn(async move {
+-        super::run_with_http(
+-            &http,
+-            &updater_daemon,
+-            &executable_identity_from_bytes(b"updater"),
+-        )
+-        .await
+-    });
+-    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+-    while !daemon.manual_update_socket_path().exists() {
+-        assert!(
+-            tokio::time::Instant::now() < deadline,
+-            "updater did not listen"
+-        );
+-        tokio::time::sleep(Duration::from_millis(20)).await;
+-    }
+-    let request_daemon = std::sync::Arc::clone(&daemon);
+-    let request = tokio::spawn(async move { super::manual_update::request(&request_daemon).await });
+-    while !ready.exists() {
+-        assert!(
+-            tokio::time::Instant::now() < deadline,
+-            "installer did not start"
+-        );
+-        tokio::time::sleep(Duration::from_millis(20)).await;
+-    }
+-    let mut queued = codex_uds::UnixStream::connect(&daemon.manual_update_socket_path())
+-        .await
+-        .expect("queue a second update");
+-    queued
+-        .write_all(b"update\n")
+-        .await
+-        .expect("send second update");
+-    std::fs::write(proceed, b"go").expect("release installer");
+-    let output = request
+-        .await
+-        .expect("first request task")
+-        .expect("manual update");
+-    assert_eq!(output.status, UpdateStatus::Updated);
+-    assert_eq!(output.installed_version.as_deref(), Some("1.1.0"));
+-    assert_eq!(output.running_version.as_deref(), Some("1.1.0"));
+-    assert_eq!(
+-        output.managed_codex_path,
+-        standalone.join("current/bin/codex")
+-    );
+-    let restarted = current_pid();
+-    assert_ne!(restarted, before);
+-    let mut response = Vec::new();
+-    queued
+-        .read_to_end(&mut response)
+-        .await
+-        .expect("second response");
+-    let second: Result<crate::UpdateOutput, String> =
+-        serde_json::from_slice(&response).expect("valid second response");
+-    assert_eq!(
+-        second.expect("second update").status,
+-        UpdateStatus::NoUpdate
+-    );
+-    assert_eq!(current_pid(), restarted);
+-    tokio::time::timeout(Duration::from_secs(5), worker)
+-        .await
+-        .expect("one-shot updater did not exit")
+-        .expect("updater task")
+-        .expect("updater loop");
+-    let no_op = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"#!/bin/sh\n# CODEX_INSTALL_IF_LATEST\nexit 0\n".to_vec(),
+-    ));
+-    use std::io::Write;
+-    std::fs::OpenOptions::new()
+-        .append(true)
+-        .open(
+-            daemon
+-                .current_managed_codex_bin()
+-                .expect("current executable"),
+-        )
+-        .expect("managed executable")
+-        .write_all(b"\n# same-version replacement\n")
+-        .expect("replace binary bytes");
+-    let output = manual_update_once(
+-        &no_op,
+-        &daemon,
+-        &executable_identity_from_bytes(b"updater"),
+-        &mut test_terminate(),
+-    )
+-    .await
+-    .expect("retry with stale running binary");
+-    assert_eq!(output.status, UpdateStatus::NoUpdate);
+-    assert_ne!(current_pid(), restarted);
+-    backend.stop().await.expect("stop daemon");
+-    server.abort();
+-}
+-
 -#[cfg(windows)]
 -#[tokio::test]
 -async fn powershell_installer_is_noninteractive_and_reports_script_failure() {
@@ -355,14 +1497,29 @@ index bb2a87f..cf27069 100644
 -"#
 -        .to_vec(),
 -    ));
--    super::install_latest_standalone(&valid)
+-    let script = super::fetch_installer_script(&valid)
+-        .await
+-        .expect("fetch installer");
+-    super::run_installer_script(&script, "0.150.0-x86_64-pc-windows-msvc")
 -        .await
 -        .expect("installer succeeds");
 -    let failing = FakeInstallerHttp::new(InstallerResponse::Success(
 -        b"throw 'installer failed'".to_vec(),
 -    ));
--    assert!(super::install_latest_standalone(&failing).await.is_err());
--}
+-    let script = super::fetch_installer_script(&failing)
+-        .await
+-        .expect("fetch failing installer");
+-    assert!(
+-        super::run_installer_script(&script, "0.150.0-x86_64-pc-windows-msvc")
+-            .await
+-            .is_err()
++        update_modes_for_identities(
++            &executable_identity_from_bytes(b"old"),
++            &executable_identity_from_bytes(b"new"),
++        ),
++        RestartMode::Always
+     );
+ }
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
 index 67e54b7..c4daece 100644
 --- a/codex-rs/cli/Cargo.toml
@@ -3080,7 +4237,7 @@ index fbad7d9..1e1fd1d 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 50aa973..62fd85b 100644
+index ee42ceb..3848f60 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -3199,10 +4356,13 @@ index 50aa973..62fd85b 100644
      /// Internal: run the responses API proxy.
      #[clap(hide = true)]
      ResponsesApiProxy(ResponsesApiProxyArgs),
-@@ -787,12 +780,6 @@ enum AppServerDaemonSubcommand {
+@@ -791,15 +784,6 @@ enum AppServerDaemonSubcommand {
      /// Restart the local app server daemon.
      Restart,
  
+-    /// Update the standalone installation and restart the managed daemon (may interrupt work).
+-    Update,
+-
 -    /// Enable remote control for future starts and a currently running managed daemon.
 -    EnableRemoteControl,
 -
@@ -3212,7 +4372,7 @@ index 50aa973..62fd85b 100644
      /// Stop the local app server daemon.
      Stop,
  
-@@ -864,7 +851,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -871,7 +855,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -3221,7 +4381,7 @@ index 50aa973..62fd85b 100644
      let is_fatal = match &exit_info.exit_reason {
          ExitReason::Fatal(message) => {
              eprintln!("ERROR: {message}");
-@@ -886,79 +873,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+@@ -893,79 +877,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -3261,11 +4421,7 @@ index 50aa973..62fd85b 100644
 -                .args(args)
 -                .current_dir(update_cwd.path())
 -                .status()?
-+    match action {
-+        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
-+            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
-+            self_update::run().await?;
-         }
+-        }
 -        #[cfg(not(windows))]
 -        {
 -            let (cmd, args) = action.command_args();
@@ -3277,7 +4433,11 @@ index 50aa973..62fd85b 100644
 -            std::process::Command::new(&command_path)
 -                .args(&normalized_args)
 -                .status()?
--        }
++    match action {
++        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
++            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
++            self_update::run().await?;
+         }
 -    };
 -    if !status.success() {
 -        anyhow::bail!("`{cmd_str}` failed with status {status}");
@@ -3321,7 +4481,7 @@ index 50aa973..62fd85b 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -970,10 +917,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -977,10 +921,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -3334,7 +4494,7 @@ index 50aa973..62fd85b 100644
      }
  }
  
-@@ -1221,7 +1168,7 @@ async fn cli_main(
+@@ -1228,7 +1172,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3343,10 +4503,14 @@ index 50aa973..62fd85b 100644
          }
          Some(Subcommand::Exec(mut exec_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1378,16 +1325,6 @@ async fn cli_main(
+@@ -1391,20 +1335,6 @@ async fn cli_main(
                      AppServerDaemonSubcommand::Restart => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
                      }
+-                    AppServerDaemonSubcommand::Update => {
+-                        let output = codex_app_server_daemon::update().await?;
+-                        println!("{}", serde_json::to_string(&output)?);
+-                    }
 -                    AppServerDaemonSubcommand::EnableRemoteControl => {
 -                        print_app_server_remote_control_output(AppServerRemoteControlMode::Enabled)
 -                            .await?;
@@ -3360,7 +4524,7 @@ index 50aa973..62fd85b 100644
                      AppServerDaemonSubcommand::Stop => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
                      }
-@@ -1439,29 +1376,6 @@ async fn cli_main(
+@@ -1456,29 +1386,6 @@ async fn cli_main(
                  }
              }
          }
@@ -3390,7 +4554,7 @@ index 50aa973..62fd85b 100644
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1489,7 +1403,7 @@ async fn cli_main(
+@@ -1506,7 +1413,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3399,7 +4563,7 @@ index 50aa973..62fd85b 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1576,7 +1490,7 @@ async fn cli_main(
+@@ -1593,7 +1500,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -3408,7 +4572,7 @@ index 50aa973..62fd85b 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1642,13 +1556,13 @@ async fn cli_main(
+@@ -1659,13 +1566,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -3424,7 +4588,7 @@ index 50aa973..62fd85b 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1664,19 +1578,6 @@ async fn cli_main(
+@@ -1681,19 +1588,6 @@ async fn cli_main(
              )
              .await?;
          }
@@ -3444,7 +4608,7 @@ index 50aa973..62fd85b 100644
          Some(Subcommand::Sandbox(mut sandbox_cli)) => {
              let config_profile = sandbox_cli
                  .config_profile
-@@ -2556,17 +2457,13 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2573,17 +2467,13 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -3463,10 +4627,11 @@ index 50aa973..62fd85b 100644
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2616,12 +2513,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2633,13 +2523,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Bootstrap(_) => "app-server daemon bootstrap",
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
+-            AppServerDaemonSubcommand::Update => "app-server daemon update",
 -            AppServerDaemonSubcommand::EnableRemoteControl => {
 -                "app-server daemon enable-remote-control"
 -            }
@@ -3476,7 +4641,7 @@ index 50aa973..62fd85b 100644
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop => "app-server daemon pid-update-loop",
-@@ -2655,14 +2546,6 @@ fn updater_http_client_factory(
+@@ -2673,14 +2556,6 @@ fn updater_http_client_factory(
      }
  }
  
@@ -3491,7 +4656,7 @@ index 50aa973..62fd85b 100644
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -3758,7 +3641,24 @@ mod tests {
+@@ -3776,7 +3651,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -3517,7 +4682,7 @@ index 50aa973..62fd85b 100644
      }
  
      #[test]
-@@ -4534,31 +4434,20 @@ mod tests {
+@@ -4552,31 +4444,20 @@ mod tests {
      }
  
      #[test]
@@ -3563,7 +4728,7 @@ index 50aa973..62fd85b 100644
      }
  
      #[test]
-@@ -4873,24 +4762,17 @@ mod tests {
+@@ -4891,24 +4772,17 @@ mod tests {
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -3779,10 +4944,10 @@ index 0000000..af3ee05
 +}
 diff --git a/codex-rs/cli/src/remote_control_cmd.rs b/codex-rs/cli/src/remote_control_cmd.rs
 deleted file mode 100644
-index bd0f16b..0000000
+index f70125c..0000000
 --- a/codex-rs/cli/src/remote_control_cmd.rs
 +++ /dev/null
-@@ -1,779 +0,0 @@
+@@ -1,780 +0,0 @@
 -use std::io::Write;
 -use std::time::Duration;
 -
@@ -3914,7 +5079,7 @@ index bd0f16b..0000000
 -        ..Default::default()
 -    };
 -    let (stop_rx, stop_signal_task) = foreground_stop_signal();
--    let mut app_server_task = tokio::spawn(codex_app_server::run_main_with_transport_options(
+-    let app_server = codex_app_server::run_main_with_transport_options(
 -        arg0_paths,
 -        root_config_overrides,
 -        LoaderOverrides::default(),
@@ -3924,7 +5089,8 @@ index bd0f16b..0000000
 -        SessionSource::VSCode,
 -        AppServerWebsocketAuthSettings::default(),
 -        runtime_options,
--    ));
+-    );
+-    let mut app_server_task = tokio::spawn(async move { app_server.await.map(|_| ()) });
 -
 -    let summary = match wait_for_foreground_remote_control_start(
 -        &mut app_server_task,
@@ -5156,7 +6322,7 @@ index b90dc1e..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index 749f78c..9c44c12 100644
+index 82e62f0..5dc106d 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -1,6 +1,7 @@
@@ -5235,7 +6401,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..ebed8db 100644
+index ad0fc4b..f50c9d9 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,9 +1,9 @@
@@ -5246,12 +6412,12 @@ index ad0fc4b..ebed8db 100644
  ---
  ╭─────────────────────────────────────╮
 -│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ codEx (v0.154.0)                 │
++│ >_ codEx (v0.155.1)                 │
  │                                     │
  │ model:     gpt-5   /model to change │
  │ directory: /tmp/project             │
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..635e86f 100644
+index c8f352d..62b7b6b 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -5266,7 +6432,7 @@ index c8f352d..635e86f 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.154.0 -> 9.9.9            │
++│ ✨ Update available! 0.155.1 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -5291,10 +6457,10 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 785ff02..008a5b8 100644
+index 138c9b5..0ac0303 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1233,35 +1233,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1289,35 +1289,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -5524,12 +6690,12 @@ index 688d113..e749b63 100644
      }
  
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index 29ff043..5f02ff9 100644
+index 696290d..27f89c8 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
-@@ -6,10 +6,14 @@ pub(crate) fn is_newer(latest: &str, current: &str) -> Option<bool> {
- }
+@@ -8,10 +8,14 @@ pub(crate) fn is_newer(latest: &str, current: &str) -> Option<bool> {
  
+ #[cfg(any(not(debug_assertions), test))]
  pub(crate) fn extract_version_from_latest_tag(latest_tag_name: &str) -> anyhow::Result<String> {
 -    latest_tag_name
 +    let version = latest_tag_name
@@ -5544,8 +6710,8 @@ index 29ff043..5f02ff9 100644
 +    Ok(version.to_string())
  }
  
- pub(crate) fn is_source_build_version(version: &str) -> bool {
-@@ -35,11 +39,20 @@ mod tests {
+ #[cfg(any(not(debug_assertions), test))]
+@@ -65,11 +69,20 @@ mod tests {
              extract_version_from_latest_tag("rust-v1.5.0").expect("failed to parse version"),
              "1.5.0"
          );
@@ -5569,7 +6735,7 @@ index 29ff043..5f02ff9 100644
  
      #[test]
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index b801426..a8dc0d9 100644
+index b801426..39e4085 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -1,10 +1,6 @@
@@ -5583,15 +6749,19 @@ index b801426..a8dc0d9 100644
  use crate::update_versions::extract_version_from_latest_tag;
  use crate::update_versions::is_newer;
  use crate::update_versions::is_source_build_version;
-@@ -17,6 +13,7 @@ use codex_http_client::ClientRouteClass;
+@@ -17,6 +13,11 @@ use codex_http_client::ClientRouteClass;
  use codex_http_client::HttpClientFactory;
  use codex_http_client::RouteAwareClientPool;
  use codex_login::default_client::default_headers;
++use codex_utils_cli::latest_release_redirect_url;
 +use codex_utils_cli::latest_release_url;
++use codex_utils_cli::version_from_release_url;
++use http::Method;
++use http::header::LOCATION;
  use serde::Deserialize;
  use std::path::Path;
  
-@@ -29,7 +26,6 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
+@@ -29,7 +30,6 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
          return None;
      }
  
@@ -5599,7 +6769,7 @@ index b801426..a8dc0d9 100644
      let version_file = version_filepath(config);
      let info = read_version_info(&version_file).ok();
  
-@@ -42,7 +38,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
+@@ -42,7 +42,7 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
          // isn’t blocked by a network call. The UI reads the previously cached
          // value (if any) for this run; the next run shows the banner if needed.
          tokio::spawn(async move {
@@ -5608,7 +6778,7 @@ index b801426..a8dc0d9 100644
                  .await
                  .inspect_err(|e| tracing::error!("Failed to update version: {e}"))
          });
-@@ -57,23 +53,13 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
+@@ -57,23 +57,13 @@ pub fn get_upgrade_version(config: &Config) -> Option<String> {
      })
  }
  
@@ -5632,7 +6802,7 @@ index b801426..a8dc0d9 100644
      http_client_factory: HttpClientFactory,
  ) -> anyhow::Result<()> {
      let client_pool = RouteAwareClientPool::with_chatgpt_cloudflare_cookies(
-@@ -81,38 +67,7 @@ async fn check_for_update(
+@@ -81,38 +71,7 @@ async fn check_for_update(
          ClientRouteClass::Other,
      )
      .with_legacy_custom_ca_fallback();
@@ -5672,7 +6842,15 @@ index b801426..a8dc0d9 100644
  
      // Preserve any previously dismissed version if present.
      let prev_info = read_version_info(version_file).ok();
-@@ -136,7 +91,7 @@ async fn fetch_latest_github_release_version(
+@@ -133,10 +92,15 @@ async fn check_for_update(
+ async fn fetch_latest_github_release_version(
+     client_pool: &RouteAwareClientPool,
+ ) -> anyhow::Result<String> {
++    // The REST API below allows only 60 unauthenticated requests per hour per
++    // source IP, so resolve the release redirect first; it costs no quota.
++    if let Some(version) = fetch_latest_version_via_redirect(client_pool).await {
++        return Ok(version);
++    }
      let ReleaseInfo {
          tag_name: latest_tag_name,
      } = client_pool
@@ -5681,6 +6859,32 @@ index b801426..a8dc0d9 100644
          .headers(default_headers())
          .send()
          .await?
+@@ -146,6 +110,25 @@ async fn fetch_latest_github_release_version(
+     extract_version_from_latest_tag(&latest_tag_name)
+ }
+ 
++/// Resolves the newest release version from the `github.com` release redirect.
++///
++/// Returns `None` when the response names no release tag, so the caller can
++/// fall back to the REST API.
++async fn fetch_latest_version_via_redirect(client_pool: &RouteAwareClientPool) -> Option<String> {
++    let response = client_pool
++        .request(Method::HEAD, latest_release_redirect_url())
++        .headers(default_headers())
++        .send()
++        .await
++        .ok()?;
++    response
++        .headers()
++        .get(LOCATION)
++        .and_then(|value| value.to_str().ok())
++        .and_then(version_from_release_url)
++        .or_else(|| version_from_release_url(response.url().as_str()))
++}
++
+ /// Returns the latest version to show in a popup, if it should be shown.
+ /// This respects the user's dismissal choice for the current latest version.
+ pub fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
 diff --git a/codex-rs/utils/cli/src/fork.rs b/codex-rs/utils/cli/src/fork.rs
 new file mode 100644
 index 0000000..71f1c12

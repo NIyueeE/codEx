@@ -1,4 +1,4 @@
-From 659a58bea55f547ec694cad3ab9a5c17f9816c54 Mon Sep 17 00:00:00 2001
+From 28eab917688cb7afb31e96a6a479caa69d4b71a2 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: branding: codEx name and version output
@@ -8,7 +8,12 @@ Subject: branding: codEx name and version output
  .../exec/src/event_processor_with_human_output.rs    |  2 +-
  codex-rs/login/src/device_code_auth.rs               |  4 ++--
  codex-rs/login/src/device_code_auth_tests.rs         |  2 +-
+ ...t_clears_previous_transcript_before_replay-2.snap |  3 +--
  .../tui/src/app/tests/session_lifecycle_requests.rs  |  4 ++--
+ ...s__voice_buffered_replay_reconciles_captions.snap |  3 +--
+ ...equests__voice_completed_after_thread_switch.snap |  5 ++---
+ ..._voice_partial_completed_after_thread_switch.snap |  3 +--
+ ...s__voice_replay_reconciles_matching_captions.snap |  3 +--
  codex-rs/tui/src/chatwidget/rendering_tests.rs       |  2 +-
  ...dget__tests__slash_copy_picker_status_fields.snap |  3 +--
  ...__chatwidget__tests__slash_copy_whole_status.snap |  2 +-
@@ -25,7 +30,7 @@ Subject: branding: codEx name and version output
  ...__tests__startup_draft_onboarding_transition.snap |  2 +-
  codex-rs/tui/src/status/card.rs                      |  2 +-
  codex-rs/tui/tests/suite/focus_palette.rs            |  2 +-
- 21 files changed, 42 insertions(+), 41 deletions(-)
+ 26 files changed, 48 insertions(+), 52 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
 index 81fbf07..f43276f 100644
@@ -85,11 +90,27 @@ index ba6071b..5ee6210 100644
 +        "\x1b[90mContinue only if you started this login in codEx. If a website or another person gave you this code, cancel.\x1b[0m"
      ));
  }
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
+index 4b9aa6a..a94135f 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/app/tests.rs
+-assertion_line: 6350
+ expression: rendered
+ ---
+ ╭────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v0.0.0)               │
++│ >_ codEx (v0.155.1)                    │
+ │                                        │
+ │ model:     gpt-test   /model to change │
+ │ directory: <thread cwd>                │
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 3333f43..eb2d97e 100644
+index f8d0532..ddd6dcb 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2357,14 +2357,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -2505,14 +2505,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          };
          let partial = render_overlay(overlay);
          assert!(partial.contains("Earlier messages are available — scroll up to load them"));
@@ -106,6 +127,71 @@ index 3333f43..eb2d97e 100644
          assert!(!loading.contains('%'));
      } else {
          panic!("expected transcript overlay");
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
+index 0b25023..978a35e 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/app/tests/realtime_requests.rs
+-assertion_line: 645
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+ ╭────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v0.0.0)               │
++│ >_ codEx (v0.155.1)                    │
+ │                                        │
+ │ model:     gpt-test   /model to change │
+ │ directory: /tmp/project                │
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
+index 45a423c..06c2ec5 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/app/tests/realtime_requests.rs
+-assertion_line: 182
+-expression: "rendered.replace(&app.config.cwd.display().to_string(), \"/tmp/project\")"
++expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+ ╭────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v0.0.0)               │
++│ >_ codEx (v0.155.1)                    │
+ │                                        │
+ │ model:     gpt-test   /model to change │
+ │ directory: /tmp/project                │
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
+index 44a8b74..0247b52 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/app/tests/realtime_requests.rs
+-assertion_line: 302
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+ ╭────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v0.0.0)               │
++│ >_ codEx (v0.155.1)                    │
+ │                                        │
+ │ model:     gpt-test   /model to change │
+ │ directory: /tmp/project                │
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
+index 76e81da..dd0c765 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
+@@ -1,10 +1,9 @@
+ ---
+ source: tui/src/app/tests/realtime_requests.rs
+-assertion_line: 561
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+ ---
+ ╭────────────────────────────────────────╮
+-│ >_ OpenAI Codex (v0.0.0)               │
++│ >_ codEx (v0.155.1)                    │
+ │                                        │
+ │ model:     gpt-test   /model to change │
+ │ directory: /tmp/project                │
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 index 2d7abb9..56993b4 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
@@ -120,7 +206,7 @@ index 2d7abb9..56993b4 100644
      │ model:     loading   /model to change │
      │ directory: /tmp/project               │
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
-index 4a4416a..8cbd432 100644
+index 6747cb7..ef6e558 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
 @@ -1,11 +1,10 @@
@@ -133,11 +219,11 @@ index 4a4416a..8cbd432 100644
  
 -› 1. Whole status  >_ OpenAI Codex (vVERSION)
 +› 1. Whole status  >_ codEx (vVERSION)
-   2. Model         gpt-5.4
+   2. Model         gpt-5.5
    3. Directory     [[workspace]]
    4. Thread name   Clipboard example
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
-index 4da4b62..0d32a12 100644
+index 6cb4e54..300cf31 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
 @@ -2,7 +2,7 @@

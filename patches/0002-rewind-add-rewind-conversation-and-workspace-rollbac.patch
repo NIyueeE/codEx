@@ -1,4 +1,4 @@
-From de5963c71ae89899f751c4e2c2f904d36f16cc89 Mon Sep 17 00:00:00 2001
+From a2cf179c0f67ab471f36f2a37ff06c6da3bde641 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -16,7 +16,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
  ...ts__desktop_thread_open_error_history.snap |    5 -
  ..._tests__desktop_thread_opened_history.snap |    5 -
- codex-rs/tui/src/app/tests.rs                 |  630 +++++++-
+ codex-rs/tui/src/app/tests.rs                 |  631 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
  codex-rs/tui/src/app_backtrack.rs             |  174 ++-
  codex-rs/tui/src/app_event.rs                 |   46 +-
@@ -31,7 +31,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 27 files changed, 4007 insertions(+), 408 deletions(-)
+ 27 files changed, 4008 insertions(+), 408 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/history_ui_tests.rs
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
@@ -73,10 +73,10 @@ index 7bf9814..11e91c0 100644
      pub disable_paste_burst: Option<bool>,
  
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 2d5d268..c826c0c 100644
+index 3507239..e9d66ec 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -5916,7 +5916,7 @@
+@@ -6075,7 +6075,7 @@
        "type": "string"
      },
      "check_for_update_on_startup": {
@@ -85,7 +85,7 @@ index 2d5d268..c826c0c 100644
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -6809,6 +6809,21 @@
+@@ -6974,6 +6974,21 @@
        "description": "Review model override used by the `/review` feature.",
        "type": "string"
      },
@@ -108,10 +108,10 @@ index 2d5d268..c826c0c 100644
        "allOf": [
          {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index a093aaf..9c92718 100644
+index a2be15e..44a7600 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -623,6 +623,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
+@@ -627,6 +627,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
      Ok(())
  }
  
@@ -154,10 +154,10 @@ index a093aaf..9c92718 100644
  async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
      let codex_home = tempdir()?;
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index ebda977..af1f067 100644
+index ffbda1e..983e778 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1078,10 +1078,24 @@ pub struct Config {
+@@ -1086,10 +1086,24 @@ pub struct Config {
      pub notices: Notice,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -184,7 +184,7 @@ index ebda977..af1f067 100644
      /// When true, disables burst-paste detection for typed input entirely.
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
-@@ -3965,7 +3979,13 @@ impl Config {
+@@ -3978,7 +3992,13 @@ impl Config {
  
          let review_model = override_review_model.or(cfg.review_model);
  
@@ -199,7 +199,7 @@ index ebda977..af1f067 100644
          let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
  
          let log_dir = cfg
-@@ -4333,6 +4353,9 @@ impl Config {
+@@ -4363,6 +4383,9 @@ impl Config {
              active_project,
              notices,
              check_for_update_on_startup,
@@ -210,10 +210,10 @@ index ebda977..af1f067 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index e99c62c..81073bb 100644
+index 47ab3e0..55ff4cf 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -317,6 +317,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+@@ -318,6 +318,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
          active_project: ProjectConfig { trust_level: None },
          notices: Notice::default(),
          check_for_update_on_startup: false,
@@ -224,10 +224,10 @@ index e99c62c..81073bb 100644
          analytics_enabled: Some(false),
          feedback_enabled: false,
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index 040f44f..48c989e 100644
+index f72429a..a323b2f 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
-@@ -80,6 +80,7 @@ diffy = { workspace = true }
+@@ -82,6 +82,7 @@ diffy = { workspace = true }
  dirs = { workspace = true }
  dunce = { workspace = true }
  image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
@@ -236,10 +236,10 @@ index 040f44f..48c989e 100644
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index cc16390..9981c34 100644
+index bcd076f..1bdfdb1 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -286,6 +286,33 @@ impl App {
+@@ -326,6 +326,33 @@ impl App {
              AppEvent::OpenResumePicker => {
                  self.pending_open_resume_picker = true;
              }
@@ -273,7 +273,7 @@ index cc16390..9981c34 100644
              AppEvent::OpenExternalAgentConfigMigration => {
                  match crate::external_agent_config_migration::flow::handle_external_agent_config_migration_prompt(
                      tui,
-@@ -458,6 +485,7 @@ impl App {
+@@ -498,6 +525,7 @@ impl App {
                  thread_id,
                  nth_user_message,
                  mut prompt,
@@ -281,7 +281,7 @@ index cc16390..9981c34 100644
              } => {
                  if self.chat_widget.thread_id() != Some(thread_id) {
                      return Ok(AppRunControl::Continue);
-@@ -479,59 +507,70 @@ impl App {
+@@ -519,59 +547,70 @@ impl App {
                      .await;
                  let config = self.fresh_session_config();
                  let selected_profile = self.confirmed_server_profile(thread_id);
@@ -398,7 +398,7 @@ index cc16390..9981c34 100644
                  };
                  let started = match turns {
                      Some(turns) => match crate::app_backtrack::backtrack_fork_before_turn_id(
-@@ -583,7 +622,20 @@ impl App {
+@@ -623,7 +662,20 @@ impl App {
                              )
                              .await
                          {
@@ -420,7 +420,7 @@ index cc16390..9981c34 100644
                              Err(err) => {
                                  self.restore_backtrack_prompt_after_branch_error(prompt, err);
                              }
-@@ -941,9 +993,6 @@ impl App {
+@@ -1019,9 +1071,6 @@ impl App {
              AppEvent::OpenUrlInBrowser { url } => {
                  self.open_url_in_browser(url);
              }
@@ -615,10 +615,10 @@ index 750c665..0000000
 -        .join("\n")
 -}
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 8f2a0d8..41f3c86 100644
+index 98e03ab..a859f7e 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -997,6 +997,11 @@ impl App {
+@@ -1030,6 +1030,11 @@ impl App {
              initial_user_message,
          );
          self.replace_chat_widget(ChatWidget::new_with_app_event(init));
@@ -653,10 +653,10 @@ index 8e34f8e..0000000
 ----
 -• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 64c8bda..b824f53 100644
+index 1cb3cf2..322137a 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -7175,13 +7175,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -7401,13 +7401,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              rollout_path: Some(PathBuf::new()),
          });
  
@@ -673,7 +673,7 @@ index 64c8bda..b824f53 100644
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -7208,6 +7204,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -7434,6 +7430,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              thread_id,
              nth_user_message,
              prompt,
@@ -681,7 +681,7 @@ index 64c8bda..b824f53 100644
          } if thread_id == expected.thread_id
              && nth_user_message == expected.nth_user_message
              && prompt == expected.prompt
-@@ -7245,6 +7242,569 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -7471,6 +7468,570 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
@@ -939,6 +939,7 @@ index 64c8bda..b824f53 100644
 +            text_elements: Vec::new(),
 +            local_image_paths: Vec::new(),
 +            remote_image_urls: Vec::new(),
++            spoken: false,
 +        }) as Arc<dyn HistoryCell>
 +    };
 +    app.transcript_cells = vec![
@@ -1251,7 +1252,7 @@ index 64c8bda..b824f53 100644
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -7844,6 +8404,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
+@@ -8070,6 +8631,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
              thread_id: source_thread_id,
              nth_user_message: 1,
              prompt: prompt.clone(),
@@ -1259,7 +1260,7 @@ index 64c8bda..b824f53 100644
          },
      ))
      .await?;
-@@ -7961,6 +8522,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
+@@ -8187,6 +8749,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
              thread_id: source_thread_id,
              nth_user_message: 0,
              prompt: crate::chatwidget::UserMessage::from("first prompt"),
@@ -1267,7 +1268,7 @@ index 64c8bda..b824f53 100644
          },
      ))
      .await?;
-@@ -7994,6 +8556,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
+@@ -8220,6 +8783,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
              thread_id: source_thread_id,
              nth_user_message: 0,
              prompt: crate::chatwidget::UserMessage::from("first prompt"),
@@ -1275,7 +1276,7 @@ index 64c8bda..b824f53 100644
          },
      ))
      .await?;
-@@ -8421,7 +8984,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -8653,7 +9217,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -1283,7 +1284,7 @@ index 64c8bda..b824f53 100644
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -8433,7 +8995,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -8665,7 +9228,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -1291,7 +1292,7 @@ index 64c8bda..b824f53 100644
      })
      .await;
  }
-@@ -9085,9 +9646,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -9318,9 +9880,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -1301,7 +1302,7 @@ index 64c8bda..b824f53 100644
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -9096,8 +9654,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -9329,8 +9888,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -1310,7 +1311,7 @@ index 64c8bda..b824f53 100644
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -9132,15 +9688,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -9365,15 +9922,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -1331,7 +1332,7 @@ index 64c8bda..b824f53 100644
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -9148,25 +9706,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -9381,25 +9940,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1362,7 +1363,7 @@ index 64c8bda..b824f53 100644
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -9176,33 +9733,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -9409,33 +9967,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1413,7 +1414,7 @@ index a81fdf0..514be26 100644
      app.active_thread_id = Some(thread_id);
      app.chat_widget
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 242b021..320e15f 100644
+index bb6189b..37f24bd 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
 @@ -1,17 +1,10 @@
@@ -1682,10 +1683,10 @@ index 242b021..320e15f 100644
  
  /// Find the persisted turn that contains a selected transcript prompt.
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 1df5a1a..0a2b687 100644
+index 7611d89..c81cac4 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -235,6 +235,17 @@ pub(crate) enum TranscriptExportDestination {
+@@ -243,6 +243,17 @@ pub(crate) enum TranscriptExportDestination {
      File(PathBuf),
  }
  
@@ -1703,7 +1704,7 @@ index 1df5a1a..0a2b687 100644
  /// Deliver a generated title to its originating automatic rename or editable prompt.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
  pub(crate) enum ThreadTitleDestination {
-@@ -514,10 +525,40 @@ pub(crate) enum AppEvent {
+@@ -566,10 +577,40 @@ pub(crate) enum AppEvent {
      },
  
      /// Branch before a selected prompt and reopen it in the new thread's composer.
@@ -1744,7 +1745,7 @@ index 1df5a1a..0a2b687 100644
      },
  
      /// Request to exit the application.
-@@ -729,11 +770,6 @@ pub(crate) enum AppEvent {
+@@ -781,11 +822,6 @@ pub(crate) enum AppEvent {
          url: String,
      },
  
@@ -1757,10 +1758,10 @@ index 1df5a1a..0a2b687 100644
      PetSelected {
          pet_id: String,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 16d4a6e..fe2a7ad 100644
+index 4e34536..148ce8e 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -726,6 +726,9 @@ pub(crate) struct ChatWidget {
+@@ -743,6 +743,9 @@ pub(crate) struct ChatWidget {
      /// We require the second press to match this key so `Ctrl+C` followed by
      /// `Ctrl+D` (or vice versa) doesn't quit accidentally.
      quit_shortcut_key: Option<KeyBinding>,
@@ -1770,7 +1771,7 @@ index 16d4a6e..fe2a7ad 100644
      // Runtime metrics accumulated across delta snapshots for the active turn.
      turn_runtime_metrics: RuntimeMetricsSummary,
      last_rendered_width: std::cell::Cell<Option<u16>>,
-@@ -1685,9 +1688,15 @@ impl ChatWidget {
+@@ -1732,9 +1735,15 @@ impl ChatWidget {
          self.bottom_pane.composer_is_vim_enabled()
      }
  
@@ -1787,7 +1788,7 @@ index 16d4a6e..fe2a7ad 100644
      }
  
      pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
-@@ -1702,7 +1711,7 @@ impl ChatWidget {
+@@ -1749,7 +1758,7 @@ impl ChatWidget {
  
      /// True when the UI is in the regular composer state with no running task,
      /// no modal overlay (e.g. approvals or status indicator), and no composer popups.
@@ -1796,7 +1797,7 @@ index 16d4a6e..fe2a7ad 100644
      pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
          self.bottom_pane.is_normal_backtrack_mode()
      }
-@@ -1738,14 +1747,6 @@ impl ChatWidget {
+@@ -1785,14 +1794,6 @@ impl ChatWidget {
          self.bottom_pane.has_active_view()
      }
  
@@ -1812,10 +1813,10 @@ index 16d4a6e..fe2a7ad 100644
          self.blocks_direct_input = true;
          self.external_writer_view = true;
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 6e408aa..71c17c0 100644
+index fdfe3f6..888a51b 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
-@@ -190,6 +190,15 @@ impl ChatWidget {
+@@ -211,6 +211,15 @@ impl ChatWidget {
              return (app_command.is_some(), app_command);
          }
  
@@ -1831,7 +1832,7 @@ index 6e408aa..71c17c0 100644
          for image_url in &remote_image_urls {
              items.push(UserInput::Image {
                  url: image_url.clone(),
-@@ -496,4 +505,56 @@ impl ChatWidget {
+@@ -522,4 +531,56 @@ impl ChatWidget {
          ));
          self.request_redraw();
      }
@@ -1889,10 +1890,10 @@ index 6e408aa..71c17c0 100644
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index b8db07e..a01f7ad 100644
+index f67ece5..8f05630 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -253,15 +253,8 @@ impl ChatWidget {
+@@ -252,15 +252,8 @@ impl ChatWidget {
              SlashCommand::Worktree => {
                  self.show_managed_worktree_picker();
              }
@@ -1910,14 +1911,14 @@ index b8db07e..a01f7ad 100644
              }
              SlashCommand::Init => {
                  const INIT_PROMPT: &str = include_str!("../../assets/prompt_for_init_command.md");
-@@ -1181,7 +1174,6 @@ impl ChatWidget {
+@@ -1180,7 +1173,6 @@ impl ChatWidget {
              | SlashCommand::Raw
              | SlashCommand::Vim
              | SlashCommand::Diff
 -            | SlashCommand::App
              | SlashCommand::Rename
+             | SlashCommand::Voice
              | SlashCommand::Recap
-             | SlashCommand::TestApproval => QueueDrain::Continue,
 @@ -1204,6 +1196,7 @@ impl ChatWidget {
              | SlashCommand::Clear
              | SlashCommand::Resume
@@ -1947,7 +1948,7 @@ index 0000000..11c7aab
 +
 +  Press enter to confirm or esc to go back
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index 8222ef5..59e8682 100644
+index f6d9e6d..b4c1f60 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -686,6 +686,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
@@ -1961,10 +1962,10 @@ index 8222ef5..59e8682 100644
          .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
      chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index af912ae..e4b6745 100644
+index 7d184d8..dc2dfec 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -1625,7 +1625,7 @@ fn interrupted_history(
+@@ -1626,7 +1626,7 @@ fn interrupted_history(
  }
  
  #[tokio::test]
@@ -1973,7 +1974,7 @@ index af912ae..e4b6745 100644
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
-@@ -1634,22 +1634,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1635,22 +1635,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
      handle_turn_started(&mut chat, "turn-1");
      chat.bottom_pane.ensure_status_indicator();
  
@@ -2008,7 +2009,7 @@ index af912ae..e4b6745 100644
          }
      }
  
-@@ -1665,6 +1663,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1666,6 +1664,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
@@ -2018,7 +2019,7 @@ index af912ae..e4b6745 100644
      chat.submit_user_message(UserMessage::from(prompt));
      assert_matches!(next_submit_op(&mut op_rx), Op::UserTurn { .. });
      handle_turn_started(&mut chat, "turn-1");
-@@ -1706,7 +1707,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
+@@ -1707,7 +1708,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
      assert!(!chat.input_queue.submit_pending_steers_after_interrupt);
      assert!(op_rx.try_recv().is_err());
  
@@ -2030,7 +2031,7 @@ index af912ae..e4b6745 100644
      match op_rx.try_recv() {
          Ok(Op::Interrupt) => {}
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index e84f8fb..dade30a 100644
+index e558424..7992c50 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -1218,7 +1218,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
@@ -2043,7 +2044,7 @@ index e84f8fb..dade30a 100644
      next_interrupt_op(&mut op_rx);
      chat.on_interrupted_turn(TurnAbortReason::Interrupted);
  
-@@ -3276,32 +3277,11 @@ async fn slash_fork_with_name_requests_named_fork() {
+@@ -3312,32 +3313,11 @@ async fn slash_fork_with_name_requests_named_fork() {
  }
  
  #[tokio::test]
@@ -5053,10 +5054,10 @@ index 0000000..81078cc
 +    assert_eq!(fs::read(&file).expect("read"), b"v1");
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index ca83861..1bcd753 100644
+index 99fea9e..e4c10a5 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
-@@ -36,7 +36,7 @@ pub enum SlashCommand {
+@@ -34,7 +34,7 @@ pub enum SlashCommand {
      Resume,
      Fork,
      Worktree,
@@ -5065,7 +5066,7 @@ index ca83861..1bcd753 100644
      Init,
      Compact,
      Recap,
-@@ -101,7 +101,7 @@ impl SlashCommand {
+@@ -100,7 +100,7 @@ impl SlashCommand {
              SlashCommand::Clear => "clear the terminal and start a new chat",
              SlashCommand::Fork => "fork the current chat",
              SlashCommand::Worktree => "start or continue a conversation in a new worktree",
@@ -5074,7 +5075,7 @@ index ca83861..1bcd753 100644
              SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
              SlashCommand::Copy => "copy the last response or part of it",
              SlashCommand::Export => "export the conversation as markdown",
-@@ -213,6 +213,7 @@ impl SlashCommand {
+@@ -210,6 +210,7 @@ impl SlashCommand {
              | SlashCommand::Delete
              | SlashCommand::Fork
              | SlashCommand::Worktree
@@ -5082,23 +5083,23 @@ index ca83861..1bcd753 100644
              | SlashCommand::Init
              | SlashCommand::Compact
              | SlashCommand::Recap
-@@ -248,7 +249,6 @@ impl SlashCommand {
+@@ -244,7 +245,6 @@ impl SlashCommand {
              | SlashCommand::DebugConfig
              | SlashCommand::Ps
              | SlashCommand::Stop
 -            | SlashCommand::App
              | SlashCommand::Goal
+             | SlashCommand::Voice
              | SlashCommand::Mcp
-             | SlashCommand::Apps
-@@ -273,7 +273,6 @@ impl SlashCommand {
+@@ -269,7 +269,6 @@ impl SlashCommand {
+     fn is_visible(self) -> bool {
          match self {
-             SlashCommand::SandboxReadRoot => cfg!(target_os = "windows"),
              SlashCommand::Copy => !cfg!(target_os = "android"),
 -            SlashCommand::App => cfg!(any(target_os = "macos", target_os = "windows")),
+             SlashCommand::Voice => true,
              SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
              _ => true,
-         }
-@@ -320,7 +319,6 @@ mod tests {
+@@ -317,7 +316,6 @@ mod tests {
          assert!(SlashCommand::Raw.available_during_task());
          assert!(SlashCommand::Raw.available_in_side_conversation());
          assert!(SlashCommand::Raw.supports_inline_args());

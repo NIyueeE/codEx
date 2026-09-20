@@ -88,6 +88,10 @@ if [[ ! -d "${code_dir}" ]]; then
 fi
 
 cd "${code_dir}"
+# Linking codex-cli with thin LTO holds 10+ GB in one process and nextest spawns
+# one process per CPU, so an uncapped run on a many-core host exhausts memory on
+# its own. Cap both; raise CARGO_BUILD_JOBS explicitly if the host can take it.
+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 echo "Building ..."
 cargo build --release --bin codex
 
@@ -100,12 +104,12 @@ if ! command -v cargo-nextest >/dev/null 2>&1; then
 fi
 
 echo "Running codex-tui tests ..."
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
+RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast -p codex-tui
 
 echo "Running codex-core tests ..."
 # The full core integration suite (sandbox/approvals scenarios) needs
 # sandbox-capable runners; CI excludes suite::* tests, so do the same here.
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
+RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast \
   -p codex-core -E 'not test(suite)'
 
 cd "${work_dir}"

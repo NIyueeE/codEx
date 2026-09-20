@@ -1,4 +1,4 @@
-From f968a59f1744f6b8b37a5f52746ff3c7227c948e Mon Sep 17 00:00:00 2001
+From b6d72dd34afdaf7bb4f196e19583dda676276e8d Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:01 +0800
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -11,24 +11,24 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/cargo-deny.yml              |   31 -
  .github/workflows/codespell.yml               |    3 +-
  .github/workflows/postmerge-ci.yml            |   40 -
- .github/workflows/python-runtime-build.yml    |  104 -
- .github/workflows/python-runtime-release.yml  |  100 -
- .github/workflows/python-sdk-release.yml      |  237 ---
+ .github/workflows/python-runtime-build.yml    |  114 -
+ .github/workflows/python-runtime-release.yml  |   63 -
+ .github/workflows/python-sdk-release.yml      |  172 --
  .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   79 +-
+ .github/workflows/repo-checks.yml             |   86 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ----
- .github/workflows/rust-ci-full.yml            |  574 ------
- .github/workflows/rust-ci.yml                 |  263 ---
+ .github/workflows/rust-ci-full.yml            |  574 -----
+ .github/workflows/rust-ci.yml                 |  263 --
  .../rust-release-argument-comment-lint.yml    |  113 -
  .github/workflows/rust-release-prepare.yml    |   57 -
  .github/workflows/rust-release-windows.yml    |  413 ----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 1815 +++--------------
- .github/workflows/rusty-v8-release.yml        |  479 -----
- .github/workflows/sdk.yml                     |  166 --
+ .github/workflows/rust-release.yml            | 2135 ++---------------
+ .github/workflows/rusty-v8-release.yml        |  479 ----
+ .github/workflows/sdk.yml                     |  159 --
  .github/workflows/v8-canary.yml               |  444 ----
  install.sh                                    |  198 ++
- patches/BUILD.bazel                           |   28 -
+ patches/BUILD.bazel                           |   30 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 -
@@ -41,14 +41,14 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  ...s_rust_windows_msvc_direct_link_args.patch |  109 -
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
- patches/v8_bazel_rules.patch                  |  502 -----
+ patches/v8_bazel_rules.patch                  |  502 ----
  patches/v8_module_deps.patch                  |  285 ---
  patches/v8_source_portability.patch           |  316 ---
  .../webrtc-sys_hermetic_darwin_sysroot.patch  |   75 -
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 44 files changed, 658 insertions(+), 7873 deletions(-)
+ 44 files changed, 659 insertions(+), 8102 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -1093,19 +1093,26 @@ index ac2b46d..0000000
 -        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/python-runtime-build.yml b/.github/workflows/python-runtime-build.yml
 deleted file mode 100644
-index 433c086..0000000
+index 748ff2f..0000000
 --- a/.github/workflows/python-runtime-build.yml
 +++ /dev/null
-@@ -1,104 +0,0 @@
+@@ -1,114 +0,0 @@
 -name: python-runtime-build
 -
 -on:
 -  workflow_call:
 -    inputs:
+-      source_ref:
+-        description: "Source revision to build; defaults to the calling workflow revision."
+-        required: false
+-        type: string
 -      runtime_version:
 -        description: "Runtime version to build, for example 0.136.0, 0.136.0a2, or 0.136.0a2.post1."
 -        required: true
 -        type: string
+-    outputs:
+-      python_version:
+-        value: ${{ jobs.build-python-runtime.outputs.python_version }}
 -
 -jobs:
 -  build-python-runtime:
@@ -1114,11 +1121,14 @@ index 433c086..0000000
 -    runs-on: ubuntu-latest
 -    permissions:
 -      contents: read
+-    outputs:
+-      python_version: ${{ steps.python_runtime.outputs.python_version }}
 -
 -    steps:
 -      - name: Checkout repository
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
+-          ref: ${{ inputs.source_ref || github.sha }}
 -          persist-credentials: false
 -
 -      - name: Validate and resolve Python runtime release
@@ -1203,10 +1213,10 @@ index 433c086..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index f088c37..0000000
+index f7f0b4a..0000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
-@@ -1,100 +0,0 @@
+@@ -1,63 +0,0 @@
 -name: python-runtime-release
 -
 -on:
@@ -1242,6 +1252,11 @@ index f088c37..0000000
 -      id-token: write # Required for PyPI trusted publishing.
 -
 -    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
 -      - name: Download Python runtime wheels
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
@@ -1254,65 +1269,23 @@ index f088c37..0000000
 -          packages-dir: dist/python-runtime
 -          skip-existing: true
 -
+-      - name: Install uv
+-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+-        with:
+-          version: "0.11.3"
+-
 -      - name: Verify Python runtime wheels are available on PyPI
 -        env:
--          PYTHON_RUNTIME_VERSION: ${{ inputs.runtime_version }}
+-          PYTHON_RUNTIME_VERSION: ${{ needs.prepare-python-runtime.outputs.python_version }}
 -        run: |
--          set -euo pipefail
--          for attempt in {1..30}; do
--            if python3 - <<'PY'
--          import json
--          import os
--          import urllib.error
--          import urllib.request
--
--          version = os.environ["PYTHON_RUNTIME_VERSION"]
--          tags = {
--              "macosx_10_9_x86_64",
--              "macosx_11_0_arm64",
--              "manylinux_2_17_aarch64",
--              "manylinux_2_17_x86_64",
--              "musllinux_1_1_aarch64",
--              "musllinux_1_1_x86_64",
--              "win_amd64",
--              "win_arm64",
--          }
--          expected = {
--              f"openai_codex_cli_bin-{version}-py3-none-{tag}.whl"
--              for tag in tags
--          }
--
--          try:
--              with urllib.request.urlopen(
--                  f"https://pypi.org/pypi/openai-codex-cli-bin/{version}/json",
--                  timeout=30,
--              ) as response:
--                  payload = json.load(response)
--          except urllib.error.URLError as error:
--              print(f"Could not read runtime {version} from PyPI: {error}.")
--              raise SystemExit(1) from error
--
--          actual = {file["filename"] for file in payload["urls"]}
--          if actual != expected:
--              print(f"Missing runtime wheels: {sorted(expected - actual)}")
--              print(f"Unexpected runtime files: {sorted(actual - expected)}")
--              raise SystemExit(1)
--          PY
--            then
--              exit 0
--            fi
--            echo "Runtime wheels are not available on PyPI yet; retrying (${attempt}/30)."
--            sleep 10
--          done
--
--          echo "Runtime wheels did not become available on PyPI."
--          exit 1
+-          uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py \
+-            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 16834a6..0000000
+index 0e01f23..0000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
-@@ -1,237 +0,0 @@
+@@ -1,172 +0,0 @@
 -name: python-sdk-release
 -
 -on:
@@ -1390,14 +1363,25 @@ index 16834a6..0000000
 -    with:
 -      runtime_version: ${{ needs.resolve-python-release.outputs.runtime_version }}
 -
--  # Always publish the exact pinned runtime from this top-level workflow before
--  # building the SDK package. PyPI does not support reusable workflows as
--  # Trusted Publishers.
+-  build-python-sdk:
+-    name: build-python-sdk
+-    needs: resolve-python-release
+-    permissions:
+-      contents: read
+-    uses: ./.github/workflows/python-sdk-build.yml
+-    with:
+-      sdk_version: ${{ needs.resolve-python-release.outputs.sdk_version }}
+-      runtime_version: ${{ needs.resolve-python-release.outputs.runtime_version }}
+-
+-  # Publish from the top-level workflow: PyPI does not support reusable
+-  # workflows as Trusted Publishers. The runtime must be available before
+-  # publishing the SDK that depends on it.
 -  publish-python-runtime:
 -    if: github.repository == 'openai/codex'
 -    name: publish-python-runtime
 -    needs:
 -      - prepare-python-runtime
+-      - build-python-sdk
 -      - resolve-python-release
 -    runs-on: ubuntu-latest
 -    environment: pypi
@@ -1406,6 +1390,11 @@ index 16834a6..0000000
 -      id-token: write # Required for PyPI trusted publishing.
 -
 -    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
 -      - name: Download Python runtime wheels
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
@@ -1418,121 +1407,24 @@ index 16834a6..0000000
 -          packages-dir: dist/python-runtime
 -          skip-existing: true
 -
+-      - name: Install uv
+-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+-        with:
+-          version: "0.11.3"
+-
 -      - name: Verify Python runtime wheels are available on PyPI
 -        env:
 -          PYTHON_RUNTIME_VERSION: ${{ needs.resolve-python-release.outputs.runtime_version }}
 -        run: |
--          set -euo pipefail
--          for attempt in {1..30}; do
--            if python3 - <<'PY'
--          import json
--          import os
--          import urllib.error
--          import urllib.request
--
--          version = os.environ["PYTHON_RUNTIME_VERSION"]
--          tags = {
--              "macosx_10_9_x86_64",
--              "macosx_11_0_arm64",
--              "manylinux_2_17_aarch64",
--              "manylinux_2_17_x86_64",
--              "musllinux_1_1_aarch64",
--              "musllinux_1_1_x86_64",
--              "win_amd64",
--              "win_arm64",
--          }
--          expected = {
--              f"openai_codex_cli_bin-{version}-py3-none-{tag}.whl"
--              for tag in tags
--          }
--
--          try:
--              with urllib.request.urlopen(
--                  f"https://pypi.org/pypi/openai-codex-cli-bin/{version}/json",
--                  timeout=30,
--              ) as response:
--                  payload = json.load(response)
--          except urllib.error.URLError as error:
--              print(f"Could not read runtime {version} from PyPI: {error}.")
--              raise SystemExit(1) from error
--
--          actual = {file["filename"] for file in payload["urls"]}
--          if actual != expected:
--              print(f"Missing runtime wheels: {sorted(expected - actual)}")
--              print(f"Unexpected runtime files: {sorted(actual - expected)}")
--              raise SystemExit(1)
--          PY
--            then
--              exit 0
--            fi
--            echo "Runtime wheels are not available on PyPI yet; retrying (${attempt}/30)."
--            sleep 10
--          done
--
--          echo "Runtime wheels did not become available on PyPI."
--          exit 1
--
--  build-python-sdk:
--    if: github.repository == 'openai/codex'
--    name: build-python-sdk
--    needs:
--      - publish-python-runtime
--      - resolve-python-release
--    runs-on: ubuntu-latest
--    permissions:
--      contents: read
--
--    steps:
--      - name: Checkout repository
--        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
--      - name: Build Python SDK package
--        shell: bash
--        env:
--          SDK_VERSION: ${{ needs.resolve-python-release.outputs.sdk_version }}
--        run: |
--          set -euo pipefail
--
--          # Build in a glibc Linux image so release type generation installs
--          # the pinned manylinux runtime wheel.
--          docker run --rm \
--            --user "$(id -u):$(id -g)" \
--            -e HOME=/tmp/codex-python-sdk-home \
--            -e UV_LINK_MODE=copy \
--            -e SDK_VERSION \
--            -e SDK_STAGE_DIR="${RUNNER_TEMP}/openai-codex" \
--            -e SDK_DIST_DIR="${GITHUB_WORKSPACE}/dist/python-sdk" \
--            -v "${GITHUB_WORKSPACE}:${GITHUB_WORKSPACE}" \
--            -v "${RUNNER_TEMP}:${RUNNER_TEMP}" \
--            -w "${GITHUB_WORKSPACE}/sdk/python" \
--            python:3.12-slim \
--            sh -euxc '
--              python -m venv /tmp/release-tools
--              /tmp/release-tools/bin/python -m pip install build twine uv==0.11.3
--              /tmp/release-tools/bin/uv sync --group dev --frozen
--              /tmp/release-tools/bin/uv run --frozen --no-sync python scripts/update_sdk_artifacts.py \
--                stage-sdk "${SDK_STAGE_DIR}" \
--                --sdk-version "${SDK_VERSION}"
--              /tmp/release-tools/bin/python -m build \
--                --wheel \
--                --sdist \
--                --outdir "${SDK_DIST_DIR}" \
--                "${SDK_STAGE_DIR}"
--              /tmp/release-tools/bin/python -m twine check --strict "${SDK_DIST_DIR}/"*
--            '
--
--      - name: Upload Python SDK package
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: python-sdk-package
--          path: dist/python-sdk/*
--          if-no-files-found: error
+-          uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py \
+-            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 -
 -  publish-python-sdk:
 -    name: publish-python-sdk
--    needs: build-python-sdk
+-    needs:
+-      - build-python-sdk
+-      - publish-python-runtime
+-      - resolve-python-release
 -    runs-on: ubuntu-latest
 -    environment: pypi
 -    permissions:
@@ -1540,6 +1432,11 @@ index 16834a6..0000000
 -      id-token: write # Required for PyPI trusted publishing.
 -
 -    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
 -      - name: Download Python SDK package
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
@@ -1550,6 +1447,17 @@ index 16834a6..0000000
 -        uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
 -        with:
 -          packages-dir: dist/python-sdk
+-          skip-existing: true
+-
+-      - name: Install uv
+-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+-        with:
+-          version: "0.11.3"
+-
+-      - name: Verify Python SDK is available on PyPI
+-        env:
+-          SDK_VERSION: ${{ needs.resolve-python-release.outputs.sdk_version }}
+-        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
 index 96a0768..0000000
@@ -1610,10 +1518,10 @@ index 96a0768..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index be2b9aa..562d2d4 100644
+index d43bcdc..562d2d4 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -6,62 +6,55 @@ on:
+@@ -6,69 +6,55 @@ on:
  jobs:
    build-test:
      runs-on: ubuntu-latest
@@ -1632,8 +1540,21 @@ index be2b9aa..562d2d4 100644
 -
 -      - name: Verify codex-rs Cargo manifests inherit workspace settings
 -        run: python3 .github/scripts/verify_cargo_workspace_manifests.py
+-
+-      - name: Verify codex-tui does not import codex-core directly
+-        run: python3 .github/scripts/verify_tui_core_boundary.py
+-
+-      - name: Verify Bazel clippy flags match Cargo workspace lints
+-        run: python3 .github/scripts/verify_bazel_clippy_lints.py
+-
+-      - name: Install uv
+-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
 +      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        with:
+         with:
+-          version: "0.11.3"
+-
+-      - name: Test downstream Python release resolution
+-        run: python3 -m unittest discover -s .github/scripts -p 'test_resolve_python_cli_release.py'
 +          components: rustfmt
 +
 +      - name: Bootstrap tree if needed
@@ -1655,11 +1576,9 @@ index be2b9aa..562d2d4 100644
 +            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
 +          fi
  
-       - name: Verify codex-tui does not import codex-core directly
--        run: python3 .github/scripts/verify_tui_core_boundary.py
--
--      - name: Verify Bazel clippy flags match Cargo workspace lints
--        run: python3 .github/scripts/verify_bazel_clippy_lints.py
+-      - name: Test PyPI release verification
+-        run: uv run --no-project --with packaging==26.2 python -m unittest discover -s .github/scripts -p 'test_verify_pypi_release.py'
++      - name: Verify codex-tui does not import codex-core directly
 +        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
  
        - name: Test Codex package builder
@@ -1668,8 +1587,8 @@ index be2b9aa..562d2d4 100644
 -      - name: Test standalone installer
 -        run: python3 -m unittest discover -s scripts/install -p 'test_*.py'
 -
--      - name: Test macOS notarization
--        run: python3 -m unittest discover -s .github/scripts/macos-signing -p 'test_notarize_with_akv.py'
+-      - name: Test macOS signing and notarization
+-        run: python3 -m unittest discover -s .github/scripts/macos-signing -p 'test_*.py'
 -
 -      - name: Setup pnpm
 -        uses: pnpm/action-setup@a8198c4bff370c8506180b035930dea56dbd5288 # v5
@@ -1694,10 +1613,6 @@ index be2b9aa..562d2d4 100644
 -      - name: Check root README ToC
 -        run: python3 scripts/readme_toc.py README.md
 -
--      - name: Install uv
--        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
--        with:
--          version: "0.11.3"
 -      - name: Check formatting (run `just fmt` to fix)
 -        run: just fmt-check
 +        if: hashFiles('README.md') != ''
@@ -3127,7 +3042,7 @@ index 5bf1121..0000000
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-prepare.yml b/.github/workflows/rust-release-prepare.yml
 deleted file mode 100644
-index 67e542e..0000000
+index 80e2311..0000000
 --- a/.github/workflows/rust-release-prepare.yml
 +++ /dev/null
 @@ -1,57 +0,0 @@
@@ -3177,7 +3092,7 @@ index 67e542e..0000000
 -          )
 -
 -          url="${base_url%/}/models?client_version=${client_version}"
--          curl --http1.1 --fail --show-error --location "${headers[@]}" "${url}" | jq '.' > codex-rs/models-manager/models.json
+-          curl --http1.1 --fail --show-error --location "${headers[@]}" "${url}" | jq 'del(.models[].base_instructions)' > codex-rs/models-manager/models.json
 -
 -      - name: Open pull request (if changed)
 -        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
@@ -3796,10 +3711,10 @@ index e814ec3..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          config: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index a3dd6c8..8c60d19 100644
+index b3863a0..8c60d19 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,229 +1,231 @@
+@@ -1,228 +1,231 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -3901,14 +3816,12 @@ index a3dd6c8..8c60d19 100644
      needs: tag-check
 -    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
 -    runs-on: ${{ matrix.runs_on || matrix.runner }}
--    # Release builds can take a long time, so leave some headroom to avoid
--    # having to restart the full workflow due to a timeout.
--    timeout-minutes: 90
+-    # Linux releases also build the native voice runtime in this job.
 +    name: Build - ${{ matrix.target }}
 +    # Windows release builds can exceed an hour, so the timeout matches the
 +    # Linux budget rather than dropping back to the default.
 +    runs-on: ${{ matrix.runs_on }}
-+    timeout-minutes: 120
+     timeout-minutes: 120
      permissions:
        contents: read
 -      id-token: write
@@ -4187,7 +4100,7 @@ index a3dd6c8..8c60d19 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -239,1464 +241,125 @@ jobs:
+@@ -238,1783 +241,125 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4219,8 +4132,12 @@ index a3dd6c8..8c60d19 100644
 -          if-no-files-found: warn
 -
 -      - name: Build symbols archive and strip binaries
--        shell: bash
--        run: |
++      - name: Build codex
+         shell: bash
++        env:
++          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
 -          binaries=()
 -          for binary in ${{ matrix.binaries }}; do
 -            # bwrap is already stripped before hashing. Its symbols are not
@@ -4243,15 +4160,62 @@ index a3dd6c8..8c60d19 100644
 -          name: ${{ matrix.artifact_name }}-symbols
 -          path: codex-rs/symbols-dist/${{ matrix.artifact_name }}/*
 -          if-no-files-found: error
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release --bin codex
+ 
+-      - name: Set up Bazel for Linux voice
+-        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
+-        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+-        with:
+-          bazelisk-version: 1.28.1
 -
+-      - name: Build Linux voice runtime
+-        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
++      # Windows launches helpers such as the sandbox setup out of
++      # `codex-resources/`; without them a packaged codEx cannot start a
++      # sandboxed session. The Linux archive carries bwrap for the same reason.
++      - name: Build Windows helper binaries
++        if: matrix.platform == 'windows'
+         shell: bash
+-        env:
+-          APP_TARGET: ${{ matrix.target }}
+         run: |
+-          set -euo pipefail
+-          cd "$GITHUB_WORKSPACE"
+-          voice_target="${APP_TARGET%-musl}-gnu"
+-          case "$voice_target" in
+-            aarch64-unknown-linux-gnu) prefix=linux_aarch64 ;;
+-            x86_64-unknown-linux-gnu) prefix=linux_x86_64 ;;
+-            *) exit 1 ;;
+-          esac
+-          bazel build -c opt //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          source="bazel-bin/third_party/voice/native_runtime_${prefix}"
+-          output="${RUNNER_TEMP}/signed-voice/${APP_TARGET}"
+-          mkdir -p "$output"
+-          python3 third_party/voice/release_runtime.py stage \
+-            --target "$voice_target" --source "$source" --output "$output/runtime"
+-          cp bazel-bin/codex-rs/voice-host/codex-voice-host "$output/codex-voice-host"
+-          chmod 0755 "$output/codex-voice-host"
+-          python3 third_party/voice/release_runtime.py seal \
+-            --target "$voice_target" --output "$output/runtime"
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release \
++            --bin codex-windows-sandbox-setup \
++            --bin codex-command-runner \
++            --bin codex-code-mode-host
+ 
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
--        shell: bash
--        run: |
--          set -euo pipefail
++      # ---- Stage -----------------------------------------------------------
++      - name: Stage archive (Linux)
++        if: matrix.platform == 'linux'
+         shell: bash
+         run: |
+           set -euo pipefail
 -
--          target="${{ matrix.target }}"
--          release_dir="target/${target}/release"
++          cd "${CODE_DIR}"
+           target="${{ matrix.target }}"
+           release_dir="target/${target}/release"
 -          dest="unsigned-dist/${target}"
 -          mkdir -p "$dest"
 -
@@ -4284,13 +4248,16 @@ index a3dd6c8..8c60d19 100644
 -          target: ${{ matrix.target }}
 -          artifacts-dir: ${{ github.workspace }}/codex-rs/target/${{ matrix.target }}/release
 -          binaries: ${{ matrix.binaries }}
--
++          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
++          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+ 
 -      - name: Stage artifacts
 -        if: ${{ runner.os != 'macOS' }}
 -        shell: bash
 -        run: |
 -          dest="dist/${{ matrix.target }}"
--          mkdir -p "$dest"
++          dest="dist/${target}"
+           mkdir -p "$dest"
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
@@ -4322,33 +4289,37 @@ index a3dd6c8..8c60d19 100644
 -
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
-+      - name: Build codex
-         shell: bash
-         env:
+-        shell: bash
+-        env:
 -          TARGET: ${{ matrix.target }}
 -          BUNDLE: ${{ matrix.bundle }}
-+          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
-+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
-         run: |
+-        run: |
 -          set -euo pipefail
+-          voice_args=()
+-          if [[ "$BUNDLE" == "primary" && "$TARGET" == *-unknown-linux-musl ]]; then
+-            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
+-            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
+-          fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
 -            --target "$TARGET" \
 -            --bundle "$BUNDLE" \
 -            --entrypoint-dir "target/${TARGET}/release" \
 -            --archive-dir "dist/${TARGET}" \
--            --zsh-manifest "${RUNNER_TEMP}/codex-zsh"
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-            --zsh-manifest "${RUNNER_TEMP}/codex-zsh" \
+-            "${voice_args[@]}"
+-
+-      - name: Cosign Linux voice package archives
+-        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
+-        uses: ./.github/actions/linux-code-sign
+-        with:
+-          target: ${{ matrix.target }}
+-          artifacts-dir: ${{ github.workspace }}/codex-rs/dist/${{ matrix.target }}
+-          binaries: codex-package-${{ matrix.target }}.tar.gz codex-package-${{ matrix.target }}.tar.zst
+-
 -      - name: Build Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
-+      # Windows launches helpers such as the sandbox setup out of
-+      # `codex-resources/`; without them a packaged codEx cannot start a
-+      # sandboxed session. The Linux archive carries bwrap for the same reason.
-+      - name: Build Windows helper binaries
-+        if: matrix.platform == 'windows'
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          set -euo pipefail
 -
 -          case "${{ matrix.target }}" in
@@ -4374,19 +4345,32 @@ index a3dd6c8..8c60d19 100644
 -          # Do not install into the runner's system Python; macOS runners mark
 -          # the Homebrew Python as externally managed under PEP 668.
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m pip install build
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release \
-+            --bin codex-windows-sandbox-setup \
-+            --bin codex-command-runner \
-+            --bin codex-code-mode-host
- 
+-
+-          # Keep the existing manylinux_2_17 wheel compatible with older glibc.
+-          # GNU voice libraries belong in the signed release package archives,
+-          # but their minimum glibc version is not covered by this wheel tag.
+-          wheel_archives="${RUNNER_TEMP}/voice-free-wheel/${{ matrix.target }}"
+-          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
+-            --target "${{ matrix.target }}" \
+-            --bundle primary \
+-            --entrypoint-dir "target/${{ matrix.target }}/release" \
+-            --archive-dir "$wheel_archives" \
+-            --zsh-manifest "${RUNNER_TEMP}/codex-zsh"
+-          wheel_archive="${wheel_archives}/codex-package-${{ matrix.target }}.tar.gz"
+-          python3 - "$wheel_archive" <<'PY'
+-          import sys
+-          import tarfile
+-          with tarfile.open(sys.argv[1]) as archive:
+-              assert not any("codex-resources/voice/" in item.name for item in archive)
+-          PY
+-
 -          stage_dir="${RUNNER_TEMP}/openai-codex-cli-bin-${{ matrix.target }}"
 -          wheel_dir="${GITHUB_WORKSPACE}/python-runtime-dist/${{ matrix.target }}"
 -          stage_runtime_args=(
 -            "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py"
 -            stage-runtime
 -            "$stage_dir"
--            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz"
+-            "$wheel_archive"
 -            --codex-version "${GITHUB_REF_NAME}"
 -            --platform-tag "$platform_tag"
 -          )
@@ -4447,8 +4431,79 @@ index a3dd6c8..8c60d19 100644
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 -
+-  build-macos-voice:
+-    needs: tag-check
+-    name: Build voice runtime - ${{ matrix.target }}
+-    runs-on: ${{ matrix.runner }}
+-    timeout-minutes: 120
+-    permissions:
+-      contents: read
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        include:
+-          - target: aarch64-apple-darwin
+-            runner: macos-15
+-            prefix: macos_aarch64
+-          - target: x86_64-apple-darwin
+-            runner: macos-15-intel
+-            prefix: macos_x86_64
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+-        with:
+-          python-version: "3.12"
+-      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+-        with:
+-          bazelisk-version: 1.28.1
+-      - name: Build matching helper and native runtime
++          cp "${release_dir}/codex" "$dest/codex"
++          cp "${release_dir}/bwrap" "$dest/bwrap"
++          chmod +x "$dest/codex" "$dest/bwrap"
++
++          # The archive layout is consumed by `codex update`: `codex` and
++          # `bwrap` at the archive root.
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
++
++      - name: Stage archive (Windows)
++        if: matrix.platform == 'windows'
+         shell: bash
+-        env:
+-          TARGET: ${{ matrix.target }}
+-          PREFIX: ${{ matrix.prefix }}
+-        run: |
+-          set -euo pipefail
+-          # Release tags bump Cargo.toml without rewriting the workspace lockfile.
+-          # Refresh workspace versions before Bazel reads the Cargo dependency graph.
+-          (cd codex-rs && cargo update --workspace)
+-          bazel build -c opt //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          runtime="bazel-bin/third_party/voice/native_runtime_${PREFIX}"
+-          PYTHONPATH=third_party/voice python3 - "$runtime" "$TARGET" <<'PY'
+-          from pathlib import Path
+-          import sys
+-          from package_runtime import runtime_files
+-          runtime_files(Path(sys.argv[1]).resolve(strict=True), sys.argv[2])
+-          PY
+-          mkdir -p "voice-unsigned/${TARGET}"
+-          cp -R "$runtime" "voice-unsigned/${TARGET}/runtime"
+-          # GNU tar extraction and signing need writable copies of Bazel outputs.
+-          chmod -R u+w "voice-unsigned/${TARGET}/runtime"
+-          cp bazel-bin/codex-rs/voice-host/codex-voice-host "voice-unsigned/${TARGET}/codex-voice-host"
+-          tar -C "voice-unsigned/${TARGET}" -czf "voice-unsigned-${TARGET}.tar.gz" runtime codex-voice-host
+-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: voice-${{ matrix.target }}-unsigned
+-          path: voice-unsigned-${{ matrix.target }}.tar.gz
+-          if-no-files-found: error
+-
 -  sign-macos-binaries:
--    needs: build
+-    needs: [build, build-macos-voice]
+-    if: ${{ always() && needs.build.result == 'success' && needs.build-macos-voice.result == 'success' }}
 -    name: Sign macOS binaries - ${{ matrix.target }} - ${{ matrix.bundle }}
 -    runs-on: ubuntu-latest
 -    timeout-minutes: 45
@@ -4490,6 +4545,13 @@ index a3dd6c8..8c60d19 100644
 -        with:
 -          name: ${{ matrix.artifact_name }}-unsigned
 -          path: ${{ runner.temp }}/unsigned-macos
+-
+-      - name: Download unsigned voice runtime
+-        if: ${{ matrix.bundle == 'primary' }}
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          name: voice-${{ matrix.target }}-unsigned
+-          path: ${{ runner.temp }}/unsigned-voice
 -
 -      - name: Set up AKV PKCS11 macOS signing
 -        uses: ./.github/actions/setup-akv-pkcs11-codesigning
@@ -4563,8 +4625,8 @@ index a3dd6c8..8c60d19 100644
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
--        run: |
--          set -euo pipefail
+         run: |
+           set -euo pipefail
 -
 -          signed_root="${GITHUB_WORKSPACE}/signed-resources/${TARGET}"
 -          zsh_manifest="${RUNNER_TEMP}/codex-zsh-${TARGET}"
@@ -4612,7 +4674,73 @@ index a3dd6c8..8c60d19 100644
 -            .github/scripts/macos-signing/notarize_macos_binary_with_akv.sh \
 -              --binary "$binary" \
 -              --report-dir "$report_dir"
--          done
++          cd "${CODE_DIR}"
++          target="${{ matrix.target }}"
++          release_dir="target/${target}/release"
++          [[ -f "${release_dir}/codex.exe" ]] || { echo "codex.exe not found"; exit 1; }
++
++          dest="dist/${target}"
++          resources="$dest/codex-resources"
++          mkdir -p "$resources"
++          # `codex update` expects the same `codex-<target>.tar.gz` name and
++          # root-level `codex.exe`; the helper binaries mirror the install
++          # layout the managed standalone release uses.
++          cp "${release_dir}/codex.exe" "$dest/codex.exe"
++          for helper in codex-windows-sandbox-setup codex-command-runner codex-code-mode-host; do
++            [[ -f "${release_dir}/${helper}.exe" ]] || { echo "${helper}.exe not found"; exit 1; }
++            cp "${release_dir}/${helper}.exe" "$resources/${helper}.exe"
+           done
+ 
+-      - name: Sign and notarize voice runtime
+-        if: ${{ matrix.bundle == 'primary' }}
+-        shell: bash
+-        env:
+-          TARGET: ${{ matrix.target }}
+-          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
+-          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
+-        run: |
+-          set -euo pipefail
+-          unsigned="${RUNNER_TEMP}/unsigned-voice/extracted"
+-          signed="${GITHUB_WORKSPACE}/signed-voice/${TARGET}"
+-          mkdir -p "$unsigned" "$signed"
+-          tar -xzf "${RUNNER_TEMP}/unsigned-voice/voice-unsigned-${TARGET}.tar.gz" -C "$unsigned"
+-          python3 third_party/voice/release_runtime.py stage \
+-            --target "$TARGET" --source "$unsigned/runtime" --output "$signed/runtime"
+-          cp "$unsigned/codex-voice-host" "$signed/codex-voice-host"
+-          chmod 0755 "$signed/codex-voice-host"
+-
+-          while IFS= read -r -d '' library; do
+-            name="$(basename "$library")"
+-            .github/scripts/macos-signing/sign_macos_code.sh \
+-              --target "$library" --identity unused --deep false \
+-              --identifier "com.openai.codex.voice.${name}" \
+-              --options runtime --timestamp true
+-          done < <(find "$signed/runtime" -name '*.dylib' -type f -print0)
+-          .github/scripts/macos-signing/sign_macos_code.sh \
+-            --target "$signed/codex-voice-host" --identity unused --deep false \
+-            --identifier com.openai.codex.voice-host --options runtime --timestamp true \
+-            --entitlements .github/scripts/macos-signing/codex-voice-host.entitlements.plist
+-
+-          # Notarize the actual signed closure together, then hash those bytes.
+-          (cd "$signed" && zip -qr "${RUNNER_TEMP}/voice-${TARGET}.zip" runtime codex-voice-host)
+-          report_dir="${GITHUB_WORKSPACE}/macos-binary-signing-verification/${TARGET}/voice"
+-          mkdir -p "$report_dir"
+-          python3 .github/scripts/macos-signing/notarize_with_akv.py \
+-            --file "${RUNNER_TEMP}/voice-${TARGET}.zip" \
+-            --report-log "${report_dir}/notarization.json" \
+-            --max-wait-seconds 600
+-          python3 third_party/voice/release_runtime.py seal \
+-            --target "$TARGET" --output "$signed/runtime"
+-          tar -C "$signed" -czf "${GITHUB_WORKSPACE}/signed-voice-${TARGET}.tar.gz" \
+-            runtime codex-voice-host
+-
+-      - name: Upload signed voice runtime
+-        if: ${{ matrix.bundle == 'primary' }}
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: voice-${{ matrix.target }}-signed
+-          path: signed-voice-${{ matrix.target }}.tar.gz
+-          if-no-files-found: error
 -
 -      - name: Upload signed macOS binaries
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4620,15 +4748,22 @@ index a3dd6c8..8c60d19 100644
 -          name: ${{ matrix.artifact_name }}-signed-binaries
 -          path: signed-macos/${{ matrix.target }}/*
 -          if-no-files-found: error
--
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex.exe codex-resources
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
+ 
 -      - name: Upload signed macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
++      - name: Upload archive
+         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+         with:
 -          name: ${{ matrix.target }}-signed-resources
 -          path: signed-resources/${{ matrix.target }}/*
--          if-no-files-found: error
--
++          name: dist-${{ matrix.target }}
++          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
+           if-no-files-found: error
+ 
 -      - name: Upload binary signing verification
 -        if: ${{ always() }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4642,7 +4777,10 @@ index a3dd6c8..8c60d19 100644
 -    name: Package macOS artifacts - ${{ matrix.target }} - ${{ matrix.bundle }}
 -    runs-on: macos-15-xlarge
 -    timeout-minutes: 45
--    permissions:
++  release:
++    needs: build
++    runs-on: ubuntu-24.04
+     permissions:
 -      contents: read
 -    defaults:
 -      run:
@@ -4673,11 +4811,12 @@ index a3dd6c8..8c60d19 100644
 -            binaries: "codex-app-server codex-code-mode-host"
 -            build_dmg: "false"
 -
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
++      contents: write
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
+ 
 -      - name: Download signed macOS binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
@@ -4689,6 +4828,43 @@ index a3dd6c8..8c60d19 100644
 -        with:
 -          name: ${{ matrix.target }}-signed-resources
 -          path: codex-rs/signed-resources/${{ matrix.target }}
+-
+-      - name: Download signed voice runtime
+-        if: ${{ matrix.bundle == 'primary' }}
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
++      - name: Download archives
++        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
+         with:
+-          name: voice-${{ matrix.target }}-signed
+-          path: ${{ runner.temp }}/signed-voice
+-
+-      - name: Verify signed voice runtime
+-        if: ${{ matrix.bundle == 'primary' }}
+-        shell: bash
+-        env:
+-          TARGET: ${{ matrix.target }}
+-        run: |
+-          set -euo pipefail
+-          root="${RUNNER_TEMP}/signed-voice/${TARGET}"
+-          mkdir -p "$root"
+-          tar -xzf "${RUNNER_TEMP}/signed-voice/signed-voice-${TARGET}.tar.gz" -C "$root"
+-          case "$TARGET" in
+-            aarch64-apple-darwin) arch=arm64 ;;
+-            x86_64-apple-darwin) arch=x86_64 ;;
+-            *) exit 1 ;;
+-          esac
+-          PYTHONPATH="${GITHUB_WORKSPACE}/third_party/voice" python3 - "$root/runtime" "$TARGET" <<'PY'
+-          from pathlib import Path
+-          import sys
+-          from package_runtime import runtime_files
+-          runtime_files(Path(sys.argv[1]).resolve(strict=True), sys.argv[2], public_release=True)
+-          PY
+-          while IFS= read -r -d '' binary; do
+-            lipo "$binary" -verify_arch "$arch"
+-            codesign --verify --strict --verbose=2 "$binary"
+-          done < <(find "$root/runtime" -name '*.dylib' -type f -print0)
+-          lipo "$root/codex-voice-host" -verify_arch "$arch"
+-          codesign --verify --strict --verbose=2 "$root/codex-voice-host"
 -
 -      - name: Verify signed macOS binaries
 -        shell: bash
@@ -4706,18 +4882,56 @@ index a3dd6c8..8c60d19 100644
 -            codesign --verify --strict --verbose=2 "$resource_path"
 -          done
 -
+-      - name: Stage macOS artifacts
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          dest="dist/${{ matrix.target }}"
+-          mkdir -p "$dest"
+-
+-          for binary in ${{ matrix.binaries }}; do
+-            # Both variants package the host, but only the primary bundle publishes
+-            # standalone binary archives to avoid duplicate release asset names.
+-            if [[ "${{ matrix.bundle }}" == "app-server" && "$binary" == "codex-code-mode-host" ]]; then
+-              continue
+-            fi
+-            cp "target/${{ matrix.target }}/release/${binary}" "$dest/${binary}-${{ matrix.target }}"
+-          done
++          pattern: dist-*
++          merge-multiple: true
++          path: dist
+ 
+-      - name: Build Codex package archive
+-        shell: bash
++      - name: Create or update GitHub release
+         env:
+-          TARGET: ${{ matrix.target }}
+-          BUNDLE: ${{ matrix.bundle }}
+-        run: |
+-          set -euo pipefail
+-          voice_args=()
+-          if [[ "$BUNDLE" == "primary" ]]; then
+-            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
+-            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
+-          fi
+-          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
+-            --target "$TARGET" \
+-            --bundle "$BUNDLE" \
+-            --entrypoint-dir "target/${TARGET}/release" \
+-            --archive-dir "dist/${TARGET}" \
+-            --rg-bin "signed-resources/${TARGET}/rg" \
+-            --zsh-bin "signed-resources/${TARGET}/zsh" \
+-            ${voice_args[@]+"${voice_args[@]}"}
+-
 -      - name: Build unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
-+      # ---- Stage -----------------------------------------------------------
-+      - name: Stage archive (Linux)
-+        if: matrix.platform == 'linux'
++          GH_TOKEN: ${{ github.token }}
          shell: bash
          run: |
            set -euo pipefail
 -
-+          cd "${CODE_DIR}"
-           target="${{ matrix.target }}"
-           release_dir="target/${target}/release"
+-          target="${{ matrix.target }}"
+-          release_dir="target/${target}/release"
 -          dmg_root="${RUNNER_TEMP}/codex-dmg-root-${target}"
 -          volname="Codex (${target})"
 -          dmg_path="${release_dir}/codex-${target}.dmg"
@@ -4734,6 +4948,15 @@ index a3dd6c8..8c60d19 100644
 -            ditto "$binary_path" "${dmg_root}/${binary}"
 -          done
 -
+-          if [[ "${{ matrix.bundle }}" == "primary" ]]; then
+-            # Keep the root-level invocation, but resolve it into the canonical
+-            # package layout so InstallContext finds its adjacent voice runtime.
+-            package="${RUNNER_TEMP}/codex-package-voice-${target}"
+-            ditto "$package" "$dmg_root"
+-            rm "${dmg_root}/codex"
+-            ln -s bin/codex "${dmg_root}/codex"
+-          fi
+-
 -          rm -f "$dmg_path"
 -          hdiutil create \
 -            -volname "$volname" \
@@ -4744,11 +4967,14 @@ index a3dd6c8..8c60d19 100644
 -
 -          if [[ ! -f "$dmg_path" ]]; then
 -            echo "DMG $dmg_path not found after build"
--            exit 1
--          fi
-+          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-+          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
- 
++          tag="${GITHUB_REF_NAME}"
++          shopt -s nullglob
++          assets=(dist/*.tar.gz dist/*.sha256)
++          if [[ ${#assets[@]} -eq 0 ]]; then
++            echo "no release assets found under dist/" >&2
+             exit 1
+           fi
+-
 -      - name: Upload unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
@@ -4756,38 +4982,6 @@ index a3dd6c8..8c60d19 100644
 -          name: ${{ matrix.artifact_name }}-unsigned-dmg
 -          path: codex-rs/target/${{ matrix.target }}/release/codex-${{ matrix.target }}.dmg
 -          if-no-files-found: error
--
--      - name: Stage macOS artifacts
--        shell: bash
--        run: |
--          set -euo pipefail
--          dest="dist/${{ matrix.target }}"
-+          dest="dist/${target}"
-           mkdir -p "$dest"
--
--          for binary in ${{ matrix.binaries }}; do
--            # Both variants package the host, but only the primary bundle publishes
--            # standalone binary archives to avoid duplicate release asset names.
--            if [[ "${{ matrix.bundle }}" == "app-server" && "$binary" == "codex-code-mode-host" ]]; then
--              continue
--            fi
--            cp "target/${{ matrix.target }}/release/${binary}" "$dest/${binary}-${{ matrix.target }}"
--          done
--
--      - name: Build Codex package archive
--        shell: bash
--        env:
--          TARGET: ${{ matrix.target }}
--          BUNDLE: ${{ matrix.bundle }}
--        run: |
--          set -euo pipefail
--          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
--            --target "$TARGET" \
--            --bundle "$BUNDLE" \
--            --entrypoint-dir "target/${TARGET}/release" \
--            --archive-dir "dist/${TARGET}" \
--            --rg-bin "signed-resources/${TARGET}/rg" \
--            --zsh-bin "signed-resources/${TARGET}/zsh"
 -
 -      - name: Build Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' }}
@@ -4811,13 +5005,32 @@ index a3dd6c8..8c60d19 100644
 -          python3 -m venv "${RUNNER_TEMP}/python-runtime-build-venv"
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m pip install build
 -
+-          # The wheel keeps its macOS 10.9/11 tags. The native voice build
+-          # currently targets macOS 14, so keep it in the release archives and
+-          # DMG but leave this older-OS-compatible wheel unchanged.
+-          wheel_archives="${RUNNER_TEMP}/voice-free-wheel/${{ matrix.target }}"
+-          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
+-            --target "${{ matrix.target }}" \
+-            --bundle primary \
+-            --entrypoint-dir "target/${{ matrix.target }}/release" \
+-            --archive-dir "$wheel_archives" \
+-            --rg-bin "signed-resources/${{ matrix.target }}/rg" \
+-            --zsh-bin "signed-resources/${{ matrix.target }}/zsh"
+-          wheel_archive="${wheel_archives}/codex-package-${{ matrix.target }}.tar.gz"
+-          python3 - "$wheel_archive" <<'PY'
+-          import sys
+-          import tarfile
+-          with tarfile.open(sys.argv[1]) as archive:
+-              assert not any("codex-resources/voice/" in item.name for item in archive)
+-          PY
+-
 -          stage_dir="${RUNNER_TEMP}/openai-codex-cli-bin-${{ matrix.target }}"
 -          wheel_dir="${GITHUB_WORKSPACE}/python-runtime-dist/${{ matrix.target }}"
 -          python3 \
 -            "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py" \
 -            stage-runtime \
 -            "$stage_dir" \
--            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz" \
+-            "$wheel_archive" \
 -            --codex-version "${GITHUB_REF_NAME}" \
 -            --platform-tag "$platform_tag"
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
@@ -4900,26 +5113,13 @@ index a3dd6c8..8c60d19 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign, notarize, and staple macOS DMG
-+          cp "${release_dir}/codex" "$dest/codex"
-+          cp "${release_dir}/bwrap" "$dest/bwrap"
-+          chmod +x "$dest/codex" "$dest/bwrap"
-+
-+          # The archive layout is consumed by `codex update`: `codex` and
-+          # `bwrap` at the archive root.
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "$dest/codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
-+
-+      - name: Stage archive (Windows)
-+        if: matrix.platform == 'windows'
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -
 -          dmg_path="${RUNNER_TEMP}/unsigned-dmg/codex-${TARGET}.dmg"
 -          report_dir="${GITHUB_WORKSPACE}/macos-dmg-signing-verification/${TARGET}"
@@ -5027,8 +5227,7 @@ index a3dd6c8..8c60d19 100644
 -        run: |
 -          set -euo pipefail
 -
-+          cd "${CODE_DIR}"
-           target="${{ matrix.target }}"
+-          target="${{ matrix.target }}"
 -          packaged_dir="dist/${target}"
 -          case "$target" in
 -            aarch64-apple-darwin) expected_arch="arm64" ;;
@@ -5123,6 +5322,33 @@ index a3dd6c8..8c60d19 100644
 -            rm -f "$entitlements"
 -          done
 -
+-          if [[ "${{ matrix.bundle }}" == "primary" ]]; then
+-            voice="${package_dir}/codex-resources/voice"
+-            [[ -f "${voice}/lib/libgstreamer-1.0.0.dylib" ]]
+-            export VOICE_BUILD_COMMIT="$(git rev-parse HEAD)"
+-            PYTHONPATH="${GITHUB_WORKSPACE}/third_party/voice" python3 - "$voice" "$target" "$package_dir" <<'PY'
+-          import json
+-          import sys
+-          from pathlib import Path
+-          from package_runtime import runtime_files
+-          from runtime import digest
+-
+-          voice, target, package = map(Path, sys.argv[1:])
+-          runtime_files(voice.resolve(strict=True), str(target), public_release=True)
+-          manifest = json.loads((voice / "manifest.json").read_text())
+-          assert manifest["buildCommit"] == __import__("os").environ["VOICE_BUILD_COMMIT"]
+-          for relative, expected in manifest["sha256"].items():
+-              assert digest(package / relative) == expected, relative
+-          PY
+-            helper="${voice}/bin/codex-voice-host"
+-            [[ "$("$helper" --build-commit)" == "$VOICE_BUILD_COMMIT" ]]
+-            while IFS= read -r -d '' library; do
+-              lipo "$library" -verify_arch "$expected_arch"
+-              codesign --verify --strict --verbose=2 "$library"
+-            done < <(find "$voice" -name '*.dylib' -type f -print0)
+-            verify_signed_binary "$helper" "codex-voice-host"
+-          fi
+-
 -          if [[ "${{ matrix.verify_dmg }}" != "true" ]]; then
 -            exit 0
 -          fi
@@ -5148,21 +5374,17 @@ index a3dd6c8..8c60d19 100644
 -
 -          for binary in ${{ matrix.binaries }}; do
 -            verify_signed_binary "${mount_dir}/${binary}" "$binary"
-+          release_dir="target/${target}/release"
-+          [[ -f "${release_dir}/codex.exe" ]] || { echo "codex.exe not found"; exit 1; }
-+
-+          dest="dist/${target}"
-+          resources="$dest/codex-resources"
-+          mkdir -p "$resources"
-+          # `codex update` expects the same `codex-<target>.tar.gz` name and
-+          # root-level `codex.exe`; the helper binaries mirror the install
-+          # layout the managed standalone release uses.
-+          cp "${release_dir}/codex.exe" "$dest/codex.exe"
-+          for helper in codex-windows-sandbox-setup codex-command-runner codex-code-mode-host; do
-+            [[ -f "${release_dir}/${helper}.exe" ]] || { echo "${helper}.exe not found"; exit 1; }
-+            cp "${release_dir}/${helper}.exe" "$resources/${helper}.exe"
-           done
- 
+-          done
+-
+-          if [[ "${{ matrix.bundle }}" == "primary" ]]; then
+-            [[ "$(readlink "${mount_dir}/codex")" == "bin/codex" ]]
+-            cmp "${mount_dir}/codex-package.json" "${package_dir}/codex-package.json"
+-            cmp "${mount_dir}/codex-resources/voice/manifest.json" \
+-              "${package_dir}/codex-resources/voice/manifest.json"
+-            cmp "${mount_dir}/codex-resources/voice/bin/codex-voice-host" \
+-              "${package_dir}/codex-resources/voice/bin/codex-voice-host"
+-          fi
+-
 -          cleanup_mount
 -          trap - EXIT
 -          cp "$dmg_path" "dist/${target}/codex-${target}.dmg"
@@ -5173,6 +5395,17 @@ index a3dd6c8..8c60d19 100644
 -          name: ${{ matrix.artifact_name }}
 -          path: codex-rs/dist/${{ matrix.target }}/*
 -          if-no-files-found: error
+-
+-  # Keep provisioned packages separate from the legacy CLI/npm/installer layout.
+-  # Desktop consumes the versioned codex-provisioned manifest from this release.
+-  provisioned-macos-candidate:
+-    needs: finalize-macos
+-    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/rust-v') && vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
+-    permissions:
+-      contents: read
+-      id-token: write
+-    uses: ./.github/workflows/rust-release-provisioned-macos.yml
+-    secrets: inherit
 -
 -  build-windows:
 -    needs: tag-check
@@ -5220,11 +5453,7 @@ index a3dd6c8..8c60d19 100644
 -
 -      - name: Install dependencies
 -        run: pnpm install --frozen-lockfile
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex.exe codex-resources
-+          sha256sum "$dest/codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
- 
+-
 -      - name: Stage npm packages
 -        run: |
 -          release_version="${GITHUB_REF_NAME#rust-v}"
@@ -5236,16 +5465,13 @@ index a3dd6c8..8c60d19 100644
 -            --package codex-sdk
 -
 -      - name: Upload staged npm packages
-+      - name: Upload archive
-         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
-         with:
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
 -          name: npm-packages
 -          path: dist/npm/*.tgz
-+          name: dist-${{ matrix.target }}
-+          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
-           if-no-files-found: error
- 
-   release:
+-          if-no-files-found: error
+-
+-  release:
 -    needs:
 -      - tag-check
 -      - build
@@ -5253,6 +5479,7 @@ index a3dd6c8..8c60d19 100644
 -      - build-windows
 -      - argument-comment-lint-release-assets
 -      - stage-npm-packages
+-      - provisioned-macos-candidate
 -    if: >-
 -      ${{
 -        always() &&
@@ -5261,7 +5488,10 @@ index a3dd6c8..8c60d19 100644
 -        needs.finalize-macos.result == 'success' &&
 -        needs.build-windows.result == 'success' &&
 -        needs.argument-comment-lint-release-assets.result == 'success' &&
--        needs.stage-npm-packages.result == 'success'
+-        needs.stage-npm-packages.result == 'success' &&
+-        (needs.provisioned-macos-candidate.result == 'success' ||
+-          (vars.CODEX_PROVISIONED_MACOS_CANDIDATE != 'true' &&
+-            needs.provisioned-macos-candidate.result == 'skipped'))
 -      }}
 -    name: release
 -    runs-on: ubuntu-latest
@@ -5313,6 +5543,17 @@ index a3dd6c8..8c60d19 100644
 -          path: dist
 -          pattern: "{*-symbols,argument-comment-lint-*,python-runtime-wheel-*}"
 -
+-      - name: Download verified provisioned macOS packages
+-        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          path: dist
+-          pattern: "provisioned-macos-verified-candidate-*"
+-
+-      - name: Remove per-architecture checksum filenames before release upload
+-        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
+-        run: rm dist/provisioned-macos-verified-candidate-*/SHA256SUMS
+-
 -      - name: List
 -        run: ls -R dist/
 -
@@ -5323,7 +5564,7 @@ index a3dd6c8..8c60d19 100644
 -          manifest="dist/codex-package_SHA256SUMS"
 -          tmp_manifest="$(mktemp)"
 -          find dist -type f \
--            \( -name 'codex-package-*.tar.gz' -o -name 'codex-app-server-package-*.tar.gz' \) \
+-            \( -name 'codex-package-*.tar.gz' -o -name 'codex-app-server-package-*.tar.gz' -o -name 'codex-provisioned-package-*.tar.gz' \) \
 -            -print |
 -            sort |
 -            while IFS= read -r archive; do
@@ -5372,10 +5613,18 @@ index a3dd6c8..8c60d19 100644
 -          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(\.[0-9]+)?$ ]]; then
 -            echo "should_publish=true" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
--          else
++          # Tag re-pushes supersede earlier builds; replace the previous
++          # release's assets instead of deleting the release, so a failed or
++          # cancelled run can never leave the tag without a release.
++          if gh release view "${tag}" >/dev/null 2>&1; then
++            echo "Release ${tag} already exists; replacing its assets with the new build."
+           else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+           fi
 -
 -      - name: Download staged npm packages
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
@@ -5431,16 +5680,14 @@ index a3dd6c8..8c60d19 100644
 -    name: publish-dotslash
 -    needs: release
 -    runs-on: ubuntu-latest
-+    needs: build
-+    runs-on: ubuntu-24.04
-     permissions:
-       contents: write
+-    permissions:
+-      contents: write
 -
-     steps:
-       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-           persist-credentials: false
- 
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
 -      - uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
 -        env:
 -          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -5454,6 +5701,15 @@ index a3dd6c8..8c60d19 100644
 -        with:
 -          tag: ${{ github.ref_name }}
 -          config: .github/dotslash-argument-comment-lint-config.json
+-
+-      - name: Publish the provisioned macOS package manifest
+-        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
+-        uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
+-        env:
+-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-        with:
+-          tag: ${{ github.ref_name }}
+-          config: .github/dotslash-provisioned-config.json
 -
 -  # Publish to npm using OIDC authentication.
 -  # July 31, 2025: https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/
@@ -5476,9 +5732,7 @@ index a3dd6c8..8c60d19 100644
 -    steps:
 -      - name: Setup Node.js
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
-+      - name: Download archives
-+        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
-         with:
+-        with:
 -          # Node 24 bundles npm >= 11.5.1, which trusted publishing requires.
 -          node-version: 24
 -          registry-url: "https://registry.npmjs.org"
@@ -5508,20 +5762,14 @@ index a3dd6c8..8c60d19 100644
 -              --pattern "$pattern" \
 -              --dir dist/npm
 -          done
-+          pattern: dist-*
-+          merge-multiple: true
-+          path: dist
- 
+-
 -      # No NODE_AUTH_TOKEN needed because we use OIDC.
 -      - name: Publish to npm
-+      - name: Create or update GitHub release
-         env:
+-        env:
 -          VERSION: ${{ needs.release.outputs.version }}
 -          NPM_TAG: ${{ needs.release.outputs.npm_tag }}
-+          GH_TOKEN: ${{ github.token }}
-+        shell: bash
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -          prefix=""
 -          if [[ -n "${NPM_TAG}" ]]; then
 -            prefix="${NPM_TAG}-"
@@ -5549,8 +5797,7 @@ index a3dd6c8..8c60d19 100644
 -            fi
 -          done
 -
-+          tag="${GITHUB_REF_NAME}"
-           shopt -s nullglob
+-          shopt -s nullglob
 -          other_tarballs=()
 -          for tarball in dist/npm/*-"${VERSION}".tgz; do
 -            if [[ "${tarball}" == "${root_tarball}" || "${tarball}" == "${sdk_tarball}" ]]; then
@@ -5653,11 +5900,8 @@ index a3dd6c8..8c60d19 100644
 -        run: |
 -          if ! curl -sS -f -o /dev/null -X POST "$DEV_WEBSITE_VERCEL_DEPLOY_HOOK_URL"; then
 -            echo "::warning title=developers.openai.com deploy hook failed::Vercel deploy hook POST failed for ${GITHUB_REF_NAME}"
-+          assets=(dist/*.tar.gz dist/*.sha256)
-+          if [[ ${#assets[@]} -eq 0 ]]; then
-+            echo "no release assets found under dist/" >&2
-             exit 1
-           fi
+-            exit 1
+-          fi
 -
 -  winget:
 -    name: winget
@@ -5722,16 +5966,6 @@ index a3dd6c8..8c60d19 100644
 -            -X PATCH \
 -            -f sha="${GITHUB_SHA}" \
 -            -F force=true
-+          # Tag re-pushes supersede earlier builds; replace the previous
-+          # release's assets instead of deleting the release, so a failed or
-+          # cancelled run can never leave the tag without a release.
-+          if gh release view "${tag}" >/dev/null 2>&1; then
-+            echo "Release ${tag} already exists; replacing its assets with the new build."
-+          else
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-+          fi
 +          gh release upload "${tag}" "${assets[@]}" --clobber
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
@@ -6220,17 +6454,17 @@ index 32ec3af..0000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index f2e8fc7..0000000
+index 18b6cb4..0000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
-@@ -1,166 +0,0 @@
+@@ -1,159 +0,0 @@
 -name: sdk
 -
 -on:
 -  workflow_call:
 -
 -jobs:
--  python-sdk:
+-  python-sdk-installation:
 -    runs-on:
 -      group: ${{ github.event.repository.name }}-runners
 -      labels: ${{ github.event.repository.name }}-linux-x64
@@ -6241,13 +6475,10 @@ index f2e8fc7..0000000
 -        with:
 -          persist-credentials: false
 -
--      - name: Test Python SDK
+-      - name: Test the installed Python SDK and its default runtime
 -        shell: bash
 -        run: |
 -          set -euo pipefail
--
--          # Run inside a glibc Linux image so dependency resolution exercises
--          # the pinned manylinux runtime wheel that users install.
 -          docker run --rm \
 -            --user "$(id -u):$(id -g)" \
 -            -e HOME=/tmp/codex-python-sdk-home \
@@ -6256,23 +6487,19 @@ index f2e8fc7..0000000
 -            -w "${GITHUB_WORKSPACE}/sdk/python" \
 -            python:3.12-slim \
 -            sh -euxc '
--              python -m venv /tmp/uv
--              /tmp/uv/bin/python -m pip install uv==0.11.3
--              /tmp/uv/bin/uv sync --group dev --frozen
--              /tmp/uv/bin/uv run --frozen --no-sync ruff check --output-format=github .
--              /tmp/uv/bin/uv run --frozen --no-sync ruff format --check .
--              /tmp/uv/bin/uv run --frozen --no-sync pytest
+-              python -m venv /tmp/build
+-              /tmp/build/bin/python -m pip install uv==0.11.3
+-              /tmp/build/bin/uv build --wheel --out-dir /tmp/dist
+-              python -m venv /tmp/installed
+-              /tmp/build/bin/uv pip install --python /tmp/installed/bin/python /tmp/dist/*.whl
+-              env -u PYTHONPATH -u CODEX_EXEC_PATH /tmp/installed/bin/python tests/installed_sdk_smoke.py
 -            '
--
--      - name: Check for a clean worktree
--        if: always() && !cancelled()
--        uses: ./.github/actions/check-clean-worktree
 -
 -  sdks:
 -    runs-on:
 -      group: ${{ github.event.repository.name }}-runners
 -      labels: ${{ github.event.repository.name }}-linux-x64
--    timeout-minutes: 10
+-    timeout-minutes: 20
 -    environment:
 -      name: bazel
 -      deployment: false
@@ -6306,7 +6533,7 @@ index f2e8fc7..0000000
 -        with:
 -          target: x86_64-unknown-linux-gnu
 -
--      - name: Build codex with Bazel
+-      - name: Build codex and the code-mode host with Bazel
 -        env:
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        shell: bash
@@ -6314,8 +6541,8 @@ index f2e8fc7..0000000
 -          set -euo pipefail
 -          # Use the shared CI wrapper so fork PRs fall back cleanly when
 -          # BuildBuddy credentials are unavailable. This workflow needs the
--          # built `codex` binary on disk afterwards, so ask the wrapper to
--          # override CI's default remote_download_minimal behavior.
+-          # built binaries on disk afterwards, so ask the wrapper to override
+-          # CI's default remote_download_minimal behavior.
 -          ./.github/scripts/run-bazel-ci.sh \
 -            --remote-download-toplevel \
 -            -- \
@@ -6323,42 +6550,29 @@ index f2e8fc7..0000000
 -            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
 -            --build_metadata=TAG_job=sdk \
 -            -- \
--            //codex-rs/cli:codex
+-            //codex-rs/cli:codex \
+-            //codex-rs/code-mode-host:codex-code-mode-host
 -
--          # Resolve the exact output file using the same wrapper/config path as
--          # the build instead of guessing which Bazel convenience symlink is
--          # available on the runner.
 -          cquery_output="$(
 -            ./.github/scripts/run-bazel-ci.sh \
 -              -- \
 -              cquery \
 -              --output=files \
 -              -- \
--              //codex-rs/cli:codex \
--              | grep -E '^(/|bazel-out/)' \
--              | tail -n 1
+-              'set(//codex-rs/cli:codex //codex-rs/code-mode-host:codex-code-mode-host)' \
+-              | grep -E '^(/|bazel-out/)'
 -          )"
--          if [[ "${cquery_output}" = /* ]]; then
--            codex_bazel_output_path="${cquery_output}"
--          else
--            codex_bazel_output_path="${GITHUB_WORKSPACE}/${cquery_output}"
--          fi
--          if [[ -z "${codex_bazel_output_path}" ]]; then
--            echo "Bazel did not report an output path for //codex-rs/cli:codex." >&2
--            exit 1
--          fi
--          if [[ ! -e "${codex_bazel_output_path}" ]]; then
--            echo "Unable to locate the Bazel-built codex binary at ${codex_bazel_output_path}." >&2
+-          mapfile -t bazel_output_paths <<< "${cquery_output}"
+-          if [[ ${#bazel_output_paths[@]} -ne 2 ]]; then
+-            echo "Expected both Bazel-built binaries, found ${#bazel_output_paths[@]}." >&2
 -            exit 1
 -          fi
 -
--          # Stage the binary into the workspace and point the SDK tests at that
--          # stable path. The tests spawn `codex` directly many times, so using a
--          # normal executable path is more reliable than invoking Bazel for each
--          # test process.
+-          # Stage both binaries together so the CLI can discover its sibling
+-          # code-mode host while the SDK tests spawn the CLI directly.
 -          install_dir="${GITHUB_WORKSPACE}/.tmp/sdk-ci"
 -          mkdir -p "${install_dir}"
--          install -m 755 "${codex_bazel_output_path}" "${install_dir}/codex"
+-          install -m 755 "${bazel_output_paths[@]}" "${install_dir}"
 -          echo "CODEX_EXEC_PATH=${install_dir}/codex" >> "$GITHUB_ENV"
 -
 -      - name: Warm up Bazel-built codex
@@ -6378,6 +6592,19 @@ index f2e8fc7..0000000
 -
 -      - name: Test SDK packages
 -        run: pnpm -r --filter ./sdk/typescript run test
+-
+-      - name: Install uv
+-        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+-        with:
+-          version: "0.11.3"
+-
+-      - name: Test Python SDK against the same CLI
+-        working-directory: sdk/python
+-        run: |
+-          uv sync --only-group dev --frozen
+-          uv run --only-group dev --frozen --no-sync ruff check --output-format=github .
+-          uv run --only-group dev --frozen --no-sync ruff format --check .
+-          uv run --only-group dev --frozen --no-sync pytest
 -
 -      - name: Save bazel repository cache
 -        if: always() && !cancelled() && steps.setup_bazel.outputs.cache-hit != 'true'
@@ -7046,10 +7273,10 @@ index 0000000..834ee10
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index d906c20..0000000
+index 2afcf05..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,28 +0,0 @@
+@@ -1,30 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -7068,6 +7295,8 @@ index d906c20..0000000
 -    "rules_rs_zlib_snapshot_urls.patch",
 -    "rusty_v8_prebuilt_out_dir.patch",
 -    "ring_windows_msvc_include_dirs.patch",
+-    "tikv-jemalloc-sys_make_env.patch",
+-    "tikv-jemalloc-sys_dependency_flags.patch",
 -    "v8_bazel_rules.patch",
 -    "v8_module_deps.patch",
 -    "v8_source_portability.patch",

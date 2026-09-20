@@ -245,6 +245,32 @@ rust-v0.154.0 upgrades:
   `git log --oneline <base>..HEAD -- scripts/patch-modules.conf` that
   exactly the infra commit touches the file, and diff the two copies
   afterwards.
+- Resolving a conflict "block by block" is not always right. For
+  `app-server-daemon/src/update_loop.rs` the fork deletes upstream's whole
+  install-script machinery, and taking the fork side of each hunk also dropped
+  the lines that *define* the symbols the fork's own `run()` uses
+  (`running_updater_identity`, `update_modes_for_identities`). The fix is to
+  write the file from the fork's previous version and re-adapt it to the new
+  upstream API instead: 0.155.1 removed `UpdaterRefreshMode`, dropped the
+  third argument of `try_restart_if_running`, and turned
+  `daemon.managed_codex_bin` into `current_managed_codex_bin()`. Same lesson
+  for `lib.rs`: drop upstream's new helpers for removed variants rather than
+  trying to keep both.
+- Snapshot conflicts are taken on the upstream side and then regenerated with
+  `INSTA_UPDATE=always`, but a *failed* run first leaves `.snap.new` files
+  behind from the polluted terminal. Those pending files are stale by the time
+  the regeneration succeeds: verify each one differs from its `.snap` and
+  delete them all, then re-run the suite clean to confirm. Afterwards,
+  `git diff rust-v<new-tag> -- <snap>` is the review that matters -- it shows
+  only what the fork changed, which should be exactly branding (`codEx` for
+  `OpenAI Codex`), keymap binding counts, and footer wording.
+- New upstream snapshots need manifest entries before `gen-patches.sh` will
+  export, and a whole-directory `git add` while fixing one module silently
+  pulls files into the wrong commit. Classify each regenerated snapshot by
+  what drives its diff (branding -> `[identity]`, keymap/footer -> `[input]`),
+  and prefer an existing `dir/*` pattern over new explicit lines: the 0.155.1
+  upgrade briefly double-claimed `tui/src/status/snapshots/*`, which `[input]`
+  already owned.
 - The dual-copy rule is broader than the manifest: every fork-owned file
   that exists at the slim root *and* in the bootstrapped tree must be
   byte-identical in both, and the list is not just `scripts/`: `README.md`,

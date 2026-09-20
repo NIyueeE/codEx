@@ -1,4 +1,4 @@
-From cb9f504132ec4357c5a5949cb5c2137a2eb4e9d4 Mon Sep 17 00:00:00 2001
+From 5354c086409c07b4badb2b02705002afe43b9809 Mon Sep 17 00:00:00 2001
 From: Won Park <won@openai.com>
 Date: Fri, 14 Aug 2026 01:13:00 +0800
 Subject: config: disable update checks and announcement fetches by default
@@ -171,10 +171,10 @@ index 61ff242..0000000
 -    }
 -}
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 9ea7912..cf1862a 100644
+index 6e07540..add4f63 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
-@@ -3,20 +3,9 @@ use codex_protocol::account::PlanType;
+@@ -4,20 +4,9 @@ use codex_protocol::account::PlanType;
  use lazy_static::lazy_static;
  use rand::Rng;
  
@@ -196,7 +196,7 @@ index 9ea7912..cf1862a 100644
  const FREE_GO_TOOLTIP: &str =
      "*New* For a limited time, Codex is included in your plan for free – let’s build together.";
  
-@@ -27,11 +16,6 @@ lazy_static! {
+@@ -28,11 +17,6 @@ lazy_static! {
          .lines()
          .map(str::trim)
          .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -208,7 +208,7 @@ index 9ea7912..cf1862a 100644
          .collect();
      static ref ALL_TOOLTIPS: Vec<&'static str> = {
          let mut tips = Vec::new();
-@@ -52,10 +36,6 @@ fn experimental_tooltips() -> Vec<&'static str> {
+@@ -56,10 +40,6 @@ fn experimental_tooltips(voice_supported: impl Fn() -> bool) -> Vec<&'static str
  pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Option<String> {
      let mut rng = rand::rng();
  
@@ -219,7 +219,7 @@ index 9ea7912..cf1862a 100644
      // Leave small chance for a random tooltip to be shown.
      if rng.random_ratio(8, 10) {
          match plan {
-@@ -74,12 +54,7 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Op
+@@ -78,12 +58,7 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Op
                  return Some(FREE_GO_TOOLTIP.to_string());
              }
              _ => {
@@ -233,7 +233,7 @@ index 9ea7912..cf1862a 100644
              }
          }
      }
-@@ -87,54 +62,16 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Op
+@@ -91,54 +66,16 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, fast_mode_enabled: bool) -> Op
      pick_tooltip(&mut rng).map(str::to_string)
  }
  
@@ -294,7 +294,7 @@ index 9ea7912..cf1862a 100644
      } else {
          Some(FAST_TOOLTIP)
      }
-@@ -150,211 +87,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
+@@ -154,211 +91,9 @@ fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R) -> Option<&'static str> {
      }
  }
  
@@ -506,7 +506,7 @@ index 9ea7912..cf1862a 100644
      use rand::SeedableRng;
      use rand::rngs::StdRng;
  
-@@ -376,55 +111,18 @@ mod tests {
+@@ -407,55 +142,18 @@ mod tests {
      }
  
      #[test]
@@ -570,7 +570,7 @@ index 9ea7912..cf1862a 100644
          let mut seen = std::collections::BTreeSet::new();
          for seed in 0..32 {
              let mut rng = StdRng::seed_from_u64(seed);
-@@ -433,8 +131,15 @@ mod tests {
+@@ -464,8 +162,15 @@ mod tests {
              ));
          }
  
@@ -587,7 +587,7 @@ index 9ea7912..cf1862a 100644
      }
  
      #[test]
-@@ -445,206 +150,8 @@ mod tests {
+@@ -476,206 +181,8 @@ mod tests {
              seen.insert(pick_paid_tooltip(&mut rng, /*fast_mode_enabled*/ true));
          }
  
