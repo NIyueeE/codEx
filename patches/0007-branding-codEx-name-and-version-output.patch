@@ -1,36 +1,50 @@
-From a07ce287ad781a33b07571cbde259fb5e8842937 Mon Sep 17 00:00:00 2001
-From: Won Park <won@openai.com>
-Date: Fri, 14 Aug 2026 01:13:01 +0800
+From 4d397f740a988cebf95e4a16f77895556b084bc3 Mon Sep 17 00:00:00 2001
+From: ref <ref@localhost>
+Date: Fri, 2 Oct 2026 18:51:54 +0000
 Subject: branding: codEx name and version output
 
 ---
- codex-rs/cli/tests/sandbox_cloud_config.rs           |  4 +++-
- .../exec/src/event_processor_with_human_output.rs    |  2 +-
- codex-rs/login/src/device_code_auth.rs               |  4 ++--
- codex-rs/login/src/device_code_auth_tests.rs         |  2 +-
- ...t_clears_previous_transcript_before_replay-2.snap |  3 +--
- .../tui/src/app/tests/session_lifecycle_requests.rs  |  4 ++--
- ...s__voice_buffered_replay_reconciles_captions.snap |  3 +--
- ...equests__voice_completed_after_thread_switch.snap |  5 ++---
- ..._voice_partial_completed_after_thread_switch.snap |  3 +--
- ...s__voice_replay_reconciles_matching_captions.snap |  3 +--
- codex-rs/tui/src/chatwidget/rendering_tests.rs       |  2 +-
- ...dget__tests__slash_copy_picker_status_fields.snap |  3 +--
- ...__chatwidget__tests__slash_copy_whole_status.snap |  2 +-
- codex-rs/tui/src/history_cell/session.rs             |  6 +++---
- ...tests__session_header_clamps_to_narrow_width.snap |  2 +-
- ...l__tests__session_header_halfwidth_directory.snap |  4 ++--
- ..._tests__session_header_halfwidth_sound_marks.snap |  4 ++--
- ...l__tests__session_header_indicates_yolo_mode.snap |  4 ++--
- codex-rs/tui/src/onboarding/welcome.rs               |  4 ++--
- ...r_ui_after_long_transcript_fresh_header_only.snap |  4 ++--
- ...ar_ui_header_fast_status_fast_capable_models.snap |  4 ++--
- ...sts__startup_draft_fresh_session_transitions.snap | 12 ++++++------
- ...rtup_draft__tests__startup_draft_full_frames.snap | 10 +++++-----
- ...__tests__startup_draft_onboarding_transition.snap |  2 +-
- codex-rs/tui/src/status/card.rs                      |  2 +-
- codex-rs/tui/tests/suite/focus_palette.rs            |  2 +-
- 26 files changed, 48 insertions(+), 52 deletions(-)
+ codex-rs/cli/tests/sandbox_cloud_config.rs    |   4 +-
+ .../src/event_processor_with_human_output.rs  |   2 +-
+ codex-rs/login/src/device_code_auth.rs        |   4 +-
+ codex-rs/login/src/device_code_auth_tests.rs  |   2 +-
+ ..._animation_tests__fresh_thread_header.snap |  24 +--
+ ...s_previous_transcript_before_replay-2.snap |  10 +-
+ .../tests/background_task_defaults_tests.rs   |  13 +-
+ .../app/tests/session_lifecycle_requests.rs   |   2 +-
+ ...sts__command_center_new_draft_handoff.snap |   6 +-
+ ...daemon_command_center_vanished_rename.snap |   2 +-
+ ...e_buffered_replay_reconciles_captions.snap |  10 +-
+ ...__voice_completed_after_thread_switch.snap |  10 +-
+ ...partial_completed_after_thread_switch.snap |  10 +-
+ ...e_replay_reconciles_matching_captions.snap |  10 +-
+ ...rame_tests__startup_tip_in_transcript.snap |  25 ++--
+ .../tui/src/app/tests/startup_frame_tests.rs  |   8 +-
+ .../tui/src/chatwidget/rendering_tests.rs     |  15 +-
+ ...__catalog_model_session_header_resume.snap |   3 +-
+ ..._catalog_model_session_header_startup.snap |   3 +-
+ ...og_model_session_header_unknown_model.snap |   3 +-
+ ...ests__slash_copy_picker_status_fields.snap |   2 +-
+ ...idget__tests__slash_copy_whole_status.snap |   3 +-
+ codex-rs/tui/src/history_cell/session.rs      | 141 +++++++++++++++---
+ ...session_header_clamps_to_narrow_width.snap |  12 +-
+ ...s__session_header_halfwidth_directory.snap |  52 ++-----
+ ...s__session_header_indicates_yolo_mode.snap |  12 +-
+ ...__welcome__tests__welcome_logo_160x48.snap |   4 +-
+ codex-rs/tui/src/onboarding/welcome.rs        |   4 +-
+ ...ter_long_transcript_fresh_header_only.snap |  10 +-
+ ...__layout__tests__owned_startup_layout.snap |  12 +-
+ ...artup_draft_fresh_session_transitions.snap |  55 ++++---
+ ...aft__tests__startup_draft_full_frames.snap |  51 ++++---
+ ...__startup_draft_onboarding_transition.snap |  10 +-
+ ...raft__tests__terminal_app_ssh_startup.snap |  22 +--
+ .../tui/src/startup_draft_layout_tests.rs     |   4 +-
+ codex-rs/tui/src/startup_draft_tests.rs       |  22 ++-
+ codex-rs/tui/src/status/card.rs               |   8 +-
+ .../tui/tests/suite/external_editor_tests.rs  |   2 +-
+ codex-rs/tui/tests/suite/focus_palette.rs     |   5 +-
+ ...us_palette__daemon_auto_start_failure.snap |  10 +-
+ 40 files changed, 390 insertions(+), 217 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
 index 81fbf07..f43276f 100644
@@ -48,10 +62,10 @@ index 81fbf07..f43276f 100644
          );
      }
 diff --git a/codex-rs/exec/src/event_processor_with_human_output.rs b/codex-rs/exec/src/event_processor_with_human_output.rs
-index 6aba261..8addee3 100644
+index 222bc48..9e8783a 100644
 --- a/codex-rs/exec/src/event_processor_with_human_output.rs
 +++ b/codex-rs/exec/src/event_processor_with_human_output.rs
-@@ -215,7 +215,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
+@@ -216,7 +216,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
          session_configured_event: &SessionConfiguredEvent,
      ) {
          const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -61,7 +75,7 @@ index 6aba261..8addee3 100644
              eprintln!("{} {}", format!("{key}:").style(self.bold), value);
          }
 diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
-index a909da4..fc41544 100644
+index f9f8f19..9f61220 100644
 --- a/codex-rs/login/src/device_code_auth.rs
 +++ b/codex-rs/login/src/device_code_auth.rs
 @@ -149,11 +149,11 @@ async fn poll_for_token(
@@ -90,132 +104,434 @@ index ba6071b..5ee6210 100644
 +        "\x1b[90mContinue only if you started this login in codEx. If a website or another person gave you this code, cancel.\x1b[0m"
      ));
  }
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
+index 1261499..959c29f 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
+@@ -3,9 +3,12 @@ source: tui/src/app/empty_state_animation_tests.rs
+ expression: "format!(\"enabled:\\n{}\\n---\\ndisabled:\\n{}\", text(after), text(&before))"
+ ---
+ enabled:
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭───────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                       │
++│                                           │
++│ model:     GPT-5.6-Sol   /model to change │
++│ directory: /tmp/project                   │
++╰───────────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -13,9 +16,6 @@ enabled:
+ 
+ 
+ 
+-
+-
+-
+                                                        ⣀⣤⣤⣤⣀⣀
+                                                     ⣠⣶⣿⣿⣿⣿⣿⣿⣿⣿⣦⣤⣤⣤⣤⣤⣤⡀
+                                                   ⢀⣾⣿⣿⠿⠋⠉⠉⢉⣭⣿⣿⣿⣿⣿⠿⣿⣿⣿⣿⣷⣄
+@@ -49,9 +49,12 @@ enabled:
+   ? for shortcuts                                                                              ⚠ 1 warning · f2 to view
+ ---
+ disabled:
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭───────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                       │
++│                                           │
++│ model:     GPT-5.6-Sol   /model to change │
++│ directory: /tmp/project                   │
++╰───────────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -82,9 +85,6 @@ disabled:
+ 
+ 
+ 
+-
+-
+-
+ 
+ 
+ 
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
-index 4b9aa6a..a94135f 100644
+index 8aa1bca..70da744 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
-@@ -1,10 +1,9 @@
+@@ -1,11 +1,13 @@
  ---
  source: tui/src/app/tests.rs
--assertion_line: 6350
+-assertion_line: 6513
  expression: rendered
  ---
- ╭────────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)               │
-+│ >_ codEx (v0.155.1)                    │
- │                                        │
- │ model:     gpt-test   /model to change │
- │ directory: <thread cwd>                │
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     <thread cwd>
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/next                   │
++╰────────────────────────────────────────╯
+ 
+ 
+ › Next thread prompt
+diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+index 5512cdb..62cac23 100644
+--- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
++++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
+@@ -74,13 +74,23 @@ async fn command_center_new_keeps_startup_draft_visible_through_handoff() -> Res
+ 
+         app.new_agents_overview_session(&mut tui, &mut server, /*cwd*/ None)
+             .await?;
++        // The handoff can move the inline viewport without repainting it, which leaves the
++        // previous-buffer snapshot blank. Draw the frame the app scheduled first so the
++        // assertions below describe what the terminal shows.
++        let size = tui.terminal.last_known_screen_size;
++        app.render_chat_widget_frame(&mut tui, size)?;
+         let frame = last_rendered_buffer(&tui.terminal).clone();
+         let screen_text: String = frame
+             .content
+             .iter()
+             .map(ratatui::buffer::Cell::symbol)
+             .collect();
+-        assert!(screen_text.contains("draft during startup"));
++        assert!(
++            screen_text.contains("draft during startup"),
++            "owned={owned} composer={:?} text={:?}",
++            app.chat_widget.composer_text_with_pending(),
++            &screen_text[..screen_text.len().min(400)],
++        );
+         assert!(!screen_text.contains("Loading task"));
+         assert_eq!(
+             app.chat_widget.composer_text_with_pending(),
+@@ -102,7 +112,6 @@ async fn command_center_new_keeps_startup_draft_visible_through_handoff() -> Res
+             assert_eq!(last_rendered_buffer(&tui.terminal), &frame);
+         }
+ 
+-        let size = tui.terminal.last_known_screen_size;
+         app.render_chat_widget_frame(&mut tui, size)?;
+         let final_frame = last_rendered_buffer(&tui.terminal);
+         let footer = |buffer: &ratatui::buffer::Buffer| {
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f8d0532..ddd6dcb 100644
+index 0fbf795..d899a8a 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -2505,14 +2505,14 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
-         };
-         let partial = render_overlay(overlay);
-         assert!(partial.contains("Earlier messages are available — scroll up to load them"));
--        assert!(!partial.contains("OpenAI Codex"));
-+        assert!(!partial.contains("codEx"));
-         assert!(!partial.contains("This is a test announcement"));
-         assert!(!partial.contains('%'));
- 
-         overlay.set_history_state(crate::pager_overlay::TranscriptHistoryState::LoadingOlder);
+@@ -2727,7 +2727,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+         )?;
          let loading = render_overlay(overlay);
-         assert!(loading.contains("Loading earlier messages..."));
+         assert!(loading.contains("Loading earlier messages…"));
 -        assert!(!loading.contains("OpenAI Codex"));
 +        assert!(!loading.contains("codEx"));
          assert!(!loading.contains('%'));
      } else {
          panic!("expected transcript overlay");
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
+index 7907349..e4e3f5c 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
+@@ -1,6 +1,6 @@
+ ---
+ source: tui/src/app/tests/background_task_defaults_tests.rs
+-expression: "snapshots.join(\"\\n\\n\")"
++expression: "crate::chatwidget::tests::helpers::normalize_snapshot_paths(snapshots.join(\"\\n\\n\"))"
+ ---
+ owned=false
+ startup:
+@@ -8,7 +8,7 @@ startup:
+ 
+ › draft during startup
+ 
+-
++  GPT-6.1-Sol default · /tmp/project
+ attached:
+ 
+ 
+@@ -21,7 +21,7 @@ startup:
+ 
+ › draft during startup
+ 
+-
++  GPT-6.1-Sol default · /tmp/project
+ 
+ attached:
+ 
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
+index 9ccef21..9e20f2a 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
+@@ -25,4 +25,4 @@ expression: "render_bottom_popup(&app.chat_widget, 100)"
+                                                           │
+                                                           │
+                                                           │
+-  Service v2.0.0 ≠ Codex CLI v0.0.0 · /daemon
++  ? help  esc back  ↑/↓ move  enter open  n new
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
-index 0b25023..978a35e 100644
+index ab3a8c8..a2d41fb 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
-@@ -1,10 +1,9 @@
+@@ -1,11 +1,13 @@
  ---
  source: tui/src/app/tests/realtime_requests.rs
--assertion_line: 645
+-assertion_line: 889
  expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
  ---
- ╭────────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)               │
-+│ >_ codEx (v0.155.1)                    │
- │                                        │
- │ model:     gpt-test   /model to change │
- │ directory: /tmp/project                │
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/project                │
++╰────────────────────────────────────────╯
+ 
+   To get started, describe a task or try one of these commands:
+ 
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
-index 45a423c..06c2ec5 100644
+index 2ecde20..6bb45d5 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
-@@ -1,10 +1,9 @@
+@@ -1,11 +1,13 @@
  ---
  source: tui/src/app/tests/realtime_requests.rs
--assertion_line: 182
--expression: "rendered.replace(&app.config.cwd.display().to_string(), \"/tmp/project\")"
-+expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+-assertion_line: 1093
+ expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
  ---
- ╭────────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)               │
-+│ >_ codEx (v0.155.1)                    │
- │                                        │
- │ model:     gpt-test   /model to change │
- │ directory: /tmp/project                │
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/project                │
++╰────────────────────────────────────────╯
+ 
+   To get started, describe a task or try one of these commands:
+ 
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
-index 44a8b74..0247b52 100644
+index 5c3a9d2..71fad83 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
-@@ -1,10 +1,9 @@
+@@ -1,6 +1,5 @@
  ---
  source: tui/src/app/tests/realtime_requests.rs
--assertion_line: 302
- expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
+-assertion_line: 479
+ expression: "normalize_voice_snapshot_directory(&format!(\"Other task:\\n{other_ui}\\nRestored owner:\\n{}\\n{rendered}\",\nrender_bottom_popup(&app.chat_widget, 80)), &app.config.cwd,)"
  ---
- ╭────────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)               │
-+│ >_ codEx (v0.155.1)                    │
- │                                        │
- │ model:     gpt-test   /model to change │
- │ directory: /tmp/project                │
+ Other task:
+@@ -14,9 +13,12 @@ Restored owner:
+ › Ask Codex to do anything
+ 
+   gpt-test default · /tmp/project
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/project                │
++╰────────────────────────────────────────╯
+ 
+   To get started, describe a task or try one of these commands:
+ 
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
-index 76e81da..dd0c765 100644
+index 0dfd733..4028c4d 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
-@@ -1,10 +1,9 @@
+@@ -1,11 +1,13 @@
  ---
  source: tui/src/app/tests/realtime_requests.rs
--assertion_line: 561
+-assertion_line: 716
  expression: "normalize_voice_snapshot_directory(&rendered, &app.config.cwd)"
  ---
- ╭────────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)               │
-+│ >_ codEx (v0.155.1)                    │
- │                                        │
- │ model:     gpt-test   /model to change │
- │ directory: /tmp/project                │
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/project                │
++╰────────────────────────────────────────╯
+ 
+   To get started, describe a task or try one of these commands:
+ 
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
+index 8ed7c18..1f769ae 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
+@@ -1,12 +1,14 @@
+ ---
+ source: tui/src/app/tests/startup_frame_tests.rs
+-assertion_line: 72
+ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.join(\"\\n\\n\")))"
+ ---
+ 80 columns
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭────────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                    │
++│                                        │
++│ model:     gpt-test   /model to change │
++│ directory: /tmp/project                │
++╰────────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -17,18 +19,18 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
+ 
+ 
+ 
+-
+-
+-
+ › Ask Codex to do anything
+ 
+   GPT-5.6-Sol default · /tmp/project
+   ? for shortcuts
+ 
+ 32 columns
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭──────────────────────────────╮
++│ >_ codEx (v0.160.0)          │
++│                              │
++│ model:     gpt-test   /mode… │
++│ directory: /tmp/project      │
++╰──────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -39,9 +41,6 @@ expression: "normalize_snapshot_paths(normalize_agent_center_snapshot(snapshots.
+ 
+ 
+ 
+-
+-
+-
+ › Ask Codex to do anything
+ 
+   GPT-5.6-Sol default · /tmp/pr…
+diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
+index c836d54..a68dfcb 100644
+--- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
++++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
+@@ -82,8 +82,10 @@ async fn owned_startup_hides_tip_in_transcript() -> Result<()> {
+             .join("\n");
+         assert!(text.contains("Pull up a prompt."));
+         assert!(text.contains("Use /mcp"));
+-        assert!(!text.contains("model:"));
+-        assert!(!text.contains('╭'));
++        // The fork's branded header keeps its box and model row in the scrollback source
++        // while the owned transcript hides the tip that follows it.
++        assert!(text.contains("model:"));
++        assert!(text.contains('╭'));
+     }
+     app.transcript_view.begin_search();
+     app.render_owned_transcript(&mut tui, Size::new(/*width*/ 80, /*height*/ 20))?;
+@@ -162,7 +164,7 @@ async fn owned_startup_preserves_loading_until_resume_replay_is_applied() -> Res
+         if has_answer {
+             assert!(rendered.contains("Retained answer after resume."));
+         } else {
+-            assert!(rendered.contains("OpenAI Codex"));
++            assert!(rendered.contains("codEx"));
+         }
+         tui.set_owned_screen(/*owned*/ false)?;
+         app_server.shutdown().await?;
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 2d7abb9..56993b4 100644
+index 624d587..9a5339e 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-@@ -223,7 +223,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+@@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+     let header = frame
+         .content
+         .chunks(usize::from(frame.area.width))
+-        .take(/*n*/ 3)
++        .take(/*n*/ 6)
+         .map(|row| {
+             row.iter()
+                 .map(ratatui::buffer::Cell::symbol)
+@@ -399,10 +399,15 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
+         .replace(crate::version::CODEX_CLI_VERSION, "<VERSION>");
  
-     insta::assert_snapshot!(header.replace(&cwd, &normalized_cwd), @r"
-     ╭───────────────────────────────────────╮
--    │ >_ OpenAI Codex (v<VERSION>)              │
+     let cwd = widget.config.cwd.as_path().display().to_string();
+-
+-    insta::assert_snapshot!(header.replace(&cwd, "/tmp/project"), @r"
+-      >_ OpenAI Codex (v<VERSION>)
+-         /tmp/project
++    let normalized_cwd = format!("{:<width$}", "/tmp/project", width = cwd.len());
++
++    insta::assert_snapshot!(header.replace(&cwd, &normalized_cwd), @r"
++    ╭───────────────────────────────────────╮
 +    │ >_ codEx (v<VERSION>)                   │
-     │                                       │
-     │ model:     loading   /model to change │
-     │ directory: /tmp/project               │
++    │                                       │
++    │ model:     loading   /model to change │
++    │ directory: /tmp/project               │
++    ╰───────────────────────────────────────╯
+     ");
+ }
+ 
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
+index 915041d..bf04308 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
+@@ -1,8 +1,7 @@
+ ---
+ source: tui/src/chatwidget/tests/app_server.rs
+-assertion_line: 99
+ expression: rendered
+ ---
+-OpenAI Codex (v<VERSION>)
++codEx (v<VERSION>)
+ model: GPT-5.6 Luna high
+ directory: /tmp/thread-settings
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
+index 65f9035..2243d25 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
+@@ -1,9 +1,8 @@
+ ---
+ source: tui/src/chatwidget/tests/app_server.rs
+-assertion_line: 99
+ expression: rendered
+ ---
+-OpenAI Codex (v<VERSION>)
++codEx (v<VERSION>)
+ model: GPT-5.6 Luna high
+ directory: /tmp/thread-settings
+ 
+diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
+index 147a544..05ddff5 100644
+--- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
++++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
+@@ -1,8 +1,7 @@
+ ---
+ source: tui/src/chatwidget/tests/app_server.rs
+-assertion_line: 99
+ expression: rendered
+ ---
+-OpenAI Codex (v<VERSION>)
++codEx (v<VERSION>)
+ model: us.openai.gpt-5.6-luna high
+ directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
-index 6747cb7..ef6e558 100644
+index b280121..4caac75 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
-@@ -1,11 +1,10 @@
- ---
- source: tui/src/chatwidget/tests/slash_commands.rs
--assertion_line: 2032
- expression: "render_bottom_popup(&chat,\n100).replace(&directory,\n\"[[workspace]]\").replace(crate::version::CODEX_CLI_VERSION, \"VERSION\")"
- ---
+@@ -5,7 +5,7 @@ expression: "render_bottom_popup(&chat,\n100).replace(&directory,\n\"[[workspace
    Copy to clipboard
+ 
  
 -› 1. Whole status  >_ OpenAI Codex (vVERSION)
 +› 1. Whole status  >_ codEx (vVERSION)
@@ -223,38 +539,231 @@ index 6747cb7..ef6e558 100644
    3. Directory     [[workspace]]
    4. Thread name   Clipboard example
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
-index 6cb4e54..300cf31 100644
+index 1da4b4a..c832bb7 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
-@@ -2,7 +2,7 @@
+@@ -2,11 +2,12 @@
  source: tui/src/chatwidget/tests/slash_commands.rs
  expression: "whole_status.replace(&directory,\n\"[[workspace]]\").replace(crate::version::CODEX_CLI_VERSION, \"VERSION\")"
  ---
 ->_ OpenAI Codex (vVERSION)
 +>_ codEx (vVERSION)
  
- Visit https://chatgpt.com/codex/settings/usage for up-to-date
- information on rate limits and credits
+   Visit https://chatgpt.com/codex/settings/usage for up-to-date
+   information on rate limits and credits
+ 
++  >_ codEx (vVERSION)
+   Model:               GPT-5.5 (reasoning medium, summaries auto)
+   Model provider:      openai
+   Directory:           [[workspace]]
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 4af9a17..f159463 100644
+index 11cce0e..cb96208 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
-@@ -322,10 +322,10 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -10,6 +10,21 @@ use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
+ use crate::style::accent_color;
+ use crate::width::display_width;
  
-         let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
++pub(crate) const SESSION_HEADER_MAX_INNER_WIDTH: usize = 56; // Just an eyeballed value
++
++pub(crate) fn card_inner_width(width: u16, max_inner_width: usize) -> Option<usize> {
++    if width < 4 {
++        return None;
++    }
++    let inner_width = std::cmp::min(width.saturating_sub(4) as usize, max_inner_width);
++    Some(inner_width)
++}
++
++/// Render `lines` inside a border sized to the widest span in the content.
++pub(crate) fn with_border(lines: Vec<Line<'static>>) -> Vec<Line<'static>> {
++    with_border_internal(lines, /*forced_inner_width*/ None)
++}
++
+ /// Render `lines` inside a border whose inner width is at least `inner_width`.
+ ///
+ /// This is useful when callers have already clamped their content to a
+@@ -18,9 +33,18 @@ use crate::width::display_width;
+ pub(crate) fn with_border_with_inner_width(
+     lines: Vec<Line<'static>>,
+     inner_width: usize,
++) -> Vec<Line<'static>> {
++    with_border_internal(lines, Some(inner_width))
++}
++
++fn with_border_internal(
++    lines: Vec<Line<'static>>,
++    forced_inner_width: Option<usize>,
+ ) -> Vec<Line<'static>> {
+     let max_line_width = lines.iter().map(line_width).max().unwrap_or(0);
+-    let content_width = inner_width.max(max_line_width);
++    let content_width = forced_inner_width
++        .unwrap_or(max_line_width)
++        .max(max_line_width);
  
--        // Title line rendered inside the box: ">_ OpenAI Codex (vX)"
+     let mut out = Vec::with_capacity(lines.len() + 2);
+     let border_inner_width = content_width + 2;
+@@ -48,7 +72,7 @@ pub(crate) fn with_border_with_inner_width(
+ pub(crate) fn codex_title(version: &str) -> Vec<Span<'static>> {
+     vec![
+         ">_ ".fg(accent_color()),
+-        "OpenAI Codex".bold(),
++        "codEx".bold(),
+         format!(" (v{version})").dim(),
+     ]
+ }
+@@ -289,7 +313,9 @@ pub(crate) fn has_yolo_permissions(
+ pub(crate) struct SessionHeaderHistoryCell {
+     version: &'static str,
+     model: String,
++    model_style: Style,
+     reasoning_effort: Option<ReasoningEffortConfig>,
++    show_fast_status: bool,
+     directory: PathBuf,
+     yolo_mode: bool,
+     greeting: Arc<OnceLock<Greeting>>,
+@@ -301,11 +327,31 @@ impl SessionHeaderHistoryCell {
+         reasoning_effort: Option<ReasoningEffortConfig>,
+         directory: PathBuf,
+         version: &'static str,
++    ) -> Self {
++        Self::new_with_style(
++            model,
++            Style::default(),
++            reasoning_effort,
++            /*show_fast_status*/ false,
++            directory,
++            version,
++        )
++    }
++
++    pub(crate) fn new_with_style(
++        model: String,
++        model_style: Style,
++        reasoning_effort: Option<ReasoningEffortConfig>,
++        show_fast_status: bool,
++        directory: PathBuf,
++        version: &'static str,
+     ) -> Self {
+         Self {
+             version,
+             model,
++            model_style,
+             reasoning_effort,
++            show_fast_status,
+             directory,
+             yolo_mode: false,
+             greeting: Default::default(),
+@@ -353,35 +399,90 @@ impl SessionHeaderHistoryCell {
+ 
+ impl HistoryCell for SessionHeaderHistoryCell {
+     fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
+-        let width = usize::from(width);
+-        let mut title = vec!["  ".into()];
+-        title.extend(codex_title(self.version));
++        let Some(inner_width) = card_inner_width(width, SESSION_HEADER_MAX_INNER_WIDTH) else {
++            return Vec::new();
++        };
++
++        let make_row = |spans: Vec<Span<'static>>| Line::from(spans);
++
 +        // Title line rendered inside the box: ">_ codEx (vX)"
-         let title_spans: Vec<Span<'static>> = vec![
-             Span::from(">_ ").dim(),
--            Span::from("OpenAI Codex").bold(),
++        let title_spans: Vec<Span<'static>> = vec![
++            Span::from(">_ ").dim(),
 +            Span::from("codEx").bold(),
-             Span::from(" ").dim(),
-             Span::from(format!("(v{})", self.version)).dim(),
++            Span::from(" ").dim(),
++            Span::from(format!("(v{})", self.version)).dim(),
++        ];
++
++        const CHANGE_MODEL_HINT_COMMAND: &str = "/model";
++        const CHANGE_MODEL_HINT_EXPLANATION: &str = " to change";
++        const DIR_LABEL: &str = "directory:";
++        const PERMISSIONS_LABEL: &str = "permissions:";
++        let label_width = if self.yolo_mode {
++            DIR_LABEL.len().max(PERMISSIONS_LABEL.len())
++        } else {
++            DIR_LABEL.len()
++        };
++
++        let model_label = format!(
++            "{model_label:<label_width$}",
++            model_label = "model:",
++            label_width = label_width
++        );
++        let reasoning_label = self.reasoning_label();
++        let model_spans: Vec<Span<'static>> = {
++            let mut spans = vec![
++                Span::from(format!("{model_label} ")).dim(),
++                Span::styled(self.model.clone(), self.model_style),
++            ];
++            if let Some(reasoning) = reasoning_label {
++                spans.push(Span::from(" "));
++                spans.push(Span::from(reasoning.to_owned()));
++            }
++            if self.show_fast_status {
++                spans.push("   ".into());
++                spans.push(Span::styled("fast", self.model_style.magenta()));
++            }
++            spans.push("   ".dim());
++            spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
++            spans.push(CHANGE_MODEL_HINT_EXPLANATION.dim());
++            spans
++        };
++
++        let dir_label = format!("{DIR_LABEL:<label_width$}");
++        let dir_prefix = format!("{dir_label} ");
++        let dir_prefix_width = display_width(dir_prefix.as_str());
++        let dir_max_width = inner_width.saturating_sub(dir_prefix_width);
++        let dir = self.format_directory(Some(dir_max_width));
++        let dir_spans = vec![Span::from(dir_prefix).dim(), Span::from(dir)];
++
+         let mut lines = vec![
+-            Line::default(),
+-            Line::from(title),
+-            Line::from(vec![
+-                "     ".into(),
+-                self.format_directory(Some(width.saturating_sub(/*rhs*/ 5)))
+-                    .dim(),
+-            ]),
++            make_row(title_spans),
++            make_row(Vec::new()),
++            make_row(model_spans),
++            make_row(dir_spans),
          ];
-@@ -396,7 +396,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
++
+         if self.yolo_mode {
+-            lines.push(Line::from(vec![
+-                "  permissions: ".dim(),
++            let permissions_label = format!("{PERMISSIONS_LABEL:<label_width$}");
++            lines.push(make_row(vec![
++                Span::from(format!("{permissions_label} ")).dim(),
+                 "YOLO mode".magenta().bold(),
+             ]));
+         }
++
++        let lines = lines
++            .into_iter()
++            .map(|line| truncate_line_with_ellipsis_if_overflow(line, inner_width))
++            .collect();
++        let mut rendered = with_border(lines);
+         if let Some(greeting) = self.greeting.get() {
+             // The tip/help that follows has its own normal composite separator.
+-            lines.extend([
++            rendered.extend([
+                 Line::default(),
+                 Line::from(vec!["  ".into(), greeting.phrase.fg(accent_color())]),
+             ]);
+         }
+-        lines
+-            .into_iter()
+-            .map(|line| truncate_line_with_ellipsis_if_overflow(line, width))
+-            .collect()
++        rendered
+     }
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
+@@ -393,7 +494,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
+                 .collect();
+         }
          let mut lines = vec![
 -            Line::from(format!("OpenAI Codex (v{})", self.version)),
 +            Line::from(format!("codEx (v{})", self.version)),
@@ -262,83 +771,139 @@ index 4af9a17..f159463 100644
                  "model: {}{}",
                  self.model,
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-index 2baf486..f792c3f 100644
+index 13e70b5..0fb0374 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-@@ -3,7 +3,7 @@ source: tui/src/history_cell/tests.rs
+@@ -1,9 +1,11 @@
+ ---
+ source: tui/src/history_cell/tests.rs
+-assertion_line: 1867
  expression: "render_lines(&lines).join(\"\\n\")"
  ---
- ╭──────────────────────────────────────────╮
--│ >_ OpenAI Codex (vtest)                  │
+-
+-  >_ OpenAI Codex (vtest)
+-     project
+-  permissions: YOLO mode
++╭──────────────────────────────────────────╮
 +│ >_ codEx (vtest)                         │
- │                                          │
- │ model:       gpt-5.6-sol xhigh   fast  … │
- │ directory:   project                     │
++│                                          │
++│ model:       gpt-5.6-sol xhigh   /model… │
++│ directory:   project                     │
++│ permissions: YOLO mode                   │
++╰──────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-index 51d3652..f23bfd0 100644
+index fa464a0..f23bfd0 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-@@ -6,7 +6,7 @@ Buffer {
-     area: Rect { x: 0, y: 0, width: 42, height: 6 },
+@@ -1,48 +1,26 @@
+ ---
+ source: tui/src/history_cell/tests.rs
+-assertion_line: 1903
+ expression: "format!(\"{buf:?}\")"
+ ---
+ Buffer {
+-    area: Rect { x: 0, y: 0, width: 42, height: 3 },
++    area: Rect { x: 0, y: 0, width: 42, height: 6 },
      content: [
-         "╭────────────────────────────────────────╮",
--        "│ >_ OpenAI Codex (vtest)                │",
+-        "                                          ",
+-        "  >_ OpenAI Codex (vtest)                 ",
+-        "     …ｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project", // hidden by multi-width symbols: [(7, " "), (9, " "), (11, " "), (13, " "), (15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " "), (33, " ")]
++        "╭────────────────────────────────────────╮",
 +        "│ >_ codEx (vtest)                       │",
-         "│                                        │",
-         "│ model:     gpt-5   /model to change    │",
-         "│ directory: …ﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project │", // hidden by multi-width symbols: [(15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " ")]
-@@ -15,7 +15,7 @@ Buffer {
++        "│                                        │",
++        "│ model:     gpt-5   /model to change    │",
++        "│ directory: …ﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟｶﾞﾊﾟ-project │", // hidden by multi-width symbols: [(15, " "), (17, " "), (19, " "), (21, " "), (23, " "), (25, " "), (27, " "), (29, " "), (31, " ")]
++        "╰────────────────────────────────────────╯",
+     ],
      styles: [
-         x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 0, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
          x: 5, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
 -        x: 17, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 25, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 5, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 7, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 8, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 9, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 10, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 11, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 12, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 13, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 14, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 15, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 16, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 17, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 18, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 19, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 20, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 21, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 22, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 23, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 24, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 25, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 26, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 27, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 28, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 29, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 30, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 31, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 32, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+-        x: 33, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
+-        x: 34, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
 +        x: 10, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 13, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-         x: 18, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 21, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
-diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
-index 0fb1727..1b328bb 100644
---- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
-+++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_sound_marks.snap
-@@ -6,7 +6,7 @@ Buffer {
-     area: Rect { x: 0, y: 0, width: 80, height: 6 },
-     content: [
-         "╭───────────────────────────────────────────╮                                   ",
--        "│ >_ OpenAI Codex (vtest)                   │                                   ",
-+        "│ >_ codEx (vtest)                          │                                   ",
-         "│                                           │                                   ",
-         "│ model:     gpt-5-ｶﾞ-ﾊﾟ   /model to change │                                   ", // hidden by multi-width symbols: [(20, " "), (23, " ")]
-         "│ directory: project                        │                                   ",
-@@ -17,7 +17,7 @@ Buffer {
-         x: 45, y: 0, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-         x: 0, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 5, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: BOLD,
--        x: 17, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-+        x: 10, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 45, y: 1, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
-         x: 0, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
-         x: 45, y: 2, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 13, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 18, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 21, y: 3, fg: Cyan, bg: Reset, underline: Reset, modifier: NONE,
++        x: 27, y: 3, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
++        x: 13, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: NONE,
++        x: 40, y: 4, fg: Reset, bg: Reset, underline: Reset, modifier: DIM,
+     ]
+ }
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-index 04f6458..3669f3c 100644
+index ab195e3..3669f3c 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-@@ -1,9 +1,9 @@
+@@ -1,9 +1,11 @@
  ---
--source: tui/src/history_cell.rs
-+source: tui/src/history_cell/tests.rs
+ source: tui/src/history_cell/tests.rs
+-assertion_line: 1885
  expression: rendered
  ---
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (vtest)               │
+-
+-  >_ OpenAI Codex (vtest)
+-     /tmp/project
+-  permissions: YOLO mode
++╭───────────────────────────────────────╮
 +│ >_ codEx (vtest)                      │
- │                                       │
- │ model:       gpt-5   /model to change │
- │ directory:   /tmp/project             │
++│                                       │
++│ model:       gpt-5   /model to change │
++│ directory:   /tmp/project             │
++│ permissions: YOLO mode                │
++╰───────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap b/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
+index b4f744e..2af14a3 100644
+--- a/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
++++ b/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
+@@ -2,6 +2,8 @@
+ source: tui/src/onboarding/welcome.rs
+ expression: visible.trim_end()
+ ---
++
++
+                          ⢀⣀⣠⣤⣤⣤⣤⣤⣤⣀⣀
+                      ⢀⣤⣶⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣿⣶⣤⡀
+                   ⢀⣠⣾⣿⣿⣿⣿⡿⠟⠛⠋⠉⠉⠙⠛⠛⠿⣿⣿⣿⣿⣿⣷⡄
+@@ -22,4 +24,4 @@ expression: visible.trim_end()
+ 
+ 
+ 
+-  Welcome to Codex, OpenAI's command-line coding agent
++  Welcome to codEx, a community fork of OpenAI's command-line coding agent
 diff --git a/codex-rs/tui/src/onboarding/welcome.rs b/codex-rs/tui/src/onboarding/welcome.rs
-index 880e587..4303521 100644
+index 9c9e7b8..fe2f532 100644
 --- a/codex-rs/tui/src/onboarding/welcome.rs
 +++ b/codex-rs/tui/src/onboarding/welcome.rs
-@@ -94,8 +94,8 @@ impl WidgetRef for &WelcomeWidget {
+@@ -126,8 +126,8 @@ impl WidgetRef for &WelcomeWidget {
          lines.push(Line::from(vec![
              "  ".into(),
              "Welcome to ".into(),
@@ -350,175 +915,421 @@ index 880e587..4303521 100644
  
          Paragraph::new(lines)
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
-index 98d6015..5ca1295 100644
+index b11e54d..5ca1295 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
-@@ -1,9 +1,9 @@
+@@ -1,8 +1,10 @@
  ---
--source: tui/src/app.rs
-+source: tui/src/app/tests.rs
+ source: tui/src/app/tests.rs
+-assertion_line: 5874
  expression: rendered
  ---
- ╭─────────────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)                │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     /tmp/project
++╭─────────────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                       │
- │                                             │
- │ model:     gpt-test high   /model to change │
- │ directory: /tmp/project                     │
-diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
-index 08afd02..d545154 100644
---- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
-+++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_header_fast_status_fast_capable_models.snap
-@@ -1,9 +1,9 @@
++│                                             │
++│ model:     gpt-test high   /model to change │
++│ directory: /tmp/project                     │
++╰─────────────────────────────────────────────╯
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
+index 957e753..269a86e 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
+@@ -3,17 +3,17 @@ source: tui/src/startup_draft_layout_tests.rs
+ expression: "format!(\"cursor={:?}\\n{frame}\",\nlayout.cursor_pos(area)).replace(crate::version::CODEX_CLI_VERSION,\n\"<VERSION>\")"
  ---
--source: tui/src/app.rs
-+source: tui/src/app/tests.rs
- expression: rendered
- ---
- ╭────────────────────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)                       │
-+│ >_ codEx (v<VERSION>)                              │
- │                                                    │
- │ model:     gpt-5.4 xhigh   fast   /model to change │
- │ directory: /tmp/project                            │
+ cursor=Some((13, 12))
+-                                                
+-  >_ OpenAI Codex (v<VERSION>)                      
+-     loading                                    
++╭───────────────────────────────────────╮       
++│ >_ codEx (v<VERSION>)                   │       
++│                                       │       
++│ model:     loading   /model to change │       
++│ directory: loading                    │       
++╰───────────────────────────────────────╯       
+                                                 
+   Pull up a prompt.                             
+                                                 
+                                                 
+                                                 
+-                                                
+-                                                
+-                                                
+ › first line                                    
+   second line                                   
+                                                 
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
-index 32f6de9..d5474c7 100644
+index fb019c0..c5f3d17 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
-@@ -5,7 +5,7 @@ expression: "snapshots.join(\"\\n---\\n\")"
+@@ -1,13 +1,15 @@
+ ---
+ source: tui/src/startup_draft_tests.rs
+-assertion_line: 285
+ expression: "snapshots.join(\"\\n---\\n\")"
+ ---
  resume lookup fallback:
  before:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -17,7 +17,7 @@ before:
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+   Resuming session…
+@@ -16,9 +18,12 @@ before:
+ 
  
  after:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -31,7 +31,7 @@ after:
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -29,9 +34,12 @@ after:
+ ---
  fork lookup fallback:
  before:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -43,7 +43,7 @@ before:
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+   Forking session…
+@@ -40,9 +48,12 @@ before:
+ 
  
  after:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -59,7 +59,7 @@ before:
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -55,9 +66,12 @@ resume picker cancellation:
+ before:
  hidden while picker owns input
  after:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -75,7 +75,7 @@ before:
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -70,9 +84,12 @@ fork picker cancellation:
+ before:
  hidden while picker owns input
  after:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
-index 9195af7..b9966d3 100644
+index 13af775..4aed76f 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
-@@ -4,7 +4,7 @@ expression: "snapshots.join(\"\\n---\\n\")"
+@@ -1,12 +1,14 @@
+ ---
+ source: tui/src/startup_draft_tests.rs
+-assertion_line: 154
+ expression: "snapshots.join(\"\\n---\\n\")"
  ---
  empty (48 columns):
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -17,7 +17,7 @@ empty (48 columns):
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -16,9 +18,12 @@ empty (48 columns):
+   ? for shortcuts
  ---
  resuming (48 columns):
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -30,7 +30,7 @@ resuming (48 columns):
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+   Resuming session…
+ 
+ › Ask Codex to do anything
+@@ -26,9 +31,12 @@ resuming (48 columns):
+   ? for shortcuts
  ---
  forking (48 columns):
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -43,7 +43,7 @@ forking (48 columns):
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+   Forking session…
+ 
+ › draft while loading
+@@ -36,9 +44,12 @@ forking (48 columns):
+ 
  ---
  multiline (48 columns):
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
-@@ -57,7 +57,7 @@ multiline (48 columns):
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -49,11 +60,15 @@ multiline (48 columns):
+ 
  ---
  narrow (18 columns):
- ╭────────────────╮
--│ >_ OpenAI Cod… │
+-
+-  >_ OpenAI Codex…
+-     loading
+-
+-  Pull up a promp…
++╭────────────────╮
 +│ >_ codEx (v0.… │
- │                │
- │ model:     lo… │
- │ directory: …ng │
++│                │
++│ model:     lo… │
++│ directory: …ng │
++╰────────────────╯
++
++  Pull up a
++prompt.
+ 
+ 
+ › first startup
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
-index 6284b07..edeaf03 100644
+index 681cfd8..d4667bb 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
-@@ -6,7 +6,7 @@ before onboarding: hidden (0x0 viewport)
+@@ -1,14 +1,16 @@
+ ---
+ source: tui/src/startup_draft_tests.rs
+-assertion_line: 802
+ expression: frames
+ ---
+ before onboarding: hidden (0x0 viewport)
  ---
  after onboarding:
- ╭───────────────────────────────────────╮
--│ >_ OpenAI Codex (v<VERSION>)              │
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
 +│ >_ codEx (v<VERSION>)                   │
- │                                       │
- │ model:     loading   /model to change │
- │ directory: loading                    │
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
+index 2ec0e1e..03686d2 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
+@@ -1,12 +1,14 @@
+ ---
+ source: tui/src/startup_draft_tests.rs
+-assertion_line: 194
+ expression: "frames.join(\"\\n---\\n\").replace(crate::version::CODEX_CLI_VERSION, \"<VERSION>\")"
+ ---
+ terminal_app_over_ssh=false, owned=true
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
++│ >_ codEx (v<VERSION>)                   │
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+@@ -14,17 +16,17 @@ terminal_app_over_ssh=false, owned=true
+ 
+ 
+ 
+-
+-
+-
+ › Ask Codex to do anything
+ 
+   ? for shortcuts
+ ---
+ terminal_app_over_ssh=true, owned=false
+-
+-  >_ OpenAI Codex (v<VERSION>)
+-     loading
++╭───────────────────────────────────────╮
++│ >_ codEx (v<VERSION>)                   │
++│                                       │
++│ model:     loading   /model to change │
++│ directory: loading                    │
++╰───────────────────────────────────────╯
+ 
+   Pull up a prompt.
+ 
+diff --git a/codex-rs/tui/src/startup_draft_layout_tests.rs b/codex-rs/tui/src/startup_draft_layout_tests.rs
+index 1644ad3..57ba29d 100644
+--- a/codex-rs/tui/src/startup_draft_layout_tests.rs
++++ b/codex-rs/tui/src/startup_draft_layout_tests.rs
+@@ -36,8 +36,10 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
+ #[test]
+ fn new_startup_decoration_tracks_draft_and_session_action() {
+     let mut pump = crate::startup_draft::tests::quiet_startup_test_pump();
++    // The branded session header is a taller box than upstream's plain banner, so give the
++    // welcome stage enough room below it to fit.
+     let area = Rect::new(
+-        /*x*/ 0, /*y*/ 0, /*width*/ 80, /*height*/ 32,
++        /*x*/ 0, /*y*/ 0, /*width*/ 80, /*height*/ 40,
+     );
+     let mut blossom_visible = Vec::new();
+     for (draft, action, pending) in [
+diff --git a/codex-rs/tui/src/startup_draft_tests.rs b/codex-rs/tui/src/startup_draft_tests.rs
+index baaa0eb..df90969 100644
+--- a/codex-rs/tui/src/startup_draft_tests.rs
++++ b/codex-rs/tui/src/startup_draft_tests.rs
+@@ -314,16 +314,28 @@ async fn startup_draft_hydrates_its_header_without_moving_the_composer() {
+         startup_draft_renderable(&pump.header, &pump.bottom_pane, pump.session_action)
+             .desired_height(width);
+ 
+-    assert_eq!(pump.header.raw_lines()[2].to_string().trim(), "loading");
++    let header_directory = |pump: &StartupDraftPump| {
++        pump.header
++            .raw_lines()
++            .into_iter()
++            .find_map(|line| {
++                let text = line.to_string();
++                text.trim()
++                    .trim_matches('│')
++                    .trim()
++                    .strip_prefix("directory:")
++                    .map(|directory| directory.trim().to_string())
++            })
++            .expect("branded session header renders its directory")
++    };
++    // The branded session header is a box whose directory row starts at `loading`.
++    assert_eq!(header_directory(&pump), "loading");
+     pump.apply_config(&config);
+     let expected_directory = crate::history_cell::SessionHeaderHistoryCell::format_directory_inner(
+         config.cwd.as_path(),
+         /*max_width*/ None,
+     );
+-    assert_eq!(
+-        pump.header.raw_lines()[2].to_string().trim(),
+-        expected_directory
+-    );
++    assert_eq!(header_directory(&pump), expected_directory);
+     assert_eq!(
+         startup_draft_renderable(&pump.header, &pump.bottom_pane, pump.session_action)
+             .desired_height(width),
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 86437fe..311a6f0 100644
+index 73b6daf..5353ec9 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -742,7 +742,7 @@ impl StatusHistoryCell {
-         let mut lines: Vec<Line<'static>> = Vec::new();
-         lines.push(Line::from(vec![
-             Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
--            Span::from("OpenAI Codex").bold(),
+@@ -736,7 +736,13 @@ impl StatusHistoryCell {
+         if available_width == 0 {
+             return Vec::new();
+         }
+-        let mut lines = Vec::new();
++        let mut lines: Vec<Line<'static>> = Vec::new();
++        lines.push(Line::from(vec![
++            Span::from(format!("{}>_ ", FieldFormatter::INDENT)).dim(),
 +            Span::from("codEx").bold(),
-             Span::from(" ").dim(),
-             Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
-         ]));
++            Span::from(" ").dim(),
++            Span::from(format!("(v{CODEX_CLI_VERSION})")).dim(),
++        ]));
+ 
+         let account_value = self.account.as_ref().map(|account| match account {
+             StatusAccountDisplay::ChatGpt { email, plan } => match (email, plan) {
+diff --git a/codex-rs/tui/tests/suite/external_editor_tests.rs b/codex-rs/tui/tests/suite/external_editor_tests.rs
+index 8b58e62..6532663 100644
+--- a/codex-rs/tui/tests/suite/external_editor_tests.rs
++++ b/codex-rs/tui/tests/suite/external_editor_tests.rs
+@@ -69,7 +69,7 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
+             terminal.wait_for_screen("Save and close external editor to continue.")?;
+             ensure!(terminal.screen_contains("initial draft"));
+             if fullscreen {
+-                ensure!(terminal.screen_contains("OpenAI Codex"));
++                ensure!(terminal.screen_contains("codEx"));
+                 ensure!(terminal.screen_contains("GPT-5.6-Terra"));
+             }
+             ensure!(
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index bdf5ade..bbddcc6 100644
+index fa47056..22b8d50 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
-@@ -233,7 +233,7 @@ impl PtyCodex {
+@@ -208,8 +208,7 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
+     first_frame.process(&terminal.output[..end]);
+     let first_contents = first_frame.screen().contents();
+     ensure!(
+-        first_contents.contains("OpenAI Codex")
+-            && first_contents.contains("Ask Codex to do anything"),
++        first_contents.contains("codEx") && first_contents.contains("Ask Codex to do anything"),
+         "owned-screen synchronization ended before its first complete loading frame:\n{first_contents}"
+     );
+     let composer_row = first_contents
+@@ -392,7 +391,7 @@ impl PtyCodex {
              self.read_output(Duration::from_millis(/*millis*/ 50))?;
              self.answer_startup_queries()?;
  
@@ -527,6 +1338,26 @@ index bdf5ade..bbddcc6 100644
                  return Ok(());
              }
  
+diff --git a/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap b/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
+index 0d40a84..f3566b4 100644
+--- a/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
++++ b/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
+@@ -1,7 +1,13 @@
+ ---
+ source: tui/tests/suite/focus_palette.rs
+-assertion_line: 484
+ expression: failure.trim()
+ ---
+-Error: daemon executable not found at [CODEX_HOME]/packages/app-server-daemon/current/bin/codex; repair the existing installation, or run `codex app-server daemon start` to install a missing daemon
++Error: managed standalone Codex install not found at [CODEX_HOME]/packages/app-server-daemon/current/bin/codex
++
++This command requires the standalone install managed by the Codex installer, because the daemon starts and updates app-server from that fixed path.
++
++Install it from the codEx fork releases:
++  https://github.com/NIyueeE/codEx/releases
++
++Then rerun the command you just tried.
+ To work without the background server, rerun the same command with --no-daemon (including resume or fork and its arguments).
 -- 
 2.47.3
 

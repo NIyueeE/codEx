@@ -68,21 +68,21 @@ file changes a turn made, without needing git.
 **Usage**: type `/rewind`, then choose a scope:
 
 1. **Files and conversation** - pick a past message in the transcript; the chat
-   forks before that message (a new thread with the conversation truncated
-   there, prompt restored into the composer) and the workspace files are
+   is rewound to just before that message (the conversation is truncated there
+   in place, prompt restored into the composer) and the workspace files are
    restored to the snapshot taken right before that message. A confirmation
    shows how many files would be restored and deleted before anything is
    applied; if no matching snapshot exists, the conversation still rewinds
    without touching files.
-2. **Conversation only** - pick a past message in the transcript and fork the
-   chat before it; files are left untouched.
+2. **Conversation only** - pick a past message in the transcript and rewind the
+   chat to just before it; files are left untouched.
 3. **Files only** - pick a numbered snapshot; a confirmation shows how many
    files would be restored and deleted before the workspace is touched.
 
 Both conversation scopes reuse the transcript picker (the same full-history
 view the old double-Esc backtrack used): the newest user message starts
-highlighted, **Esc** or **Left** steps to older messages, **Right** steps
-newer, and **Enter** confirms the rewind.
+highlighted, **Left** steps to older messages, **Right** steps newer,
+**Enter** confirms the rewind, and **Esc** cancels it.
 
 **How snapshots work** (pure files, no git involved):
 
@@ -186,6 +186,9 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
   it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
   previous message" backtrack was removed from the main UI; `/rewind` now
   reuses its transcript picker for message selection.
+- The same rule holds in the fullscreen transcript (`tui.fullscreen_transcript`,
+  on by default): Esc never arms backlog browsing there either - with no reply
+  running it only returns a paused viewport to the latest entry.
 
 ### `codex update`: pure-Rust self-update
 
@@ -206,6 +209,11 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
   waits for codEx to exit, swaps the binaries, and relaunches codEx.
 - Non-standalone installs (npm/brew/... ) get a clear message pointing at the
   fork releases for manual download.
+- The background daemon never installs from a remote script either: its updater
+  loop only supervises the managed install and re-executes when an external
+  update replaced the binary, and `codex app-server daemon update` requires
+  `--from-cli`, which copies and pins **this CLI's own package** instead of
+  fetching upstream's installer.
 
 ### No update chatter, no announcements
 

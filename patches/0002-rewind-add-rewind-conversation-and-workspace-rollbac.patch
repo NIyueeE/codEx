@@ -1,6 +1,6 @@
-From c24561c7d2cc157a1de91df6959661dd8daf3670 Mon Sep 17 00:00:00 2001
-From: Won Park <won@openai.com>
-Date: Fri, 14 Aug 2026 01:13:00 +0800
+From 11c1aa879c0ae483d9f036a54d1112b299925411 Mon Sep 17 00:00:00 2001
+From: ref <ref@localhost>
+Date: Fri, 2 Oct 2026 18:51:42 +0000
 Subject: rewind: add /rewind conversation and workspace rollback
 
 ---
@@ -10,29 +10,29 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/core/src/config/mod.rs               |   29 +-
  codex-rs/thread-manager-sample/src/main.rs    |    3 +
  codex-rs/tui/Cargo.toml                       |    3 +-
- codex-rs/tui/src/app/event_dispatch.rs        |  149 +-
- codex-rs/tui/src/app/history_ui.rs            |  123 +-
- codex-rs/tui/src/app/history_ui_tests.rs      |   29 -
+ codex-rs/tui/src/app/event_dispatch.rs        |   41 +-
+ codex-rs/tui/src/app/history_ui.rs            |  119 +-
+ codex-rs/tui/src/app/history_ui_tests.rs      |   34 +-
+ .../tui/src/app/owned_transcript_tests.rs     |   60 +-
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
  ...ts__desktop_thread_open_error_history.snap |    5 -
  ..._tests__desktop_thread_opened_history.snap |    5 -
- codex-rs/tui/src/app/tests.rs                 |  631 +++++++-
+ codex-rs/tui/src/app/tests.rs                 |  630 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
- codex-rs/tui/src/app_backtrack.rs             |  174 ++-
- codex-rs/tui/src/app_event.rs                 |   46 +-
- codex-rs/tui/src/chatwidget.rs                |   21 +-
+ codex-rs/tui/src/app_backtrack.rs             |  137 +-
+ codex-rs/tui/src/app_event.rs                 |   52 +-
+ codex-rs/tui/src/chatwidget.rs                |   23 +-
  .../tui/src/chatwidget/input_submission.rs    |   61 +
  codex-rs/tui/src/chatwidget/slash_dispatch.rs |   13 +-
- ...hatwidget__tests__rewind_scope_picker.snap |   14 +
+ ...hatwidget__tests__rewind_scope_picker.snap |   15 +
  .../tui/src/chatwidget/tests/app_server.rs    |    3 +
- .../chatwidget/tests/composer_submission.rs   |   35 +-
+ .../chatwidget/tests/composer_submission.rs   |   49 +-
  .../src/chatwidget/tests/slash_commands.rs    |   34 +-
- codex-rs/tui/src/rewind/actions.rs            |  386 +++++
+ codex-rs/tui/src/rewind/actions.rs            |  392 +++++
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 27 files changed, 4009 insertions(+), 409 deletions(-)
- delete mode 100644 codex-rs/tui/src/app/history_ui_tests.rs
+ 28 files changed, 4040 insertions(+), 322 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
@@ -41,10 +41,10 @@ Subject: rewind: add /rewind conversation and workspace rollback
  create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 7bf9814..11e91c0 100644
+index 9915de6..9ff3073 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
-@@ -494,10 +494,25 @@ pub struct ConfigToml {
+@@ -518,10 +518,25 @@ pub struct ConfigToml {
      pub project_root_markers: Option<Vec<String>>,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -73,10 +73,10 @@ index 7bf9814..11e91c0 100644
      pub disable_paste_burst: Option<bool>,
  
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 3507239..e9d66ec 100644
+index ac6171c..33f6a8d 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -6075,7 +6075,7 @@
+@@ -6654,7 +6654,7 @@
        "type": "string"
      },
      "check_for_update_on_startup": {
@@ -85,7 +85,7 @@ index 3507239..e9d66ec 100644
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -6974,6 +6974,21 @@
+@@ -7613,6 +7613,21 @@
        "description": "Review model override used by the `/review` feature.",
        "type": "string"
      },
@@ -108,10 +108,10 @@ index 3507239..e9d66ec 100644
        "allOf": [
          {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index a2be15e..44a7600 100644
+index b2a2dc4..8806014 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
-@@ -627,6 +627,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
+@@ -631,6 +631,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
      Ok(())
  }
  
@@ -154,10 +154,10 @@ index a2be15e..44a7600 100644
  async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
      let codex_home = tempdir()?;
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index ffbda1e..983e778 100644
+index 60c6f65..1316c7c 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
-@@ -1086,10 +1086,24 @@ pub struct Config {
+@@ -1127,10 +1127,24 @@ pub struct Config {
      pub notices: Notice,
  
      /// When `true`, checks for Codex updates on startup and surfaces update prompts.
@@ -184,7 +184,7 @@ index ffbda1e..983e778 100644
      /// When true, disables burst-paste detection for typed input entirely.
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
-@@ -3978,7 +3992,13 @@ impl Config {
+@@ -4070,7 +4084,13 @@ impl Config {
  
          let review_model = override_review_model.or(cfg.review_model);
  
@@ -199,7 +199,7 @@ index ffbda1e..983e778 100644
          let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
  
          let log_dir = cfg
-@@ -4363,6 +4383,9 @@ impl Config {
+@@ -4472,6 +4492,9 @@ impl Config {
              active_project,
              notices,
              check_for_update_on_startup,
@@ -210,10 +210,10 @@ index ffbda1e..983e778 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index 47ab3e0..55ff4cf 100644
+index b137e6b..777dfa8 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
-@@ -318,6 +318,9 @@ fn new_config(model: Option<String>, arg0_paths: Arg0DispatchPaths) -> anyhow::R
+@@ -384,6 +384,9 @@ async fn new_config(
          active_project: ProjectConfig { trust_level: None },
          notices: Notice::default(),
          check_for_update_on_startup: false,
@@ -224,10 +224,10 @@ index 47ab3e0..55ff4cf 100644
          analytics_enabled: Some(false),
          feedback_enabled: false,
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index f72429a..0c26087 100644
+index 9d61157..a54613f 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
-@@ -82,6 +82,7 @@ diffy = { workspace = true }
+@@ -85,6 +85,7 @@ diffy = { workspace = true }
  dirs = { workspace = true }
  dunce = { workspace = true }
  image = { workspace = true, features = ["jpeg", "png", "gif", "webp"] }
@@ -235,7 +235,7 @@ index f72429a..0c26087 100644
  itertools = { workspace = true }
  lazy_static = { workspace = true }
  pathdiff = { workspace = true }
-@@ -128,6 +129,7 @@ url = { workspace = true }
+@@ -133,6 +134,7 @@ url = { workspace = true }
  urlencoding = { workspace = true }
  webbrowser = { workspace = true }
  uuid = { workspace = true }
@@ -243,7 +243,7 @@ index f72429a..0c26087 100644
  
  codex-windows-sandbox = { workspace = true }
  tokio-util = { workspace = true, features = ["time"] }
-@@ -162,7 +164,6 @@ codex-utils-cargo-bin = { workspace = true }
+@@ -179,7 +181,6 @@ codex-utils-cargo-bin = { workspace = true }
  assert_matches = { workspace = true }
  chrono = { workspace = true, features = ["serde"] }
  futures = { workspace = true }
@@ -252,10 +252,10 @@ index f72429a..0c26087 100644
  pretty_assertions = { workspace = true }
  rand = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index bcd076f..1bdfdb1 100644
+index da28bf2..1364087 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -326,6 +326,33 @@ impl App {
+@@ -425,6 +425,37 @@ impl App {
              AppEvent::OpenResumePicker => {
                  self.pending_open_resume_picker = true;
              }
@@ -286,157 +286,35 @@ index bcd076f..1bdfdb1 100644
 +            AppEvent::RewindRestoreSnapshot { thread_id, index } => {
 +                self.rewind_restore_snapshot(&thread_id, index);
 +            }
++            AppEvent::RewindRestoreFiles(request) => {
++                self.rewind_restore_files(request.thread_id, request.index, request.prompt);
++                tui.frame_requester().schedule_frame();
++            }
              AppEvent::OpenExternalAgentConfigMigration => {
-                 match crate::external_agent_config_migration::flow::handle_external_agent_config_migration_prompt(
-                     tui,
-@@ -498,6 +525,7 @@ impl App {
+                 let cwd = if self.chat_widget.thread_id().is_some()
+                     || !app_server.uses_remote_workspace()
+@@ -619,6 +650,7 @@ impl App {
                  thread_id,
-                 nth_user_message,
+                 selected_cell,
                  mut prompt,
 +                restore_files,
              } => {
                  if self.chat_widget.thread_id() != Some(thread_id) {
                      return Ok(AppRunControl::Continue);
-@@ -519,59 +547,70 @@ impl App {
-                     .await;
-                 let config = self.fresh_session_config();
-                 let selected_profile = self.confirmed_server_profile(thread_id);
--                let turns = match self.thread_event_channels.get(&thread_id) {
--                    Some(channel) => {
--                        let store = channel.store.lock().await;
--                        let mut turns = store.turns.clone();
--                        // Snapshot turns contain loaded history; newer live turns remain in
--                        // the replay buffer and must also be visible to prompt-edit lookups.
--                        for event in &store.buffer {
--                            let ThreadBufferedEvent::Notification(notification) = event else {
--                                continue;
--                            };
--                            match notification.as_ref() {
--                                ServerNotification::TurnStarted(notification)
--                                    if !turns
--                                        .iter()
--                                        .any(|turn| turn.id == notification.turn.id) =>
--                                {
--                                    turns.push(notification.turn.clone());
--                                }
--                                ServerNotification::ItemCompleted(notification) => {
--                                    if matches!(
--                                        notification.item,
--                                        ThreadItem::UserMessage { .. }
--                                            | ThreadItem::EnteredReviewMode { .. }
--                                            | ThreadItem::ExitedReviewMode { .. }
--                                    ) && let Some(turn) = turns
--                                        .iter_mut()
--                                        .find(|turn| turn.id == notification.turn_id)
--                                        && !turn
--                                            .items
-+// The channel store's turns are a snapshot taken when the thread was
-+// attached; prefer the app server's canonical persisted turns so messages
-+// submitted after attach (e.g. the newest message) can be rewound. Fall
-+// back to the channel store (enriched with buffered live-turn events) when
-+// a fresh read is unavailable (e.g. paginated threads without a turns view).
-+                let turns = match app_server
-+                    .thread_read(thread_id, /*include_turns*/ true)
-+                    .await
-+                {
-+                    Ok(thread) if !thread.turns.is_empty() => Some(thread.turns),
-+                    _ => match self.thread_event_channels.get(&thread_id) {
-+                        Some(channel) => {
-+                            let store = channel.store.lock().await;
-+                            let mut turns = store.turns.clone();
-+                            // Snapshot turns contain loaded history; newer live turns remain in
-+                            // the replay buffer and must also be visible to prompt-edit lookups.
-+                            for event in &store.buffer {
-+                                let ThreadBufferedEvent::Notification(notification) = event else {
-+                                    continue;
-+                                };
-+                                match notification.as_ref() {
-+                                    ServerNotification::TurnStarted(notification)
-+                                        if !turns
-                                             .iter()
--                                            .any(|item| item.id() == notification.item.id())
-+                                            .any(|turn| turn.id == notification.turn.id) =>
-                                     {
--                                        turn.items.push(notification.item.clone());
-+                                        turns.push(notification.turn.clone());
-                                     }
--                                }
--                                ServerNotification::TurnCompleted(notification) => {
--                                    if let Some(turn) = turns
--                                        .iter_mut()
--                                        .find(|turn| turn.id == notification.turn.id)
--                                    {
--                                        turn.status = notification.turn.status.clone();
--                                        turn.error = notification.turn.error.clone();
--                                        turn.started_at = notification.turn.started_at;
--                                        turn.completed_at = notification.turn.completed_at;
--                                        turn.duration_ms = notification.turn.duration_ms;
-+                                    ServerNotification::ItemCompleted(notification) => {
-+                                        if matches!(
-+                                            notification.item,
-+                                            ThreadItem::UserMessage { .. }
-+                                                | ThreadItem::EnteredReviewMode { .. }
-+                                                | ThreadItem::ExitedReviewMode { .. }
-+                                        ) && let Some(turn) = turns
-+                                            .iter_mut()
-+                                            .find(|turn| turn.id == notification.turn_id)
-+                                            && !turn
-+                                                .items
-+                                                .iter()
-+                                                .any(|item| item.id() == notification.item.id())
-+                                        {
-+                                            turn.items.push(notification.item.clone());
-+                                        }
-                                     }
-+                                    ServerNotification::TurnCompleted(notification) => {
-+                                        if let Some(turn) = turns
-+                                            .iter_mut()
-+                                            .find(|turn| turn.id == notification.turn.id)
-+                                        {
-+                                            turn.status = notification.turn.status.clone();
-+                                            turn.error = notification.turn.error.clone();
-+                                            turn.started_at = notification.turn.started_at;
-+                                            turn.completed_at = notification.turn.completed_at;
-+                                            turn.duration_ms = notification.turn.duration_ms;
-+                                        }
-+                                    }
-+                                    _ => {}
-                                 }
--                                _ => {}
-                             }
-+                            Some(turns)
-                         }
--                        Some(turns)
--                    }
--                    None => None,
-+                        None => None,
-+                    },
-                 };
-                 let started = match turns {
-                     Some(turns) => match crate::app_backtrack::backtrack_fork_before_turn_id(
-@@ -623,7 +662,20 @@ impl App {
-                             )
-                             .await
-                         {
--                            Ok(()) => self.chat_widget.restore_user_message_to_composer(prompt),
-+                            Ok(()) => {
-+                                self.chat_widget.restore_user_message_to_composer(prompt);
-+                                // Files are restored only after the fork and
-+                                // thread attach both succeed, so a failed
-+                                // conversation rewind never rolls back the
-+                                // workspace on its own.
-+                                if let Some(request) = restore_files {
-+                                    self.rewind_restore_files(
-+                                        request.thread_id,
-+                                        request.index,
-+                                        request.prompt,
-+                                    );
-+                                }
-+                            }
-                             Err(err) => {
-                                 self.restore_backtrack_prompt_after_branch_error(prompt, err);
-                             }
-@@ -1019,9 +1071,6 @@ impl App {
+@@ -785,6 +817,12 @@ impl App {
+                 self.app_event_tx.send(AppEvent::FinishPromptRevert {
+                     thread_id, nth_user_message,
+                 });
++                if let Some(request) = restore_files {
++                    // The workspace is rolled back only after the conversation revert was
++                    // confirmed, so a failed rewind never restores files on its own. The
++                    // restore runs as its own event, after the transcript trim above.
++                    self.app_event_tx.send(AppEvent::RewindRestoreFiles(request));
++                }
+             }
+             AppEvent::FinishPromptRevert { thread_id, nth_user_message } => {
+                 self.pending_thread_switch_resets -= 1;
+@@ -1246,9 +1284,6 @@ impl App {
              AppEvent::OpenUrlInBrowser { url } => {
                  self.open_url_in_browser(url);
              }
@@ -447,7 +325,7 @@ index bcd076f..1bdfdb1 100644
                  self.handle_pet_selected(tui, pet_id);
              }
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index 9d63c68..ee2b659 100644
+index 52e7e02..c8c712a 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -1,4 +1,4 @@
@@ -455,8 +333,8 @@ index 9d63c68..ee2b659 100644
 +//! Terminal history and clear-screen UI helpers for the TUI app.
  //!
  //! This module owns rendering the fresh session header, clearing inline or alternate-screen UI
- //! state, and resetting transcript-related app state after `/clear` or Ctrl-L.
-@@ -7,8 +7,6 @@ use super::*;
+ //! state, and resetting transcript-related app state after `/clear` or Ctrl-L. Owned-screen sessions
+@@ -8,8 +8,6 @@ use super::*;
  use crate::terminal_hyperlinks::HyperlinkLine;
  use std::sync::Weak;
  
@@ -465,7 +343,7 @@ index 9d63c68..ee2b659 100644
  pub(super) struct RenderedHistoryTail {
      pub(super) cell: Weak<dyn HistoryCell>,
      pub(super) lines: Vec<HyperlinkLine>,
-@@ -230,20 +228,6 @@ impl App {
+@@ -288,20 +286,6 @@ impl App {
              .add_info_message(format!("Opened {url} in your browser."), /*hint*/ None);
      }
  
@@ -486,11 +364,10 @@ index 9d63c68..ee2b659 100644
      pub(super) fn clear_ui_header_lines_with_version(
          &self,
          width: u16,
-@@ -333,108 +317,3 @@ impl App {
-         self.skill_load_warnings.clear();
+@@ -422,107 +406,6 @@ impl App {
      }
  }
--
+ 
 -fn desktop_thread_open_error_message(err: &str) -> String {
 -    format!(
 -        "Failed to open this session in the Desktop app: {err}. Install or launch the Desktop app and try again."
@@ -592,19 +469,28 @@ index 9d63c68..ee2b659 100644
 -    Err("The Desktop app is only available on macOS and Windows".to_string())
 -}
 -
--#[cfg(test)]
--#[path = "history_ui_tests.rs"]
--mod tests;
+ #[cfg(test)]
+ #[path = "history_ui_tests.rs"]
+ mod tests;
 diff --git a/codex-rs/tui/src/app/history_ui_tests.rs b/codex-rs/tui/src/app/history_ui_tests.rs
-deleted file mode 100644
-index 750c665..0000000
+index 252eb04..863c938 100644
 --- a/codex-rs/tui/src/app/history_ui_tests.rs
-+++ /dev/null
-@@ -1,29 +0,0 @@
--use super::*;
++++ b/codex-rs/tui/src/app/history_ui_tests.rs
+@@ -1,38 +1,14 @@
+-//! Desktop handoff output and clear-screen history reset behavior.
++//! Clear-screen history reset behavior.
++//!
++//! The Desktop handoff snapshots upstream ships in this file belong to the
++//! removed `codex app` surface, so the fork drops those two tests and keeps the
++//! clear-screen coverage.
+ 
+ use super::*;
+ use crate::app::tests::make_test_app_with_channels;
 -use crate::history_cell;
 -use crate::history_cell::HistoryCell;
--
+ use crate::history_cell::PlainHistoryCell;
+ use pretty_assertions::assert_eq;
+ 
 -#[test]
 -fn desktop_thread_opened_history_snapshot() {
 -    let cell = history_cell::new_info_event(
@@ -630,14 +516,135 @@ index 750c665..0000000
 -        .collect::<Vec<_>>()
 -        .join("\n")
 -}
+-
+ #[tokio::test]
+ async fn owned_clear_resets_navigation_and_retains_one_fresh_header() -> Result<()> {
+     let (mut app, _rx, _op_rx) = make_test_app_with_channels().await;
+diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
+index 46c0da6..67de6bb 100644
+--- a/codex-rs/tui/src/app/owned_transcript_tests.rs
++++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
+@@ -583,7 +583,7 @@ async fn owned_transcript_keeps_text_out_of_the_pet_columns() -> Result<()> {
+ 
+ #[tokio::test]
+ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Result<()> {
+-    let (mut app, mut events, _operations) = make_test_app_with_channels().await;
++    let (mut app, mut events, mut operations) = make_test_app_with_channels().await;
+     let thread_id = ThreadId::new();
+     attach_thread(&mut app, thread_id);
+     app.transcript_cells = vec![user_cell("historical prompt")];
+@@ -609,14 +609,19 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
+         }),
+         /*replay_kind*/ None,
+     );
+-    app.handle_tui_event(
+-        &mut tui,
+-        &mut app_server,
+-        TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+-    )
+-    .await?;
+-    let interrupts = std::iter::from_fn(|| events.try_recv().ok())
+-        .filter(|event| matches!(event, AppEvent::CodexOp(AppCommand::Interrupt)))
++    // codEx arms its double-press interrupt window on the first Esc and interrupts on
++    // the second; Esc still never starts backtrack browsing.
++    for _ in 0..2 {
++        app.handle_tui_event(
++            &mut tui,
++            &mut app_server,
++            TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
++        )
++        .await?;
++    }
++    // The interrupt reaches the session as an op submitted by the chat widget.
++    let interrupts = std::iter::from_fn(|| operations.try_recv().ok())
++        .filter(|op| matches!(op, AppCommand::Interrupt))
+         .count();
+     assert_eq!(
+         (
+@@ -627,6 +632,11 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
+         ),
+         (1, false, true, "draft survives interrupt".to_string()),
+     );
++    // Esc never starts backtracking, so no prompt edit is requested either.
++    assert!(
++        !std::iter::from_fn(|| events.try_recv().ok())
++            .any(|event| matches!(event, AppEvent::RevertSessionForPromptEdit { .. }))
++    );
+     tui.set_owned_screen(/*owned*/ false)?;
+     app_server.shutdown().await?;
+     Ok(())
+@@ -663,6 +673,7 @@ async fn owned_backtrack_keys_edit_the_selected_prompt_and_restore_compact_view(
+             thread_id,
+             selected_cell,
+             prompt,
++            ..
+         } => Some((
+             thread_id,
+             Arc::ptr_eq(&selected_cell, &app.transcript_cells[1]),
+@@ -812,7 +823,8 @@ async fn owned_search_and_selection_consume_input_before_composer_and_backtrack(
+     assert!(app.handle_owned_transcript_event(&mut tui, &mut app_server, &escape)?);
+     assert!(app.transcript_view.is_following());
+     assert!(!app.backtrack.overlay_preview_active);
+-    assert!(!app.handle_owned_transcript_event(&mut tui, &mut app_server, &escape)?);
++    // Esc is always consumed by the owned-screen policy, even when it has nothing to do.
++    assert!(app.handle_owned_transcript_event(&mut tui, &mut app_server, &escape)?);
+     assert!(!app.backtrack.overlay_preview_active);
+     assert_eq!(
+         app.chat_widget.composer_text_with_pending(),
+@@ -1039,12 +1051,19 @@ async fn offline_backtrack_keeps_the_preview_and_draft_without_reverting() -> Re
+         let mut tui = crate::tui::test_support::make_test_tui()?;
+         tui.set_owned_screen(owned)?;
+         app.open_transcript_overlay(&mut tui);
+-        app.handle_tui_event(
+-            &mut tui,
+-            &mut app_server,
+-            TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
+-        )
+-        .await?;
++        if owned {
++            // codEx's owned-screen Esc never arms browsing, so enter the preview through
++            // its own entry point to keep the offline assertions below meaningful.
++            app.handle_backtrack_esc_key(&mut tui);
++            app.handle_backtrack_esc_key(&mut tui);
++        } else {
++            app.handle_tui_event(
++                &mut tui,
++                &mut app_server,
++                TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
++            )
++            .await?;
++        }
+         app.chat_widget
+             .apply_external_edit("offline draft".to_string());
+         app.reconnect.offline = true;
+@@ -1232,10 +1251,19 @@ async fn double_escape_browses_prompts_without_reverting_and_explains_editing()
+     tui.set_owned_screen(/*owned*/ true)?;
+     let size = Size::new(/*width*/ 80, /*height*/ 16);
+     app.render_owned_transcript(&mut tui, size)?;
++    // codEx keeps its Esc policy in owned-screen mode: neither a fresh press nor a repeat
++    // arms browsing; the viewport only follows the latest entry.
+     for code in [KeyCode::Esc, KeyCode::Esc] {
+         app.handle_tui_event(&mut tui, &mut server, TuiEvent::Key(KeyEvent::from(code)))
+             .await?;
+     }
++    assert!(!app.backtrack.overlay_preview_active);
++    assert!(!app.backtrack.primed);
++    assert!(app.transcript_view.is_following());
++    // Prompt browsing itself is unchanged, so arm the preview to keep the selection and
++    // edit assertions below meaningful.
++    app.handle_backtrack_esc_key(&mut tui);
++    app.handle_backtrack_esc_key(&mut tui);
+     assert!(app.backtrack.overlay_preview_active);
+     assert_eq!(app.backtrack.nth_user_message, 2);
+     for key in [
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 98e03ab..a859f7e 100644
+index 5995bb7..ea61dce 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1030,6 +1030,11 @@ impl App {
-             initial_user_message,
-         );
-         self.replace_chat_widget(ChatWidget::new_with_app_event(init));
+@@ -1117,6 +1117,11 @@ impl App {
+                     .start_fresh();
+             }
+         }
 +        // The previous thread's transcript cells and terminal scrollback must
 +        // not leak into the attached thread: replay below appends new cells, so
 +        // without this the old conversation stays visible after a fork, resume,
@@ -669,10 +676,19 @@ index 8e34f8e..0000000
 ----
 -• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 1cb3cf2..322137a 100644
+index 9c1af27..828e477 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -7401,13 +7401,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -5973,7 +5973,7 @@ async fn ctrl_l_clears_owned_history_and_preserves_the_draft() -> Result<()> {
+             .is::<history_cell::SessionHeaderHistoryCell>()
+     );
+     let header = lines_to_single_string(&app.transcript_cells[0].display_lines(/*width*/ 80));
+-    assert!(header.contains("OpenAI Codex"));
++    assert!(header.contains("codEx"));
+     let raw_header = lines_to_single_string(&app.transcript_cells[0].raw_lines());
+     assert!(raw_header.contains("gpt-test"));
+     assert!(!header.contains("old transcript row"));
+@@ -7636,13 +7636,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              rollout_path: Some(PathBuf::new()),
          });
  
@@ -689,85 +705,118 @@ index 1cb3cf2..322137a 100644
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -7434,6 +7430,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -7669,6 +7665,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              thread_id,
-             nth_user_message,
+             selected_cell,
              prompt,
 +            restore_files: None,
          } if thread_id == expected.thread_id
-             && nth_user_message == expected.nth_user_message
+             && Arc::ptr_eq(&selected_cell, &app.transcript_cells[nth_user_position(&app.transcript_cells, expected.nth_user_message).unwrap()])
              && prompt == expected.prompt
-@@ -7471,6 +7468,570 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -7706,6 +7703,567 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
-+#[tokio::test]
-+async fn rewind_files_and_conversation_forks_thread_before_selected_message() -> Result<()> {
-+    // Build a rollout with three completed turns so the app server has real
-+    // persisted turns to fork from.
-+    let codex_home = tempfile::tempdir()?;
-+    let workspace = tempfile::tempdir()?;
-+    let filename_ts = "2025-01-05T12-00-00";
-+    let meta_rfc3339 = "2025-01-05T12:00:00Z";
-+    let thread_id = app_test_support::create_fake_rollout(
-+        codex_home.path(),
++/// Materializes a paginated rollout with one completed user turn per prompt.
++///
++/// `thread/revert` (which backs the conversation rewind) only supports
++/// paginated threads, so the rewind tests build this fixture instead of a plain
++/// JSONL rollout.
++async fn create_paginated_rollout_with_prompts(
++    codex_home: &std::path::Path,
++    filename_ts: &str,
++    prompts: &[(&str, &str)],
++) -> Result<String> {
++    use codex_protocol::items::TurnItem;
++    use codex_protocol::items::UserMessageItem;
++    use codex_protocol::protocol::ItemCompletedEvent;
++    use codex_protocol::user_input::UserInput;
++
++    // The rollout names a provider, so the fixture home must define it before
++    // the thread is resumed.
++    std::fs::write(
++        codex_home.join("config.toml"),
++        "model_provider = \"test-provider\"\n\
++         [model_providers.test-provider]\n\
++         name = \"Test provider\"\n\
++         base_url = \"http://example.test/v1\"\n\
++         wire_api = \"responses\"\n\
++         requires_openai_auth = false\n",
++    )?;
++    let thread_id = app_test_support::create_fake_paginated_rollout(
++        codex_home,
 +        filename_ts,
-+        meta_rfc3339,
-+        "first question",
-+        /*model_provider*/ None,
++        "2025-01-05T12:00:00Z",
++        "unused preview",
++        Some("test-provider"),
 +        /*git_info*/ None,
 +    )
 +    .map_err(|error| color_eyre::eyre::eyre!("failed to create fake rollout: {error}"))?;
-+    let rollout_path = app_test_support::rollout_path(codex_home.path(), filename_ts, &thread_id);
-+    let contents = std::fs::read_to_string(&rollout_path)?;
-+    // Keep only the session_meta line; rebuild the conversation with explicit
-+    // turn lifecycle events (task_started / item_completed / task_complete).
-+    let session_meta_line = contents
++    let rollout_path = app_test_support::rollout_path(codex_home, filename_ts, &thread_id);
++    let session_meta = std::fs::read_to_string(&rollout_path)?
 +        .lines()
 +        .next()
-+        .expect("session meta line")
++        .expect("fake rollout should have session metadata")
 +        .to_string();
-+    let mut lines = vec![session_meta_line];
-+    let event_line = |payload: serde_json::Value| {
-+        serde_json::json!({
-+            "timestamp": meta_rfc3339,
-+            "type": "event_msg",
-+            "payload": payload,
-+        })
-+        .to_string()
-+    };
-+    for (turn_id, prompt) in [
-+        ("turn-1", "first question"),
-+        ("turn-2", "second question"),
-+        ("turn-3", "third question"),
-+    ] {
-+        lines.push(event_line(serde_json::json!({
-+            "type": "task_started",
-+            "turn_id": turn_id,
-+            "model_context_window": null,
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "user_message",
-+            "message": prompt,
-+            "kind": "plain",
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "agent_message",
-+            "message": "ok",
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "task_complete",
-+            "turn_id": turn_id,
-+            "last_agent_message": null,
-+            "error": null,
-+            "started_at": 10,
-+            "completed_at": 20,
-+            "duration_ms": 10_000,
-+            "time_to_first_token_ms": null,
-+        })));
++    std::fs::write(&rollout_path, format!("{session_meta}\n"))?;
++    let thread_id_parsed = ThreadId::from_string(&thread_id)?;
++    for (turn_id, prompt) in prompts {
++        for item in [
++            RolloutItem::EventMsg(EventMsg::TurnStarted(TurnStartedEvent {
++                turn_id: turn_id.to_string(),
++                root_turn_id: None,
++                trace_id: None,
++                started_at: None,
++                model_context_window: None,
++                collaboration_mode_kind: ModeKind::default(),
++            })),
++            RolloutItem::EventMsg(EventMsg::ItemCompleted(ItemCompletedEvent {
++                thread_id: thread_id_parsed,
++                turn_id: turn_id.to_string(),
++                item: TurnItem::UserMessage(UserMessageItem {
++                    id: format!("user-{turn_id}"),
++                    client_id: None,
++                    content: vec![UserInput::Text {
++                        text: prompt.to_string(),
++                        text_elements: Vec::new(),
++                    }],
++                }),
++                started_at_ms: None,
++                completed_at_ms: 0,
++            })),
++            RolloutItem::EventMsg(EventMsg::TurnComplete(TurnCompleteEvent {
++                turn_id: turn_id.to_string(),
++                last_agent_message: None,
++                error: None,
++                started_at: None,
++                completed_at: None,
++                duration_ms: None,
++                time_to_first_token_ms: None,
++            })),
++        ] {
++            codex_rollout::append_rollout_item_to_path(&rollout_path, &item).await?;
++        }
 +    }
-+    std::fs::write(&rollout_path, lines.join("\n") + "\n")?;
++    Ok(thread_id)
++}
 +
++#[tokio::test]
++async fn rewind_files_and_conversation_reverts_thread_before_selected_message() -> Result<()> {
++    // Build a paginated rollout with three completed turns so the app server
++    // has real persisted turns to revert from.
++    let codex_home = tempfile::tempdir()?;
++    let workspace = tempfile::tempdir()?;
++    let filename_ts = "2025-01-05T12-00-00";
++    let thread_id = create_paginated_rollout_with_prompts(
++        codex_home.path(),
++        filename_ts,
++        &[
++            ("turn-1", "first question"),
++            ("turn-2", "second question"),
++            ("turn-3", "third question"),
++        ],
++    )
++    .await?;
 +    let config = ConfigBuilder::default()
 +        .codex_home(codex_home.path().to_path_buf())
 +        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
@@ -789,7 +838,7 @@ index 1cb3cf2..322137a 100644
 +            &crate::local_settings::LocalSettings::from(&config),
 +            config.clone(),
 +            ThreadId::from_string(thread_id.as_str())?,
-+            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
++            crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig,
 +        )
 +        .await
 +        .expect("resume rollout thread");
@@ -845,16 +894,18 @@ index 1cb3cf2..322137a 100644
 +        crate::rewind::DEFAULT_MAX_SNAPSHOTS,
 +    )?;
 +
-+    // Exactly what the "Files and conversation" picker sends: the fork event
++    // Exactly what the "Files and conversation" picker sends: the revert event
 +    // carries the file-restore request (snapshot `nth + 1`, the snapshot taken
 +    // right before the selected message), and the restore only runs after the
-+    // fork succeeds.
++    // conversation revert succeeds.
 +    app.handle_event(
 +        &mut tui,
 +        &mut app_server,
-+        AppEvent::ForkSessionForPromptEdit {
++        AppEvent::RevertSessionForPromptEdit {
 +            thread_id,
-+            nth_user_message: nth,
++            selected_cell: app.transcript_cells
++                [crate::app_backtrack::nth_user_position(&app.transcript_cells, nth).unwrap()]
++            .clone(),
 +            prompt: selection.prompt.clone(),
 +            restore_files: Some(crate::app_event::RewindRestoreRequest {
 +                thread_id: thread_id.to_string(),
@@ -864,17 +915,17 @@ index 1cb3cf2..322137a 100644
 +        },
 +    )
 +    .await?;
-+    // The fork handler queues the forked thread's replay as app events; run
-+    // them through the event loop like the real main loop would.
++    // The handler queues the reverted thread's replay and the deferred file
++    // restore as app events; run them like the real main loop would.
 +    while let Ok(event) = app_event_rx.try_recv() {
 +        app.handle_event(&mut tui, &mut app_server, event).await?;
 +    }
 +
-+    let forked_thread_id = app
-+        .chat_widget
-+        .thread_id()
-+        .expect("forked thread should be attached");
-+    assert_ne!(forked_thread_id, thread_id);
++    assert_eq!(
++        app.chat_widget.thread_id(),
++        Some(thread_id),
++        "the conversation is reverted in place"
++    );
 +    let transcript = app
 +        .transcript_cells
 +        .iter()
@@ -883,15 +934,15 @@ index 1cb3cf2..322137a 100644
 +        .join("\n");
 +    assert!(
 +        transcript.contains("first question"),
-+        "forked thread should keep the first turn:\n{transcript}"
++        "reverted thread should keep the first turn:\n{transcript}"
 +    );
 +    assert!(
 +        transcript.contains("second question"),
-+        "forked thread should keep the second turn:\n{transcript}"
++        "reverted thread should keep the second turn:\n{transcript}"
 +    );
 +    assert!(
 +        !transcript.contains("third question"),
-+        "forked thread should drop the selected turn:\n{transcript}"
++        "reverted thread should drop the selected turn:\n{transcript}"
 +    );
 +    assert_eq!(
 +        app.chat_widget.composer_text_with_pending(),
@@ -947,6 +998,7 @@ index 1cb3cf2..322137a 100644
 +            personality: None,
 +            message_history: None,
 +            network_proxy: None,
++            windows_sandbox_host: crate::app::WindowsSandboxHost::Local,
 +            rollout_path: Some(PathBuf::new()),
 +        });
 +    let user_cell = |text: &str| -> Arc<dyn HistoryCell> {
@@ -978,12 +1030,12 @@ index 1cb3cf2..322137a 100644
 +        }
 +    );
 +
-+    // Esc steps to the older message; Enter confirms the rewind fork without
-+    // touching files.
++    // Left steps to the older message; Enter confirms the conversation rewind
++    // without touching files (Esc would cancel browsing instead).
 +    app.handle_backtrack_overlay_event(
 +        &mut tui,
 +        &mut app_server,
-+        TuiEvent::Key(KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE)),
++        TuiEvent::Key(KeyEvent::new(KeyCode::Left, KeyModifiers::NONE)),
 +    )
 +    .await?;
 +    assert_eq!(app.backtrack.nth_user_message, 0);
@@ -1004,17 +1056,22 @@ index 1cb3cf2..322137a 100644
 +        "state resets after confirm"
 +    );
 +    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    let selected_cell = app.transcript_cells
++        [crate::app_backtrack::nth_user_position(&app.transcript_cells, /*nth*/ 0).unwrap()]
++    .clone();
 +    assert!(
 +        events.iter().any(|event| matches!(
 +            event,
-+            AppEvent::ForkSessionForPromptEdit {
++            AppEvent::RevertSessionForPromptEdit {
 +                thread_id: event_thread_id,
-+                nth_user_message: 0,
++                selected_cell: event_cell,
 +                prompt,
 +                restore_files: None,
-+            } if *event_thread_id == thread_id && prompt.text == "first question"
++            } if *event_thread_id == thread_id
++                && Arc::ptr_eq(event_cell, &selected_cell)
++                && prompt.text == "first question"
 +        )),
-+        "should fork before the selected message: {events:?}"
++        "should revert before the selected message: {events:?}"
 +    );
 +
 +    // "Files and conversation": confirming the newest message also restores
@@ -1062,27 +1119,31 @@ index 1cb3cf2..322137a 100644
 +    assert!(
 +        !events
 +            .iter()
-+            .any(|event| matches!(event, AppEvent::ForkSessionForPromptEdit { .. })),
-+        "the fork should wait for the confirmation preview: {events:?}"
++            .any(|event| matches!(event, AppEvent::RevertSessionForPromptEdit { .. })),
++        "the revert should wait for the confirmation preview: {events:?}"
 +    );
-+    // Confirm the preview; the fork event then carries the restore request.
++    // Confirm the preview; the revert event then carries the restore request.
 +    app.chat_widget
 +        .handle_key_event(KeyEvent::from(KeyCode::Enter));
 +    let events: Vec<AppEvent> = std::iter::from_fn(|| app_event_rx.try_recv().ok()).collect();
++    let selected_cell = app.transcript_cells
++        [crate::app_backtrack::nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()]
++    .clone();
 +    assert!(
 +        events.iter().any(|event| matches!(
 +            event,
-+            AppEvent::ForkSessionForPromptEdit {
++            AppEvent::RevertSessionForPromptEdit {
 +                thread_id: event_thread_id,
-+                nth_user_message: 1,
++                selected_cell: event_cell,
 +                prompt,
 +                restore_files: Some(request),
 +            } if *event_thread_id == thread_id
++                && Arc::ptr_eq(event_cell, &selected_cell)
 +                && prompt.text == "second question"
 +                && request.index == 2
 +                && request.prompt == "second question"
 +        )),
-+        "should fork before the newest message after confirmation: {events:?}"
++        "should revert before the newest message after confirmation: {events:?}"
 +    );
 +
 +    app_server.shutdown().await?;
@@ -1090,7 +1151,7 @@ index 1cb3cf2..322137a 100644
 +}
 +
 +#[tokio::test]
-+async fn rewind_forks_newest_message_completed_after_attach() -> Result<()> {
++async fn rewind_reverts_newest_message_completed_after_attach() -> Result<()> {
 +    // A turn completed after the TUI attached renders in the transcript but is
 +    // never appended to the thread channel's turns snapshot. /rewind must still
 +    // resolve the newest message against the app server's canonical turns
@@ -1099,66 +1160,16 @@ index 1cb3cf2..322137a 100644
 +    let codex_home = tempfile::tempdir()?;
 +    let workspace = tempfile::tempdir()?;
 +    let filename_ts = "2025-01-05T12-00-00";
-+    let meta_rfc3339 = "2025-01-05T12:00:00Z";
-+    let thread_id = app_test_support::create_fake_rollout(
++    let thread_id = create_paginated_rollout_with_prompts(
 +        codex_home.path(),
 +        filename_ts,
-+        meta_rfc3339,
-+        "first question",
-+        /*model_provider*/ None,
-+        /*git_info*/ None,
++        &[
++            ("turn-1", "first question"),
++            ("turn-2", "second question"),
++            ("turn-3", "third question"),
++        ],
 +    )
-+    .map_err(|error| color_eyre::eyre::eyre!("failed to create fake rollout: {error}"))?;
-+    let rollout_path = app_test_support::rollout_path(codex_home.path(), filename_ts, &thread_id);
-+    let contents = std::fs::read_to_string(&rollout_path)?;
-+    // Keep only the session_meta line; rebuild the conversation with explicit
-+    // turn lifecycle events (task_started / item_completed / task_complete).
-+    let session_meta_line = contents
-+        .lines()
-+        .next()
-+        .expect("session meta line")
-+        .to_string();
-+    let mut lines = vec![session_meta_line];
-+    let event_line = |payload: serde_json::Value| {
-+        serde_json::json!({
-+            "timestamp": meta_rfc3339,
-+            "type": "event_msg",
-+            "payload": payload,
-+        })
-+        .to_string()
-+    };
-+    for (turn_id, prompt) in [
-+        ("turn-1", "first question"),
-+        ("turn-2", "second question"),
-+        ("turn-3", "third question"),
-+    ] {
-+        lines.push(event_line(serde_json::json!({
-+            "type": "task_started",
-+            "turn_id": turn_id,
-+            "model_context_window": null,
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "user_message",
-+            "message": prompt,
-+            "kind": "plain",
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "agent_message",
-+            "message": "ok",
-+        })));
-+        lines.push(event_line(serde_json::json!({
-+            "type": "task_complete",
-+            "turn_id": turn_id,
-+            "last_agent_message": null,
-+            "error": null,
-+            "started_at": 10,
-+            "completed_at": 20,
-+            "duration_ms": 10_000,
-+            "time_to_first_token_ms": null,
-+        })));
-+    }
-+    std::fs::write(&rollout_path, lines.join("\n") + "\n")?;
-+
++    .await?;
 +    let config = ConfigBuilder::default()
 +        .codex_home(codex_home.path().to_path_buf())
 +        .loader_overrides(LoaderOverrides::without_managed_config_for_tests())
@@ -1180,7 +1191,7 @@ index 1cb3cf2..322137a 100644
 +            &crate::local_settings::LocalSettings::from(&config),
 +            config.clone(),
 +            ThreadId::from_string(thread_id.as_str())?,
-+            crate::app_server_session::ResumeModelSettings::RestoreFromThread,
++            crate::app_server_session::ResumeModelSettings::OverrideFromCurrentConfig,
 +        )
 +        .await
 +        .expect("resume rollout thread");
@@ -1215,25 +1226,27 @@ index 1cb3cf2..322137a 100644
 +    app.handle_event(
 +        &mut tui,
 +        &mut app_server,
-+        AppEvent::ForkSessionForPromptEdit {
++        AppEvent::RevertSessionForPromptEdit {
 +            thread_id,
-+            nth_user_message: 2,
++            selected_cell: app.transcript_cells
++                [crate::app_backtrack::nth_user_position(&app.transcript_cells, 2).unwrap()]
++            .clone(),
 +            prompt: crate::chatwidget::UserMessage::from("third question"),
 +            restore_files: None,
 +        },
 +    )
 +    .await?;
-+    // The fork handler queues the forked thread's replay as app events; run
-+    // them through the event loop like the real main loop would.
++    // The handler queues the reverted thread's replay as app events; run them
++    // through the event loop like the real main loop would.
 +    while let Ok(event) = app_event_rx.try_recv() {
 +        app.handle_event(&mut tui, &mut app_server, event).await?;
 +    }
 +
-+    let forked_thread_id = app
-+        .chat_widget
-+        .thread_id()
-+        .expect("forked thread should be attached");
-+    assert_ne!(forked_thread_id, thread_id);
++    assert_eq!(
++        app.chat_widget.thread_id(),
++        Some(thread_id),
++        "the conversation is reverted in place"
++    );
 +    let transcript = app
 +        .transcript_cells
 +        .iter()
@@ -1241,20 +1254,20 @@ index 1cb3cf2..322137a 100644
 +        .collect::<Vec<_>>()
 +        .join("\n");
 +    assert!(
-+        !transcript.contains("Failed to branch"),
-+        "fork should succeed even when the newest turn is missing from the channel snapshot:\n{transcript}"
++        !transcript.contains("Failed to edit the selected prompt"),
++        "revert should succeed even when the newest turn is missing from the channel snapshot:\n{transcript}"
 +    );
 +    assert!(
 +        transcript.contains("first question"),
-+        "forked thread should keep the first turn:\n{transcript}"
++        "reverted thread should keep the first turn:\n{transcript}"
 +    );
 +    assert!(
 +        transcript.contains("second question"),
-+        "forked thread should keep the second turn:\n{transcript}"
++        "reverted thread should keep the second turn:\n{transcript}"
 +    );
 +    assert!(
 +        !transcript.contains("third question"),
-+        "forked thread should drop the selected turn:\n{transcript}"
++        "reverted thread should drop the selected turn:\n{transcript}"
 +    );
 +    assert_eq!(
 +        app.chat_widget.composer_text_with_pending(),
@@ -1268,31 +1281,31 @@ index 1cb3cf2..322137a 100644
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -8070,6 +8631,7 @@ async fn prompt_edit_forks_before_selected_prompt_and_preserves_source() -> Resu
-             thread_id: source_thread_id,
-             nth_user_message: 1,
-             prompt: prompt.clone(),
+@@ -8451,6 +9009,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place() -> Res
+                         [nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
+                 ),
+                 prompt: remote_prompt,
++                restore_files: None,
+             },
+         ))
+         .await?;
+@@ -8470,6 +9029,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place() -> Res
+             &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
+         ),
+         prompt: prompt.clone(),
++        restore_files: None,
+     };
+     // A queued page shifts both identical prompts before confirmation is dispatched.
+     let cursor = app_server
+@@ -8595,6 +9155,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place() -> Res
+                 &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 0).unwrap()],
+             ),
+             prompt: "retained prompt".into(),
 +            restore_files: None,
          },
      ))
      .await?;
-@@ -8187,6 +8749,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
-             thread_id: source_thread_id,
-             nth_user_message: 0,
-             prompt: crate::chatwidget::UserMessage::from("first prompt"),
-+            restore_files: None,
-         },
-     ))
-     .await?;
-@@ -8220,6 +8783,7 @@ async fn prompt_edit_before_first_prompt_starts_fresh_thread() -> Result<()> {
-             thread_id: source_thread_id,
-             nth_user_message: 0,
-             prompt: crate::chatwidget::UserMessage::from("first prompt"),
-+            restore_files: None,
-         },
-     ))
-     .await?;
-@@ -8653,7 +9217,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9012,7 +9573,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -1300,7 +1313,7 @@ index 1cb3cf2..322137a 100644
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -8665,7 +9228,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9024,7 +9584,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -1308,7 +1321,7 @@ index 1cb3cf2..322137a 100644
      })
      .await;
  }
-@@ -9318,9 +9880,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -9697,9 +10256,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -1318,7 +1331,7 @@ index 1cb3cf2..322137a 100644
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -9329,8 +9888,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -9708,8 +10264,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -1327,7 +1340,7 @@ index 1cb3cf2..322137a 100644
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -9365,15 +9922,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -9744,15 +10298,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -1348,7 +1361,7 @@ index 1cb3cf2..322137a 100644
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -9381,25 +9940,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -9760,25 +10316,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1379,7 +1392,7 @@ index 1cb3cf2..322137a 100644
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -9409,33 +9967,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -9788,33 +10343,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1416,10 +1429,10 @@ index 1cb3cf2..322137a 100644
      Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
  }
 diff --git a/codex-rs/tui/src/app/tests/turn_submission.rs b/codex-rs/tui/src/app/tests/turn_submission.rs
-index a81fdf0..514be26 100644
+index 6fd095f..48ca3ec 100644
 --- a/codex-rs/tui/src/app/tests/turn_submission.rs
 +++ b/codex-rs/tui/src/app/tests/turn_submission.rs
-@@ -142,6 +142,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
+@@ -143,6 +143,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
      let (mut app, mut app_event_rx, mut op_rx) = make_test_app_with_channels().await;
      let mut tui = crate::tui::test_support::make_test_tui()?;
      let mut app_server = Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await?;
@@ -1430,33 +1443,10 @@ index a81fdf0..514be26 100644
      app.active_thread_id = Some(thread_id);
      app.chat_widget
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index bb6189b..37f24bd 100644
+index 4e63f0c..b6b1b13 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
-@@ -1,17 +1,10 @@
- //! Backtracking and transcript overlay event routing.
- //!
--//! This file owns backtrack mode (Esc/Enter navigation in the transcript overlay) and also
--//! mediates a key rendering boundary for the transcript overlay.
--//!
--//! Overall goal: keep the main chat view and the transcript overlay in sync while allowing users
--//! to edit an earlier prompt on a source-preserving branch. Confirming a selection forks before
--//! the selected turn and restores its prompt in the new composer.
--//!
--//! Backtrack operates as a small state machine:
--//! - The first `Esc` in the main view "primes" the feature and captures a base thread id.
--//! - A subsequent `Esc` opens the transcript overlay (`Ctrl+T`) and highlights a user message when
--//!   there is a prompt to reuse.
--//! - `Enter` requests a fork before the selected prompt and reopens it for editing.
-+//! This file owns the transcript-overlay backtrack flow (Esc/Enter navigation
-+//! inside the Ctrl+T overlay) and mediates a key rendering boundary for the
-+//! overlay. `/rewind` reuses the same fork machinery
-+//! ([`backtrack_fork_before_turn_id`] and `ForkSessionForPromptEdit`) from a
-+//! searchable picker instead of the removed main-view Esc priming.
- //!
- //! The transcript overlay (`Ctrl+T`) renders committed transcript cells plus a render-only live
- //! tail derived from the current in-flight `ChatWidget.active_cell`.
-@@ -56,7 +49,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
+@@ -59,7 +59,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
  pub(crate) const SIDE_EDIT_PREVIOUS_UNAVAILABLE_MESSAGE: &str =
      "Editing previous prompts is unavailable in side conversations.";
  
@@ -1464,10 +1454,10 @@ index bb6189b..37f24bd 100644
 +/// What confirming a highlighted transcript selection should do.
 +#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 +pub(crate) enum BacktrackConfirmMode {
-+    /// Original backtrack: fork before the prompt and restore it for editing.
++    /// Original backtrack: revert before the prompt and restore it for editing.
 +    #[default]
 +    EditPrompt,
-+    /// `/rewind`: fork before the prompt, optionally restoring workspace files.
++    /// `/rewind`: revert before the prompt, optionally restoring workspace files.
 +    Rewind { restore_files: bool },
 +}
 +
@@ -1475,25 +1465,25 @@ index bb6189b..37f24bd 100644
  #[derive(Default)]
  pub(crate) struct BacktrackState {
      /// True when Esc has primed backtrack mode in the main view.
-@@ -72,6 +75,8 @@ pub(crate) struct BacktrackState {
+@@ -75,6 +85,8 @@ pub(crate) struct BacktrackState {
      pub(crate) nth_user_message: usize,
      /// True when the transcript overlay is showing a backtrack preview.
      pub(crate) overlay_preview_active: bool,
 +    /// How a confirmed selection is applied.
 +    pub(crate) confirm_mode: BacktrackConfirmMode,
+     origin: Option<browsing::BrowsingOrigin>,
  }
  
- /// A user-visible backtrack choice that can be reopened on a source-preserving branch.
-@@ -84,6 +89,31 @@ pub(crate) struct BacktrackSelection {
+@@ -88,6 +100,31 @@ pub(crate) struct BacktrackSelection {
  }
  
  impl App {
 +    /// Opens the transcript overlay for `/rewind` message selection.
 +    ///
-+    /// Reuses the original double-Esc backtrack picker: the full conversation
-+    /// history is shown with the newest user message highlighted, Esc/Left
-+    /// step to older messages, Right steps newer, and Enter confirms. Returns
-+    /// `false` when there is nothing to rewind.
++    /// Reuses the backtrack/transcript picker: the full conversation history is
++    /// shown with the newest user message highlighted, Esc/Left step to older
++    /// messages, Right steps newer, and Enter confirms. Returns `false` when
++    /// there is nothing to rewind.
 +    pub(crate) fn begin_rewind_overlay_selection(
 +        &mut self,
 +        tui: &mut tui::Tui,
@@ -1513,95 +1503,75 @@ index bb6189b..37f24bd 100644
 +        true
 +    }
 +
-     /// Route overlay events while the transcript overlay is active.
+     /// Route overlay events, reserving backtracking for the transcript overlay.
      ///
-     /// If backtrack preview is active, Esc / Left steps selection, Right steps forward, Enter
-@@ -98,21 +128,6 @@ impl App {
-         self.handle_legacy_transcript_event(tui, app_server, event)
-     }
+     /// If browsing is active, Left/Right steps selection, Esc cancels, and Enter
+@@ -122,6 +159,16 @@ impl App {
  
--    /// Handle global Esc presses for backtracking when no overlay is present.
--    pub(crate) fn handle_backtrack_esc_key(&mut self, tui: &mut tui::Tui) {
--        if !self.chat_widget.composer_is_empty() {
--            return;
--        }
--
--        if !self.backtrack.primed {
--            self.prime_backtrack();
--        } else if self.overlay.is_none() {
--            self.open_backtrack_preview(tui);
--        } else if self.backtrack.overlay_preview_active {
--            self.step_backtrack_and_highlight(tui);
--        }
--    }
--
-     /// Request a source-preserving branch before the selected prompt.
+     /// Revert the current thread before the selected prompt.
      pub(crate) fn apply_backtrack_selection(&mut self, selection: BacktrackSelection) {
++        self.apply_backtrack_selection_with_restore(selection, /*restore_files*/ None);
++    }
++
++    /// Revert the current thread before the selected prompt, optionally restoring
++    /// the workspace files captured for that prompt (`/rewind`).
++    pub(crate) fn apply_backtrack_selection_with_restore(
++        &mut self,
++        selection: BacktrackSelection,
++        restore_files: Option<crate::app_event::RewindRestoreRequest>,
++    ) {
          if self.chat_widget.side_conversation_active() {
-@@ -130,6 +145,7 @@ impl App {
-             thread_id: selection.thread_id,
-             nth_user_message: selection.nth_user_message,
-             prompt: selection.prompt,
-+            restore_files: None,
-         });
+             self.reset_backtrack_state();
+             self.chat_widget
+@@ -142,6 +189,7 @@ impl App {
+                 thread_id: selection.thread_id,
+                 selected_cell: Arc::clone(&self.transcript_cells[index]),
+                 prompt: selection.prompt,
++                restore_files,
+             });
      }
  
-@@ -184,33 +200,6 @@ impl App {
-         }
-     }
- 
--    /// Initialize backtrack state and show composer hint.
--    fn prime_backtrack(&mut self) {
--        self.backtrack.primed = true;
--        self.backtrack.nth_user_message = usize::MAX;
--        self.backtrack.base_id = self.chat_widget.thread_id();
+@@ -223,9 +271,6 @@ impl App {
+         self.backtrack.primed = true;
+         self.backtrack.nth_user_message = usize::MAX;
+         self.backtrack.base_id = self.chat_widget.thread_id();
 -        if has_backtrack_target(&self.transcript_cells) {
 -            self.chat_widget.show_esc_backtrack_hint();
 -        }
--    }
--
--    /// Open overlay and begin backtrack preview flow (first step + highlight).
--    fn open_backtrack_preview(&mut self, tui: &mut tui::Tui) {
--        if !has_backtrack_target(&self.transcript_cells) {
--            self.reset_backtrack_state();
--            self.chat_widget
--                .add_info_message(NO_PREVIOUS_MESSAGE_TO_EDIT.to_string(), /*hint*/ None);
--            tui.frame_requester().schedule_frame();
--            return;
--        }
--
--        self.open_transcript_overlay(tui);
--        self.backtrack.overlay_preview_active = true;
--        // Composer is hidden by overlay; clear its hint.
+     }
+ 
+     /// Open overlay and begin backtrack preview flow (first step + highlight).
+@@ -241,8 +286,6 @@ impl App {
+         self.open_transcript_overlay(tui);
+         self.backtrack.overlay_preview_active = true;
+         self.set_browsing_details(/*detailed*/ false);
+-        // The selected prompt now supplies the backtrack context instead of the composer hint.
 -        self.chat_widget.clear_esc_backtrack_hint();
--        self.step_backtrack_and_highlight(tui);
--    }
--
-     /// When overlay is already open, begin preview mode and select latest user message.
-     fn begin_overlay_backtrack_preview(&mut self, tui: &mut tui::Tui) {
-         if !has_backtrack_target(&self.transcript_cells) {
-@@ -343,15 +332,44 @@ impl App {
+         self.step_backtrack_and_highlight(tui);
+     }
+ 
+@@ -415,14 +458,42 @@ impl App {
          Ok(())
      }
  
 -    /// Handle Enter in overlay backtrack preview: confirm selection and reset state.
 +    /// Handle Enter in overlay preview: confirm selection and reset state.
 +    ///
-+    /// In backtrack mode this forks before the selected prompt and restores it
-+    /// for editing; in `/rewind` mode it forks before the prompt and optionally
-+    /// restores workspace files (mirroring the old `/rewind` message picker
-+    /// actions).
++    /// In backtrack mode this reverts before the selected prompt and restores it
++    /// for editing; in `/rewind` mode it reverts the conversation and optionally
++    /// restores workspace files (after a preview confirmation).
      fn overlay_confirm_backtrack(&mut self, tui: &mut tui::Tui) {
          let nth_user_message = self.backtrack.nth_user_message;
-         let selection = self.backtrack_selection(nth_user_message);
+-        let Some(selection) = self.backtrack_selection(nth_user_message) else {
++        let selection = self.backtrack_selection(nth_user_message);
 +        let mode = self.backtrack.confirm_mode;
-         self.close_transcript_overlay(tui);
--        if let Some(selection) = selection {
--            self.apply_backtrack_selection(selection);
++        self.close_transcript_overlay(tui);
 +        let Some(selection) = selection else {
-             tui.frame_requester().schedule_frame();
-+            return;
-+        };
++            tui.frame_requester().schedule_frame();
+             return;
+         };
+-        self.close_transcript_overlay(tui);
+-        self.apply_backtrack_selection(selection);
 +        match mode {
 +            BacktrackConfirmMode::EditPrompt
 +            | BacktrackConfirmMode::Rewind {
@@ -1620,34 +1590,21 @@ index bb6189b..37f24bd 100644
 +                    index,
 +                    prompt: prompt_text,
 +                };
-+                // Preview the file changes and confirm before forking.
-+                self.show_rewind_fork_confirmation(selection, request);
++                // Preview the file changes and confirm before reverting.
++                self.show_rewind_revert_confirmation(selection, request);
 +            }
-         }
-+        tui.frame_requester().schedule_frame();
++        }
+         tui.frame_requester().schedule_frame();
      }
  
-     /// Handle Esc in overlay backtrack preview: step selection if armed, else forward.
-@@ -378,26 +396,25 @@ impl App {
-         Ok(())
-     }
- 
--    /// Confirm a primed backtrack from the main view (no overlay visible).
--    /// Computes the prompt state from the selected user message.
--    pub(crate) fn confirm_backtrack_from_main(&mut self) -> Option<BacktrackSelection> {
--        let selection = self.backtrack_selection(self.backtrack.nth_user_message);
--        self.reset_backtrack_state();
--        selection
--    }
--
-     /// Clear all backtrack-related state and composer hints.
-     pub(crate) fn reset_backtrack_state(&mut self) {
-         self.backtrack.primed = false;
+@@ -441,14 +512,21 @@ impl App {
+         self.backtrack.overlay_preview_active = false;
          self.backtrack.base_id = None;
          self.backtrack.nth_user_message = usize::MAX;
++        self.backtrack.confirm_mode = BacktrackConfirmMode::EditPrompt;
+         self.transcript_view.set_highlight(/*index*/ None);
 -        // In case a hint is somehow still visible (e.g., race with overlay open/close).
 -        self.chat_widget.clear_esc_backtrack_hint();
-+        self.backtrack.confirm_mode = BacktrackConfirmMode::EditPrompt;
      }
  
      fn backtrack_selection(&self, nth_user_message: usize) -> Option<BacktrackSelection> {
@@ -1665,7 +1622,7 @@ index bb6189b..37f24bd 100644
              return None;
          }
  
-@@ -415,7 +432,7 @@ impl App {
+@@ -466,7 +544,7 @@ impl App {
              .collect();
  
          Some(BacktrackSelection {
@@ -1674,7 +1631,7 @@ index bb6189b..37f24bd 100644
              nth_user_message,
              prompt: UserMessage {
                  text: selected.message.clone(),
-@@ -426,6 +443,23 @@ impl App {
+@@ -477,6 +555,23 @@ impl App {
              },
          })
      }
@@ -1698,11 +1655,32 @@ index bb6189b..37f24bd 100644
  }
  
  /// Find the persisted turn that contains a selected transcript prompt.
+@@ -649,6 +744,20 @@ pub(crate) fn nth_user_position(
+         .find_map(|(i, idx)| (i == nth).then_some(idx))
+ }
+ 
++/// Returns the transcript cell holding the `nth` user message.
++///
++/// `/rewind`'s confirmation popup sends the revert request from a deferred
++/// action closure, so it captures the cell up front instead of looking it up
++/// after the transcript has been trimmed.
++pub(crate) fn selected_prompt_cell(
++    cells: &[Arc<dyn crate::history_cell::HistoryCell>],
++    nth: usize,
++) -> Option<Arc<dyn crate::history_cell::HistoryCell>> {
++    nth_user_position(cells, nth)
++        .and_then(|index| cells.get(index))
++        .cloned()
++}
++
+ fn user_positions_iter(
+     cells: &[Arc<dyn crate::history_cell::HistoryCell>],
+ ) -> impl Iterator<Item = usize> + '_ {
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 7611d89..c81cac4 100644
+index ce30da4..dcefca3 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
-@@ -243,6 +243,17 @@ pub(crate) enum TranscriptExportDestination {
+@@ -251,6 +251,17 @@ pub(crate) enum TranscriptExportDestination {
      File(PathBuf),
  }
  
@@ -1720,20 +1698,26 @@ index 7611d89..c81cac4 100644
  /// Deliver a generated title to its originating automatic rename or editable prompt.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
  pub(crate) enum ThreadTitleDestination {
-@@ -566,10 +577,40 @@ pub(crate) enum AppEvent {
+@@ -602,10 +613,46 @@ pub(crate) enum AppEvent {
      },
  
-     /// Branch before a selected prompt and reopen it in the new thread's composer.
+     /// Revert before a selected prompt, retaining its identity across queued history pages.
 +    ///
 +    /// `restore_files` optionally carries a `/rewind` file-restore request that
-+    /// is executed only after the fork succeeds, so workspace files are never
-+    /// rolled back when the conversation branch fails.
-     ForkSessionForPromptEdit {
++    /// is executed only after the revert succeeds, so workspace files are never
++    /// rolled back when the conversation revert fails.
+     RevertSessionForPromptEdit {
          thread_id: ThreadId,
-         nth_user_message: usize,
+         selected_cell: Arc<dyn HistoryCell>,
          prompt: UserMessage,
 +        restore_files: Option<RewindRestoreRequest>,
 +    },
++
++    /// Restore workspace files for a conversation rewind that already succeeded.
++    ///
++    /// Deferred as its own event so the restore notice lands after the reverted
++    /// transcript has been trimmed to the selected prompt.
++    RewindRestoreFiles(RewindRestoreRequest),
 +
 +    /// Open the `/rewind` scope picker (files and/or conversation rollback).
 +    OpenRewindPicker,
@@ -1759,9 +1743,9 @@ index 7611d89..c81cac4 100644
 +        thread_id: String,
 +        index: u64,
      },
- 
-     /// Request to exit the application.
-@@ -781,11 +822,6 @@ pub(crate) enum AppEvent {
+     FinishPromptRevert {
+         thread_id: ThreadId,
+@@ -822,11 +869,6 @@ pub(crate) enum AppEvent {
          url: String,
      },
  
@@ -1774,10 +1758,10 @@ index 7611d89..c81cac4 100644
      PetSelected {
          pet_id: String,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 4e34536..148ce8e 100644
+index 7fafd6d..4cc6690 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -743,6 +743,9 @@ pub(crate) struct ChatWidget {
+@@ -701,6 +701,9 @@ pub(crate) struct ChatWidget {
      /// We require the second press to match this key so `Ctrl+C` followed by
      /// `Ctrl+D` (or vice versa) doesn't quit accidentally.
      quit_shortcut_key: Option<KeyBinding>,
@@ -1787,10 +1771,14 @@ index 4e34536..148ce8e 100644
      // Runtime metrics accumulated across delta snapshots for the active turn.
      turn_runtime_metrics: RuntimeMetricsSummary,
      last_rendered_width: std::cell::Cell<Option<u16>>,
-@@ -1732,9 +1735,15 @@ impl ChatWidget {
-         self.bottom_pane.composer_is_vim_enabled()
+@@ -1719,9 +1722,19 @@ impl ChatWidget {
+         self.bottom_pane.composer_is_empty() && !self.bottom_pane.is_in_paste_burst()
      }
  
++    pub(crate) fn composer_is_vim_enabled(&self) -> bool {
++        self.bottom_pane.composer_is_vim_enabled()
++    }
++
 +    /// Whether a task (agent turn, review, or other cancellable work) is
 +    /// currently running.
 +    pub(crate) fn is_task_running(&self) -> bool {
@@ -1804,17 +1792,8 @@ index 4e34536..148ce8e 100644
      }
  
      pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
-@@ -1749,7 +1758,7 @@ impl ChatWidget {
- 
-     /// True when the UI is in the regular composer state with no running task,
-     /// no modal overlay (e.g. approvals or status indicator), and no composer popups.
--    /// In this state Esc-Esc backtracking is enabled.
-+    #[cfg(test)]
-     pub(crate) fn is_normal_backtrack_mode(&self) -> bool {
-         self.bottom_pane.is_normal_backtrack_mode()
-     }
-@@ -1785,14 +1794,6 @@ impl ChatWidget {
-         self.bottom_pane.has_active_view()
+@@ -1776,14 +1789,6 @@ impl ChatWidget {
+         self.bottom_pane.has_active_modal()
      }
  
 -    pub(crate) fn show_esc_backtrack_hint(&mut self) {
@@ -1826,13 +1805,13 @@ index 4e34536..148ce8e 100644
 -    }
 -
      pub(crate) fn show_external_writer_thread(&mut self) {
+         self.cancel_image_submission();
          self.blocks_direct_input = true;
-         self.external_writer_view = true;
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index fdfe3f6..888a51b 100644
+index 5184f1c..9f9c59c 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
-@@ -211,6 +211,15 @@ impl ChatWidget {
+@@ -240,6 +240,15 @@ impl ChatWidget {
              return (app_command.is_some(), app_command);
          }
  
@@ -1847,8 +1826,8 @@ index fdfe3f6..888a51b 100644
 +
          for image_url in &remote_image_urls {
              items.push(UserInput::Image {
-                 url: image_url.clone(),
-@@ -522,4 +531,56 @@ impl ChatWidget {
+                 image: ImageReference::Inline {
+@@ -586,4 +595,56 @@ impl ChatWidget {
          ));
          self.request_redraw();
      }
@@ -1906,10 +1885,10 @@ index fdfe3f6..888a51b 100644
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index f67ece5..8f05630 100644
+index 4fe2ed0..d98bcce 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -252,15 +252,8 @@ impl ChatWidget {
+@@ -277,15 +277,8 @@ impl ChatWidget {
              SlashCommand::Worktree => {
                  self.show_managed_worktree_picker();
              }
@@ -1927,7 +1906,7 @@ index f67ece5..8f05630 100644
              }
              SlashCommand::Init => {
                  const INIT_PROMPT: &str = include_str!("../../assets/prompt_for_init_command.md");
-@@ -1180,7 +1173,6 @@ impl ChatWidget {
+@@ -1226,7 +1219,6 @@ impl ChatWidget {
              | SlashCommand::Raw
              | SlashCommand::Vim
              | SlashCommand::Diff
@@ -1935,7 +1914,7 @@ index f67ece5..8f05630 100644
              | SlashCommand::Rename
              | SlashCommand::Voice
              | SlashCommand::Recap
-@@ -1204,6 +1196,7 @@ impl ChatWidget {
+@@ -1251,6 +1243,7 @@ impl ChatWidget {
              | SlashCommand::Clear
              | SlashCommand::Resume
              | SlashCommand::Fork
@@ -1945,10 +1924,10 @@ index f67ece5..8f05630 100644
              | SlashCommand::Review
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
 new file mode 100644
-index 0000000..11c7aab
+index 0000000..d5da994
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
-@@ -0,0 +1,14 @@
+@@ -0,0 +1,15 @@
 +---
 +source: tui/src/chatwidget/tests/popups_and_settings.rs
 +expression: popup
@@ -1956,18 +1935,19 @@ index 0000000..11c7aab
 +  Rewind
 +  Choose what to roll back
 +
-+› 1. Files and conversation  Restore workspace files and fork the chat before
-+                             a message
++
++› 1. Files and conversation  Restore workspace files and fork the chat before a
++                             message
 +  2. Conversation only       Fork the chat before a message without touching
 +                             files
 +  3. Files only              Restore workspace files from an earlier snapshot
 +
-+  Press enter to confirm or esc to go back
++  enter select · esc back
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index f6d9e6d..b4c1f60 100644
+index e03e997..690d8fd 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -686,6 +686,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
+@@ -794,6 +794,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.thread_id = Some(ThreadId::new());
  
@@ -1978,10 +1958,10 @@ index f6d9e6d..b4c1f60 100644
          .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
      chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 7d184d8..dc2dfec 100644
+index 099806b..7689027 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-@@ -1626,7 +1626,7 @@ fn interrupted_history(
+@@ -1678,7 +1678,7 @@ fn interrupted_history(
  }
  
  #[tokio::test]
@@ -1990,7 +1970,7 @@ index 7d184d8..dc2dfec 100644
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
-@@ -1635,22 +1635,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1687,22 +1687,20 @@ async fn output_free_esc_interrupt_keeps_prompt_and_opens_blank_composer() {
      handle_turn_started(&mut chat, "turn-1");
      chat.bottom_pane.ensure_status_indicator();
  
@@ -2025,7 +2005,7 @@ index 7d184d8..dc2dfec 100644
          }
      }
  
-@@ -1666,6 +1664,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
+@@ -1718,6 +1716,9 @@ async fn output_free_ctrl_c_interrupt_keeps_prompt_and_opens_blank_composer() {
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      let prompt = "revise this prompt";
      chat.thread_id = Some(ThreadId::new());
@@ -2035,7 +2015,7 @@ index 7d184d8..dc2dfec 100644
      chat.submit_user_message(UserMessage::from(prompt));
      assert_matches!(next_submit_op(&mut op_rx), Op::UserTurn { .. });
      handle_turn_started(&mut chat, "turn-1");
-@@ -1707,7 +1708,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
+@@ -1759,7 +1760,9 @@ async fn pending_steer_esc_does_not_steal_vim_insert_escape() {
      assert!(!chat.input_queue.submit_pending_steers_after_interrupt);
      assert!(op_rx.try_recv().is_err());
  
@@ -2046,11 +2026,33 @@ index 7d184d8..dc2dfec 100644
  
      match op_rx.try_recv() {
          Ok(Op::Interrupt) => {}
+@@ -2782,11 +2785,17 @@ fn image_preparation_keeps_input_responsive_and_preserves_pending_input() {
+                     assert_eq!(chat.bottom_pane.composer_text(), "describe\nnew draft");
+                 } else if scenario == "escape" || scenario == "ctrl_c" {
+                     chat.on_task_started();
+-                    chat.handle_key_event(if scenario == "escape" {
+-                        KeyEvent::from(KeyCode::Esc)
++                    if scenario == "escape" {
++                        // codEx keeps single Esc as a no-op: the first press arms the
++                        // double-press interrupt window and the second stops the reply.
++                        chat.handle_main_esc_press();
++                        chat.handle_main_esc_press();
+                     } else {
+-                        KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL)
+-                    });
++                        chat.handle_key_event(KeyEvent::new(
++                            KeyCode::Char('c'),
++                            KeyModifiers::CONTROL,
++                        ));
++                    }
+                     next_interrupt_op(&mut ops);
+                     if scenario == "escape" {
+                         chat.on_interrupted_turn(TurnAbortReason::Interrupted);
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index e558424..7992c50 100644
+index e8e5b4c..071e4f5 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-@@ -1218,7 +1218,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
+@@ -1210,7 +1210,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
      let encoded = "use [$figma](app://figma) now";
      assert_eq!(next_add_to_history_event(&mut rx), encoded);
  
@@ -2060,7 +2062,7 @@ index e558424..7992c50 100644
      next_interrupt_op(&mut op_rx);
      chat.on_interrupted_turn(TurnAbortReason::Interrupted);
  
-@@ -3312,32 +3313,11 @@ async fn slash_fork_with_name_requests_named_fork() {
+@@ -3069,32 +3070,11 @@ async fn slash_fork_with_name_requests_named_fork() {
  }
  
  #[tokio::test]
@@ -2100,10 +2102,10 @@ index e558424..7992c50 100644
  
 diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
 new file mode 100644
-index 0000000..2bdf62e
+index 0000000..7b56002
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/actions.rs
-@@ -0,0 +1,386 @@
+@@ -0,0 +1,392 @@
 +//! `/rewind` UI actions: scope picker, message picker, snapshot picker, and
 +//! file restoration. The file snapshot engine lives in [`super`].
 +
@@ -2238,17 +2240,17 @@ index 0000000..2bdf62e
 +    }
 +
 +    /// Shows a confirmation for a "Files and conversation" rewind: previews
-+    /// the file changes and defers the fork to the confirm action. When no
-+    /// matching snapshot exists, the conversation still rewinds without
-+    /// touching files (mirrors Claude Code's behavior); when nothing would
-+    /// change, the fork proceeds immediately.
-+    pub(crate) fn show_rewind_fork_confirmation(
++    /// the file changes and defers the conversation revert to the confirm
++    /// action. When no matching snapshot exists, the conversation still rewinds
++    /// without touching files (mirrors Claude Code's behavior); when nothing
++    /// would change, the rewind proceeds immediately.
++    pub(crate) fn show_rewind_revert_confirmation(
 +        &mut self,
 +        selection: BacktrackSelection,
 +        request: RewindRestoreRequest,
 +    ) {
-+        // The file-restoring rewind forks a new thread; refuse while a side
-+        // conversation is active, exactly like the conversation-only paths.
++        // The file-restoring rewind reverts the conversation; refuse while a
++        // side conversation is active, exactly like the conversation-only paths.
 +        if self.chat_widget.side_conversation_active() {
 +            self.reset_backtrack_state();
 +            self.chat_widget
@@ -2284,11 +2286,17 @@ index 0000000..2bdf62e
 +        }
 +
 +        let request_for_confirm = request.clone();
-+        let fork_thread_id = selection.thread_id;
-+        let fork_nth_user_message = selection.nth_user_message;
-+        let fork_prompt = selection.prompt.clone();
++        let Some(selected_cell) = crate::app_backtrack::selected_prompt_cell(
++            &self.transcript_cells,
++            selection.nth_user_message,
++        ) else {
++            self.apply_backtrack_selection(selection);
++            return;
++        };
++        let revert_thread_id = selection.thread_id;
++        let revert_prompt = selection.prompt.clone();
 +        let params = SelectionViewParams {
-+            view_id: Some("rewind_confirm_fork"),
++            view_id: Some("rewind_confirm_revert"),
 +            title: Some("Rewind before this message?".to_string()),
 +            subtitle: Some(format!(
 +                "Would restore {} file(s) and delete {} file(s) from snapshot {snapshot_index}.",
@@ -2300,14 +2308,14 @@ index 0000000..2bdf62e
 +                SelectionItem {
 +                    name: "Rewind".to_string(),
 +                    description: Some(
-+                        "Fork the chat before the selected message and restore these files"
++                        "Rewind the chat before the selected message and restore these files"
 +                            .to_string(),
 +                    ),
 +                    actions: vec![Box::new(move |tx| {
-+                        tx.send(AppEvent::ForkSessionForPromptEdit {
-+                            thread_id: fork_thread_id,
-+                            nth_user_message: fork_nth_user_message,
-+                            prompt: fork_prompt.clone(),
++                        tx.send(AppEvent::RevertSessionForPromptEdit {
++                            thread_id: revert_thread_id,
++                            selected_cell: selected_cell.clone(),
++                            prompt: revert_prompt.clone(),
 +                            restore_files: Some(request_for_confirm.clone()),
 +                        });
 +                    })],
@@ -5070,7 +5078,7 @@ index 0000000..81078cc
 +    assert_eq!(fs::read(&file).expect("read"), b"v1");
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 99fea9e..e4c10a5 100644
+index 301de2e..7b0df2d 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -34,7 +34,7 @@ pub enum SlashCommand {
@@ -5082,7 +5090,7 @@ index 99fea9e..e4c10a5 100644
      Init,
      Compact,
      Recap,
-@@ -100,7 +100,7 @@ impl SlashCommand {
+@@ -102,7 +102,7 @@ impl SlashCommand {
              SlashCommand::Clear => "clear the terminal and start a new chat",
              SlashCommand::Fork => "fork the current chat",
              SlashCommand::Worktree => "start or continue a conversation in a new worktree",
@@ -5091,7 +5099,7 @@ index 99fea9e..e4c10a5 100644
              SlashCommand::Quit | SlashCommand::Exit => "exit Codex",
              SlashCommand::Copy => "copy the last response or part of it",
              SlashCommand::Export => "export the conversation as markdown",
-@@ -210,6 +210,7 @@ impl SlashCommand {
+@@ -243,6 +243,7 @@ impl SlashCommand {
              | SlashCommand::Delete
              | SlashCommand::Fork
              | SlashCommand::Worktree
@@ -5099,7 +5107,7 @@ index 99fea9e..e4c10a5 100644
              | SlashCommand::Init
              | SlashCommand::Compact
              | SlashCommand::Recap
-@@ -244,7 +245,6 @@ impl SlashCommand {
+@@ -279,7 +280,6 @@ impl SlashCommand {
              | SlashCommand::DebugConfig
              | SlashCommand::Ps
              | SlashCommand::Stop
@@ -5107,7 +5115,7 @@ index 99fea9e..e4c10a5 100644
              | SlashCommand::Goal
              | SlashCommand::Voice
              | SlashCommand::Mcp
-@@ -269,7 +269,6 @@ impl SlashCommand {
+@@ -304,7 +304,6 @@ impl SlashCommand {
      fn is_visible(self) -> bool {
          match self {
              SlashCommand::Copy => !cfg!(target_os = "android"),
@@ -5115,7 +5123,7 @@ index 99fea9e..e4c10a5 100644
              SlashCommand::Voice => true,
              SlashCommand::Rollout | SlashCommand::TestApproval => cfg!(debug_assertions),
              _ => true,
-@@ -317,7 +316,6 @@ mod tests {
+@@ -352,7 +351,6 @@ mod tests {
          assert!(SlashCommand::Raw.available_during_task());
          assert!(SlashCommand::Raw.available_in_side_conversation());
          assert!(SlashCommand::Raw.supports_inline_args());

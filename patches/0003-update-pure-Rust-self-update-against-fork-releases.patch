@@ -1,48 +1,69 @@
-From 0dc734f5905f77a4f9e0851b85bf87c31c51f95c Mon Sep 17 00:00:00 2001
-From: Won Park <won@openai.com>
-Date: Fri, 14 Aug 2026 01:13:00 +0800
+From f6f453d621de4f383a59a9ae158d0cbdb6523571 Mon Sep 17 00:00:00 2001
+From: ref <ref@localhost>
+Date: Fri, 2 Oct 2026 18:51:45 +0000
 Subject: update: pure-Rust self-update against fork releases
 
 ---
- codex-rs/app-server-daemon/src/lib.rs         |  14 +-
- .../app-server-daemon/src/manual_update.rs    | 249 ------
- codex-rs/app-server-daemon/src/update_loop.rs | 540 ++----------
- .../src/update_loop_tests.rs                  | 522 +-----------
- codex-rs/cli/Cargo.toml                       |   4 +
- codex-rs/cli/src/app_cmd.rs                   |  25 -
- codex-rs/cli/src/desktop_app/mac.rs           | 512 ------------
- codex-rs/cli/src/desktop_app/mod.rs           |  22 -
- codex-rs/cli/src/desktop_app/windows.rs       | 133 ---
- codex-rs/cli/src/doctor.rs                    |  16 -
- codex-rs/cli/src/doctor/desktop.rs            | 320 -------
- .../cli/src/doctor/desktop/macos_security.rs  | 236 ------
- .../doctor/desktop/macos_security_tests.rs    |  67 --
- codex-rs/cli/src/doctor/desktop/platform.rs   | 283 -------
- .../src/doctor/desktop/windows_security.rs    | 232 ------
- .../doctor/desktop/windows_security_tests.rs  |  85 --
- codex-rs/cli/src/doctor/desktop_tests.rs      |  97 ---
- codex-rs/cli/src/doctor/updates.rs            | 469 +----------
- codex-rs/cli/src/main.rs                      | 306 ++-----
- codex-rs/cli/src/plugin_cmd.rs                |  23 +
- codex-rs/cli/src/release_metadata.rs          | 124 +++
- codex-rs/cli/src/remote_control_cmd.rs        | 780 ------------------
- codex-rs/cli/src/self_update.rs               | 522 ++++++++++++
- codex-rs/cli/src/wsl_paths.rs                 |  59 --
- codex-rs/tui/src/history_cell/notices.rs      |  19 +-
- ...pdate_available_history_cell_snapshot.snap |  11 -
- ...nfo_availability_nux_tooltip_snapshot.snap |   4 +-
- ...pdate_available_history_cell_snapshot.snap |  14 +-
- ...pdate_available_history_cell_snapshot.snap |  12 -
- codex-rs/tui/src/history_cell/tests.rs        |  29 -
- codex-rs/tui/src/update_action.rs             | 106 +--
- codex-rs/tui/src/update_prompt.rs             |   7 +-
- codex-rs/tui/src/update_versions.rs           |  23 +-
- codex-rs/tui/src/updates.rs                   |  81 +-
- codex-rs/utils/cli/src/fork.rs                |  59 ++
- codex-rs/utils/cli/src/fork_tests.rs          |  32 +
- codex-rs/utils/cli/src/lib.rs                 |   6 +
- 37 files changed, 1062 insertions(+), 4981 deletions(-)
+ codex-rs/app-server-daemon/src/lib.rs         |   19 +-
+ .../app-server-daemon/src/manual_update.rs    |  281 -----
+ codex-rs/app-server-daemon/src/migration.rs   |  193 ---
+ .../app-server-daemon/src/prepare_install.rs  |    2 +-
+ codex-rs/app-server-daemon/src/update_loop.rs |  668 +----------
+ .../src/update_loop_tests.rs                  | 1041 +----------------
+ codex-rs/cli/Cargo.toml                       |    4 +
+ codex-rs/cli/src/app_cmd.rs                   |   25 -
+ codex-rs/cli/src/daemon_install.rs            |    2 +-
+ codex-rs/cli/src/daemon_install_tests.rs      |    2 +-
+ codex-rs/cli/src/daemon_update_tests.rs       |   27 +-
+ codex-rs/cli/src/desktop_app/mac.rs           |  512 --------
+ codex-rs/cli/src/desktop_app/mod.rs           |   22 -
+ codex-rs/cli/src/desktop_app/windows.rs       |  133 ---
+ codex-rs/cli/src/doctor.rs                    |   16 -
+ codex-rs/cli/src/doctor/desktop.rs            |  320 -----
+ .../cli/src/doctor/desktop/macos_security.rs  |  236 ----
+ .../doctor/desktop/macos_security_tests.rs    |   67 --
+ codex-rs/cli/src/doctor/desktop/platform.rs   |  283 -----
+ .../src/doctor/desktop/windows_security.rs    |  232 ----
+ .../doctor/desktop/windows_security_tests.rs  |   85 --
+ codex-rs/cli/src/doctor/desktop_tests.rs      |   97 --
+ codex-rs/cli/src/doctor/updates.rs            |  469 +-------
+ codex-rs/cli/src/main.rs                      |  397 ++-----
+ codex-rs/cli/src/plugin_cmd.rs                |   23 +
+ codex-rs/cli/src/release_metadata.rs          |  124 ++
+ codex-rs/cli/src/remote_control_cmd.rs        |  780 ------------
+ codex-rs/cli/src/self_update.rs               |  522 +++++++++
+ codex-rs/cli/src/wsl_paths.rs                 |   59 -
+ codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
+ codex-rs/cli/tests/worktree.rs                |    2 +-
+ codex-rs/tui/src/app/daemon_menu.rs           |   49 +-
+ codex-rs/tui/src/app/daemon_menu_tests.rs     |  101 +-
+ ..._menu__tests__daemon_cli_confirmation.snap |    6 +-
+ ...emon_menu__tests__daemon_disconnected.snap |    3 +-
+ ..._app__daemon_menu__tests__daemon_menu.snap |    3 +-
+ ...on_menu__tests__daemon_no_cli_handoff.snap |    3 +-
+ ...n_menu__tests__daemon_remote_guidance.snap |    3 +-
+ ...nu__tests__daemon_stable_confirmation.snap |   15 -
+ ...on_menu__tests__daemon_unpackaged_cli.snap |    4 +-
+ ...e_reconnect__unavailable_conversation.snap |    2 -
+ codex-rs/tui/src/history_cell/notices.rs      |   25 +-
+ ...pdate_available_history_cell_snapshot.snap |   11 -
+ ...nfo_availability_nux_tooltip_snapshot.snap |   10 +-
+ ...pdate_available_history_cell_snapshot.snap |   14 +-
+ ...pdate_available_history_cell_snapshot.snap |   12 -
+ codex-rs/tui/src/history_cell/tests.rs        |   29 -
+ ...__tests__update_picker_selected_28x12.snap |    8 +-
+ ...te_prompt__tests__update_prompt_modal.snap |    6 +-
+ codex-rs/tui/src/startup_orchestration.rs     |    1 -
+ codex-rs/tui/src/update_action.rs             |  117 +-
+ codex-rs/tui/src/update_prompt.rs             |    7 +-
+ codex-rs/tui/src/update_versions.rs           |   23 +-
+ codex-rs/tui/src/updates.rs                   |   82 +-
+ codex-rs/utils/cli/src/fork.rs                |   59 +
+ codex-rs/utils/cli/src/fork_tests.rs          |   32 +
+ codex-rs/utils/cli/src/lib.rs                 |    6 +
+ 57 files changed, 1241 insertions(+), 6056 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
+ delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mac.rs
  delete mode 100644 codex-rs/cli/src/desktop_app/mod.rs
@@ -58,53 +79,62 @@ Subject: update: pure-Rust self-update against fork releases
  delete mode 100644 codex-rs/cli/src/remote_control_cmd.rs
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
+ delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
  create mode 100644 codex-rs/utils/cli/src/fork.rs
  create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index ccb1be9..1e3f45d 100644
+index 15ba769..560f067 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
-@@ -270,13 +270,6 @@ pub async fn run_pid_update_loop(
-     update_loop::run(http_client_factory).await
+@@ -283,15 +283,6 @@ pub async fn run_pid_update_loop(
+     update_loop::run(http_client_factory, restore_release).await
  }
  
--pub async fn update() -> Result<UpdateOutput> {
+-pub async fn update(
+-    http_client_factory: codex_http_client::HttpClientFactory,
+-) -> Result<UpdateOutput> {
 -    ensure_supported_platform()?;
 -    #[cfg(windows)]
 -    backend::windows::ensure_not_elevated()?;
--    update_loop::request_manual_update(&Daemon::from_environment()?).await
+-    update_loop::request_manual_update(&Daemon::from_environment()?, http_client_factory).await
 -}
 -
  #[cfg(any(unix, windows))]
  fn ensure_supported_platform() -> Result<()> {
      Ok(())
-@@ -875,16 +868,11 @@ impl Daemon {
-         }
+@@ -958,7 +949,11 @@ impl Daemon {
  
          let managed_codex_path = self.managed_codex_bin.display();
--        let install_command = if cfg!(windows) {
--            "irm https://chatgpt.com/codex/install.ps1 | iex"
--        } else {
--            "curl -fsSL https://chatgpt.com/codex/install.sh | sh"
--        };
          Err(anyhow!(
-             "managed standalone Codex install not found at {managed_codex_path}\n\n\
-              This command requires the standalone install managed by the Codex installer, because \
-              the daemon starts and updates app-server from that fixed path.\n\n\
--             Install it with:\n  {install_command}\n\n\
+-            "daemon executable not found at {managed_codex_path}; repair the existing installation, or run `codex app-server daemon start` to install a missing daemon"
++            "managed standalone Codex install not found at {managed_codex_path}\n\n\
++             This command requires the standalone install managed by the Codex installer, because \
++             the daemon starts and updates app-server from that fixed path.\n\n\
 +             Install it from the codEx fork releases:\n  https://github.com/NIyueeE/codEx/releases\n\n\
-              Then rerun the command you just tried."
++             Then rerun the command you just tried."
          ))
+     }
+ 
+@@ -990,10 +985,6 @@ impl Daemon {
+         }
+     }
+ 
+-    fn manual_update_socket_path(&self) -> PathBuf {
+-        self.update_pid_file.with_extension("sock")
+-    }
+-
+     async fn load_settings(&self) -> Result<DaemonSettings> {
+         DaemonSettings::load(&self.settings_file).await
      }
 diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
 deleted file mode 100644
-index 743b6e4..0000000
+index 640c5bc..0000000
 --- a/codex-rs/app-server-daemon/src/manual_update.rs
 +++ /dev/null
-@@ -1,249 +0,0 @@
+@@ -1,281 +0,0 @@
 -//! Forwards manual requests to the updater and reports its install and restart result.
 -
 -use anyhow::Context;
@@ -167,7 +197,7 @@ index 743b6e4..0000000
 -                        connection
 -                    } else {
 -                        let settings = daemon.load_settings().await?;
--                        if !daemon.is_stable_standalone_release()?
+-                        if !supported(daemon)?
 -                            || (daemon.running_backend_instance(&settings).await?.is_none()
 -                                && client::probe(&daemon.socket_path).await.is_ok())
 -                        {
@@ -177,8 +207,16 @@ index 743b6e4..0000000
 -                            .stop()
 -                            .await?;
 -                        let current_exe = std::env::current_exe()?;
--                        let worker = crate::backend::pid_update_loop_backend(
--                            daemon.backend_paths_with_bin(&settings, &current_exe),
+-                        let paths = daemon.backend_paths_with_bin(&settings, &current_exe);
+-                        let restore_release = if daemon.is_stable_standalone_release()? {
+-                            None
+-                        } else {
+-                            Some(selected_release(daemon)?.2)
+-                        };
+-                        let worker = crate::backend::PidBackend::new_update_loop(
+-                            paths.codex_bin,
+-                            paths.update_pid_file,
+-                            restore_release,
 -                        );
 -                        worker.start().await?;
 -                        let deadline = tokio::time::Instant::now() + Duration::from_secs(30);
@@ -227,13 +265,40 @@ index 743b6e4..0000000
 -        transport?;
 -        let outcome: std::result::Result<UpdateOutput, String> =
 -            serde_json::from_slice(&response).context("invalid response from daemon updater")?;
--        return outcome.map_err(anyhow::Error::msg);
+-        let outcome = outcome.map_err(anyhow::Error::msg)?;
+-        if outcome.status == UpdateStatus::Unsupported && supported(daemon)? {
+-            // A scheduled or older updater cannot authorize restoring a pin.
+-            // Replace it under the writable operation lock, even with identical bytes.
+-            let _operation_lock = daemon.acquire_operation_lock().await?;
+-            let settings = daemon.load_settings().await?;
+-            let worker = crate::backend::pid_update_loop_backend(daemon.backend_paths(&settings));
+-            if !daemon.is_stable_standalone_release()? {
+-                worker.stop().await?;
+-                continue 'request;
+-            }
+-        }
+-        return Ok(outcome);
 -    }
 -}
 -
--const UNSUPPORTED_MESSAGE: &str = "This command requires a CLI-managed daemon and a stable latest-channel standalone install; update this installation with its owning installer.";
+-pub(super) fn supported(daemon: &Daemon) -> Result<bool> {
+-    if daemon.is_stable_standalone_release()? {
+-        return Ok(true);
+-    }
+-    let Ok((root, release, _)) = selected_release(daemon) else {
+-        return Ok(false);
+-    };
+-    let bin = daemon.current_managed_codex_bin()?;
+-    Ok(std::fs::canonicalize(root.join("releases"))
+-        .is_ok_and(|releases| release.parent() == Some(releases.as_path()))
+-        && bin.is_file()
+-        && std::fs::canonicalize(bin).is_ok_and(|bin| bin.starts_with(&release)))
+-}
 -
--async fn unsupported(daemon: &Daemon) -> Result<UpdateOutput> {
+-const UNSUPPORTED_MESSAGE: &str =
+-    "This command requires a daemon package selected from its managed releases directory.";
+-
+-pub(super) async fn unsupported(daemon: &Daemon) -> Result<UpdateOutput> {
 -    let managed_codex_path = daemon.current_managed_codex_bin()?;
 -    Ok(UpdateOutput {
 -        status: UpdateStatus::Unsupported,
@@ -253,6 +318,7 @@ index 743b6e4..0000000
 -    daemon: &Daemon,
 -    running_updater_identity: &crate::managed_install::ExecutableIdentity,
 -    terminate: &mut Signal,
+-    trigger: UpdateTrigger<'_>,
 -) -> Result<RequestDisposition> {
 -    #[cfg(windows)]
 -    if connection.ensure_non_elevated_peer().is_err() {
@@ -266,7 +332,7 @@ index 743b6e4..0000000
 -    {
 -        return Ok(RequestDisposition::Unchanged);
 -    }
--    let result = run(http, daemon, running_updater_identity, terminate).await;
+-    let result = run(http, daemon, running_updater_identity, terminate, trigger).await;
 -    let interrupted = result.as_ref().err().is_some_and(|err| {
 -        err.downcast_ref::<std::io::Error>()
 -            .is_some_and(|err| err.kind() == std::io::ErrorKind::Interrupted)
@@ -299,10 +365,12 @@ index 743b6e4..0000000
 -    daemon: &Daemon,
 -    running_updater_identity: &crate::managed_install::ExecutableIdentity,
 -    terminate: &mut Signal,
+-    trigger: UpdateTrigger<'_>,
 -) -> Result<UpdateOutput> {
 -    let settings = daemon.load_settings().await?;
 -    let managed_running = daemon.running_backend_instance(&settings).await?.is_some();
--    if !daemon.is_stable_standalone_release()?
+-    if !(daemon.is_stable_standalone_release()?
+-        || matches!(trigger, UpdateTrigger::RestoreProduction(_)) && supported(daemon)?)
 -        || (!managed_running && client::probe(&daemon.socket_path).await.is_ok())
 -    {
 -        return unsupported(daemon).await;
@@ -311,14 +379,8 @@ index 743b6e4..0000000
 -    let managed_codex_path = daemon.current_managed_codex_bin()?;
 -    let (_, previous_release, _) = selected_release(daemon)?;
 -    let previous_identity = executable_identity(&managed_codex_path).await?;
--    let (control, restart) = update_once(
--        http,
--        daemon,
--        running_updater_identity,
--        terminate,
--        UpdateTrigger::Manual,
--    )
--    .await?;
+-    let (control, restart) =
+-        update_once(http, daemon, running_updater_identity, terminate, trigger).await?;
 -    if matches!(control, UpdateLoopControl::Stop) {
 -        return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
 -    }
@@ -354,11 +416,223 @@ index 743b6e4..0000000
 -        message: message.to_string(),
 -    })
 -}
+diff --git a/codex-rs/app-server-daemon/src/migration.rs b/codex-rs/app-server-daemon/src/migration.rs
+deleted file mode 100644
+index b73dff0..0000000
+--- a/codex-rs/app-server-daemon/src/migration.rs
++++ /dev/null
+@@ -1,193 +0,0 @@
+-//! Moves a legacy daemon to its dedicated package only during an explicit update.
+-//! Preparation leaves the legacy selection intact; publishing current is the cutover.
+-
+-use std::path::Path;
+-
+-use anyhow::Context;
+-use anyhow::Result;
+-use futures::FutureExt;
+-
+-use super::InstallerHttp;
+-use super::InstallerMode;
+-use super::fetch_installer_script;
+-use super::run_installer_script;
+-use super::selected_release;
+-use crate::Daemon;
+-use crate::UpdateOutput;
+-use crate::UpdateStatus;
+-use crate::backend;
+-use crate::client;
+-use crate::install_lock::acquire_install_lock;
+-use crate::managed_install;
+-
+-pub(super) async fn run(http: &impl InstallerHttp, legacy: &Daemon) -> Result<UpdateOutput> {
+-    let _operation_lock = legacy.acquire_operation_lock().await?;
+-    let previous = selected_release(legacy)?;
+-    anyhow::ensure!(
+-        previous.0.ends_with("standalone") && super::manual_update::supported(legacy)?,
+-        "daemon selection changed; retry the update"
+-    );
+-    let home = previous
+-        .0
+-        .parent()
+-        .and_then(Path::parent)
+-        .context("package root has no Codex home")?;
+-    let root = home.join("packages/app-server-daemon");
+-    let settings = legacy.load_settings().await?;
+-    let running = legacy.running_backend_instance(&settings).await?;
+-    if running.is_none() && client::probe(&legacy.socket_path).await.is_ok() {
+-        return super::manual_update::unsupported(legacy).await;
+-    }
+-    #[cfg(unix)]
+-    let mut terminate = tokio::signal::unix::signal(tokio::signal::unix::SignalKind::terminate())?;
+-    let cancellation = async {
+-        #[cfg(unix)]
+-        tokio::select! {
+-            _ = terminate.recv() => {},
+-            _ = tokio::signal::ctrl_c() => {},
+-        }
+-        #[cfg(windows)]
+-        let _ = tokio::signal::ctrl_c().await;
+-        Some(())
+-    };
+-    let mut cancellation = std::pin::pin!(cancellation);
+-
+-    let script = fetch_installer_script(http).await?;
+-    anyhow::ensure!(
+-        script
+-            .windows(b"CODEX_INSTALL_DEFER_SELECTION".len())
+-            .any(|window| window == b"CODEX_INSTALL_DEFER_SELECTION"),
+-        "the published installer does not support daemon migration yet; the legacy installation was left unchanged"
+-    );
+-    eprintln!("Preparing the daemon update in {}...", root.display());
+-    #[cfg(unix)]
+-    {
+-        if matches!(
+-            run_installer_script(
+-                &script,
+-                InstallerMode::Migration,
+-                &root,
+-                cancellation.as_mut()
+-            )
+-            .await?,
+-            super::UpdateLoopControl::Stop
+-        ) {
+-            return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
+-        }
+-    }
+-    #[cfg(windows)]
+-    tokio::select! {
+-        result = run_installer_script(&script, InstallerMode::Migration, &root) => { result?; },
+-        _ = &mut cancellation => return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into()),
+-    }
+-
+-    let _install_lock = acquire_install_lock(&root).await?;
+-    let pending = root.join(".migration-current");
+-    let release = pending
+-        .canonicalize()
+-        .context("installer did not prepare a daemon package")?;
+-    let name = release
+-        .file_name()
+-        .context("prepared release has no name")?;
+-    anyhow::ensure!(
+-        release.parent() == Some(root.join("releases").canonicalize()?.as_path())
+-            && std::fs::read_to_string(root.join("auto-update-version"))? == name.to_string_lossy(),
+-        "installer did not prepare a latest-channel daemon package"
+-    );
+-    let entrypoint = if cfg!(windows) {
+-        "bin/codex.exe"
+-    } else {
+-        "bin/codex"
+-    };
+-    let binary = release.join(entrypoint);
+-    let version = managed_install::managed_codex_version(&binary).await?;
+-    anyhow::ensure!(
+-        name.to_string_lossy().starts_with(&format!("{version}-")),
+-        "prepared daemon version does not match its release"
+-    );
+-    // An older production updater understands only the legacy package/PID paths.
+-    anyhow::ensure!(
+-        managed_install::supports_daemon_command(
+-            &binary,
+-            &["pid-update-loop", "--check-package-ownership"]
+-        )
+-        .await,
+-        "the latest production release does not support daemon migration yet; the legacy daemon was left running"
+-    );
+-    #[cfg(windows)]
+-    backend::windows::ensure_detached_launch(&binary)?;
+-    anyhow::ensure!(
+-        selected_release(legacy)? == previous,
+-        "daemon selection changed; retry the update"
+-    );
+-    if cancellation.as_mut().now_or_never().is_some() {
+-        return Err(std::io::Error::from(std::io::ErrorKind::Interrupted).into());
+-    }
+-    let cutover = async {
+-        backend::pid_update_loop_backend(legacy.backend_paths(&settings))
+-            .stop()
+-            .await?;
+-        anyhow::ensure!(
+-            selected_release(legacy)? == previous,
+-            "daemon selection changed; retry the update"
+-        );
+-        if let Some(running) = &running {
+-            crate::thread_recovery::discard_pending(legacy)?;
+-            running
+-                .stop_with_grace(settings.shutdown_grace_seconds)
+-                .await?;
+-        }
+-        std::fs::rename(&pending, root.join("current"))
+-            .context("failed to select the new daemon package; retry the update")
+-    }
+-    .await;
+-    if let Err(error) = cutover {
+-        if let Err(restore_error) = async {
+-            legacy
+-                .current_installation()?
+-                .ensure_managed_updater(&settings)
+-                .await
+-        }
+-        .await
+-        {
+-            eprintln!(
+-                "warning: failed to restore the legacy updater after migration failed: {restore_error:#}"
+-            );
+-        }
+-        return Err(error);
+-    }
+-    let selected = Daemon {
+-        pid_file: legacy.pid_file.with_file_name(crate::DAEMON_PID_FILE_NAME),
+-        update_pid_file: legacy
+-            .update_pid_file
+-            .with_file_name(crate::DAEMON_UPDATE_PID_FILE_NAME),
+-        managed_codex_bin: root.join("current").join(entrypoint),
+-        ..legacy.clone()
+-    };
+-    let running_version = if running.is_some() {
+-        selected.start_managed_backend(&settings).await.context(
+-            "daemon migrated but could not start; retry with `codex app-server daemon start`",
+-        )?;
+-        Some(
+-            selected
+-                .wait_until_ready()
+-                .await
+-                .context(
+-                    "daemon migrated but is not ready; retry with `codex app-server daemon start`",
+-                )?
+-                .app_server_version,
+-        )
+-    } else {
+-        None
+-    };
+-    if let Err(error) = selected.ensure_managed_updater(&settings).await {
+-        eprintln!("warning: daemon migrated but its updater could not start: {error:#}");
+-    }
+-    Ok(UpdateOutput {
+-        status: UpdateStatus::Updated,
+-        installed_version: Some(version),
+-        running_version,
+-        managed_codex_path: selected.managed_codex_bin,
+-        message: "The daemon was updated and moved to its dedicated package. The legacy CLI package was left unchanged.".to_string(),
+-    })
+-}
+diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
+index ecf2501..b091a56 100644
+--- a/codex-rs/app-server-daemon/src/prepare_install.rs
++++ b/codex-rs/app-server-daemon/src/prepare_install.rs
+@@ -72,7 +72,7 @@ pub async fn update_from_cli(
+             .ok()
+             .map(|info| info.app_server_version),
+         managed_codex_path,
+-        message: "The CLI package is selected and pinned. Run `codex app-server daemon update` to return to production updates.".to_string(),
++        message: "The CLI package is selected and pinned. Run `codex update` to update codEx itself, then rerun `codex app-server daemon update --from-cli` to re-pin the daemon package.".to_string(),
+     }))
+ }
+ 
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 2fe7850..857bd1f 100644
+index 8f55126..c9067c4 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -1,77 +1,46 @@
+@@ -1,113 +1,54 @@
 -//! Owns scheduled and manual installs, daemon restarts, and updater replacement.
 +//! Owns scheduled update checks, daemon restarts, and updater replacement.
 +//!
@@ -400,13 +674,33 @@ index 2fe7850..857bd1f 100644
  use crate::managed_install::ExecutableIdentity;
  use crate::managed_install::executable_identity;
 -use crate::managed_install::resolved_managed_codex_bin;
--#[cfg(windows)]
+-#[cfg(any(target_os = "linux", target_os = "macos", windows))]
 -use crate::settings::DaemonSettings;
 -use crate::settings::UpdaterSettings;
 -
 -#[path = "manual_update.rs"]
 -mod manual_update;
--pub(crate) use manual_update::request as request_manual_update;
+-#[path = "migration.rs"]
+-mod migration;
+-
+-pub(crate) async fn request_manual_update(
+-    daemon: &Daemon,
+-    http_client_factory: HttpClientFactory,
+-) -> Result<crate::UpdateOutput> {
+-    if daemon
+-        .pid_file
+-        .file_name()
+-        .is_some_and(|name| name == crate::LEGACY_PID_FILE_NAME)
+-        && manual_update::supported(daemon)?
+-    {
+-        let http = RouteAwareClientPool::new_without_request_logging(
+-            http_client_factory,
+-            ClientRouteClass::Other,
+-        );
+-        return migration::run(&http, daemon).await;
+-    }
+-    manual_update::request(daemon).await
+-}
  
  const INITIAL_UPDATE_DELAY: Duration = Duration::from_secs(5 * 60);
  const RESTART_RETRY_INTERVAL: Duration = Duration::from_millis(50);
@@ -414,8 +708,17 @@ index 2fe7850..857bd1f 100644
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.sh";
 -#[cfg(windows)]
 -const INSTALL_URL: &str = "https://chatgpt.com/codex/install.ps1";
--
--pub(crate) async fn run(http_client_factory: HttpClientFactory) -> Result<()> {
++const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
+ 
++/// Supervises the managed install.
++///
++/// `restore_release` belongs to upstream's install-script updater, which the
++/// fork does not run; it is accepted to keep the daemon's public entry point
++/// unchanged and deliberately ignored.
+ pub(crate) async fn run(
+-    http_client_factory: HttpClientFactory,
+-    restore_release: Option<String>,
+-) -> Result<()> {
 -    let http = RouteAwareClientPool::new_without_request_logging(
 -        http_client_factory,
 -        ClientRouteClass::Other,
@@ -424,20 +727,33 @@ index 2fe7850..857bd1f 100644
 -        &http,
 -        &Daemon::from_environment()?,
 -        &current_updater_identity().await?,
+-        restore_release,
 -    )
 -    .await
 -}
-+const UPDATE_INTERVAL: Duration = Duration::from_secs(60 * 60);
- 
+-
 -async fn run_with_http(
 -    http: &impl InstallerHttp,
 -    daemon: &Daemon,
 -    running_updater_identity: &ExecutableIdentity,
--) -> Result<()> {
-+pub(crate) async fn run(_http_client_factory: HttpClientFactory) -> Result<()> {
+-    mut restore_release: Option<String>,
++    _http_client_factory: HttpClientFactory,
++    _restore_release: Option<String>,
+ ) -> Result<()> {
      #[cfg(unix)]
      let mut terminate =
          signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
+-    #[cfg(any(target_os = "linux", target_os = "macos"))]
+-    {
+-        let paths = daemon.backend_paths(&DaemonSettings::default());
+-        for backend in [
+-            crate::backend::pid_backend(paths.clone()),
+-            crate::backend::pid_update_loop_backend(paths),
+-        ] {
+-            // Inspection failures must preserve legacy records without blocking updates.
+-            let _ = backend.promote_legacy_identity().await;
+-        }
+-    }
      #[cfg(windows)]
      let updater = {
          // Updater ownership needs only paths, not settings that may be mid-edit.
@@ -449,7 +765,7 @@ index 2fe7850..857bd1f 100644
      };
      #[cfg(windows)]
      updater.wait_for_ownership().await?;
-@@ -79,164 +48,24 @@ async fn run_with_http(
+@@ -115,172 +56,24 @@ async fn run_with_http(
      let mut terminate = Signal;
      #[cfg(windows)]
      let _installer_job = crate::backend::windows::updater_job()?;
@@ -480,7 +796,7 @@ index 2fe7850..857bd1f 100644
 -        .map(|settings| settings.auto_update_enabled)
 -        .unwrap_or(true);
 -    let mut next_check = Instant::now()
--        + if needs_managed_handoff || !auto_update_enabled {
+-        + if restore_release.is_some() || needs_managed_handoff || !auto_update_enabled {
 -            Duration::from_secs(15)
 -        } else {
 -            INITIAL_UPDATE_DELAY
@@ -495,7 +811,11 @@ index 2fe7850..857bd1f 100644
 -            _ = terminate.recv() => return Ok(()),
 -            connection = listener.as_mut().context("updater listener closed")?.accept() => {
 -                let connection = connection.context("failed to accept updater request")?;
--                let disposition = match manual_update::handle_request(connection, http, daemon, running_updater_identity, &mut terminate).await {
+-                // Only a manual CLI launch under the operation lock supplies this
+-                // single-use authority. Ordinary socket requests cannot undo a pin.
+-                let restoration = restore_release.take();
+-                let trigger = restoration.as_deref().map_or(UpdateTrigger::Manual, UpdateTrigger::RestoreProduction);
+-                let disposition = match manual_update::handle_request(connection, http, daemon, running_updater_identity, &mut terminate, trigger).await {
 -                    Ok(manual_update::RequestDisposition::Stop) => return Ok(()),
 -                    Ok(disposition) => disposition,
 -                    Err(_) => manual_update::RequestDisposition::Continue,
@@ -515,6 +835,10 @@ index 2fe7850..857bd1f 100644
 -                next_check = Instant::now();
 -            }
 -            _ = sleep_until(next_check) => {
+-                // The authorizing CLI may have exited before sending its request.
+-                if restore_release.is_some() {
+-                    return Ok(());
+-                }
 -                match UpdaterSettings::load(&daemon.settings_file).await {
 -                    Ok(settings) if !settings.auto_update_enabled => return Ok(()),
 -                    Err(_) => {
@@ -627,14 +951,15 @@ index 2fe7850..857bd1f 100644
      }
  }
  
-@@ -252,83 +81,18 @@ enum UpdateLoopControl {
+@@ -296,129 +89,18 @@ enum UpdateLoopControl {
      Stop,
  }
  
 -#[derive(Clone, Copy, PartialEq, Eq)]
--enum UpdateTrigger {
+-enum UpdateTrigger<'a> {
 -    Scheduled,
 -    Manual,
+-    RestoreProduction(&'a str),
 -}
 -
  async fn update_once(
@@ -642,7 +967,7 @@ index 2fe7850..857bd1f 100644
 -    daemon: &Daemon,
      running_updater_identity: &ExecutableIdentity,
      terminate: &mut Signal,
--    trigger: UpdateTrigger,
+-    trigger: UpdateTrigger<'_>,
 -) -> Result<(UpdateLoopControl, Option<RestartIfRunningOutcome>)> {
 -    if trigger == UpdateTrigger::Scheduled
 -        && !UpdaterSettings::load(&daemon.settings_file)
@@ -656,17 +981,45 @@ index 2fe7850..857bd1f 100644
 -        // latest-channel marker. Retry after the interval instead of exiting.
 -        return Ok((UpdateLoopControl::Continue, None));
 -    }
--    let (_codex_home, _, previous_release) = selected_release(daemon)?;
+-    let (package_root, previous_selection, previous_release) = selected_release(daemon)?;
+-    let codex_home = package_root
+-        .parent()
+-        .and_then(Path::parent)
+-        .context("daemon package root has no Codex home")?;
+-    let (installer_mode, installer_guard) =
+-        if let UpdateTrigger::RestoreProduction(expected) = trigger {
+-            anyhow::ensure!(
+-                previous_release == expected,
+-                "daemon selection changed; retry the update"
+-            );
+-            (
+-                InstallerMode::RestoreProduction(&previous_release),
+-                "CODEX_INSTALL_IF_CURRENT",
+-            )
+-        } else {
+-            (
+-                InstallerMode::Update(&previous_release),
+-                "CODEX_INSTALL_IF_LATEST",
+-            )
+-        };
 -    let script = tokio::select! {
 -        result = fetch_installer_script(http) => result?,
 -        _ = terminate.recv() => return Ok((UpdateLoopControl::Stop, None)),
 -    };
 -    anyhow::ensure!(
 -        script
--            .windows(b"CODEX_INSTALL_IF_LATEST".len())
--            .any(|window| window == b"CODEX_INSTALL_IF_LATEST"),
--        "standalone installer does not support guarded updates"
+-            .windows(installer_guard.len())
+-            .any(|window| window == installer_guard.as_bytes()),
+-        "standalone installer does not support {installer_guard} guarded updates"
 -    );
+-    if package_root.ends_with("app-server-daemon") {
+-        anyhow::ensure!(
+-            script
+-                .windows(b"CODEX_INSTALL_DAEMON_ONLY".len())
+-                .any(|window| window == b"CODEX_INSTALL_DAEMON_ONLY"),
+-            "installer does not support daemon-owned packages"
+-        );
+-    }
 -    if trigger == UpdateTrigger::Scheduled
 -        && !UpdaterSettings::load(&daemon.settings_file)
 -            .await?
@@ -677,18 +1030,26 @@ index 2fe7850..857bd1f 100644
 -    if release_selection_unstable(daemon, trigger)? {
 -        return Ok((UpdateLoopControl::Continue, None));
 -    }
+-    anyhow::ensure!(
+-        crate::managed_install::package_root(codex_home) == package_root,
+-        "daemon package root changed during the update; retry the command"
+-    );
 -    #[cfg(unix)]
 -    if matches!(
--        run_installer_script(&script, &previous_release, _codex_home, terminate.recv()).await?,
+-        run_installer_script(&script, installer_mode, &package_root, terminate.recv()).await?,
 -        UpdateLoopControl::Stop
 -    ) {
 -        return Ok((UpdateLoopControl::Stop, None));
 -    }
 -    #[cfg(windows)]
 -    tokio::select! {
--        result = run_installer_script(&script, &previous_release) => { result?; },
+-        result = run_installer_script(&script, installer_mode, &package_root) => { result?; },
 -        _ = terminate.recv() => return Ok((UpdateLoopControl::Stop, None)),
 -    }
+-    anyhow::ensure!(
+-        trigger == UpdateTrigger::Scheduled || daemon.is_stable_standalone_release()?,
+-        "installer did not select a stable latest release; retry the update"
+-    );
 -    if release_selection_unstable(daemon, trigger)? {
 -        return Ok((UpdateLoopControl::Continue, None));
 -    }
@@ -696,7 +1057,16 @@ index 2fe7850..857bd1f 100644
 -    let managed_codex_bin =
 -        resolved_managed_codex_bin(&daemon.current_managed_codex_bin()?).await?;
 -    let restart_mode = match trigger {
--        UpdateTrigger::Manual => RestartMode::IfBinaryOrVersionChanged,
+-        // The package can contain different resources even when its CLI binary
+-        // is identical. A release change must also replace the running process.
+-        UpdateTrigger::Manual | UpdateTrigger::RestoreProduction(_)
+-            if selected_release(daemon)?.1 != previous_selection =>
+-        {
+-            RestartMode::Always
+-        }
+-        UpdateTrigger::Manual | UpdateTrigger::RestoreProduction(_) => {
+-            RestartMode::IfBinaryOrVersionChanged
+-        }
 -        UpdateTrigger::Scheduled
 -            if executable_identity(&managed_codex_bin).await? != *running_updater_identity =>
 -        {
@@ -717,7 +1087,7 @@ index 2fe7850..857bd1f 100644
          }
          match daemon
              .try_restart_if_running(restart_mode, &managed_codex_bin)
-@@ -336,240 +100,48 @@ async fn update_once(
+@@ -426,274 +108,48 @@ async fn update_once(
          {
              RestartIfRunningOutcome::Busy => {
                  if sleep_or_terminate(RESTART_RETRY_INTERVAL, terminate).await {
@@ -738,7 +1108,7 @@ index 2fe7850..857bd1f 100644
 -                ));
 -            }
 -            RestartIfRunningOutcome::AlreadyCurrent
--                if trigger == UpdateTrigger::Manual
+-                if trigger != UpdateTrigger::Scheduled
 -                    && restart_mode == RestartMode::IfBinaryOrVersionChanged =>
 -            {
 -                anyhow::ensure!(
@@ -754,7 +1124,7 @@ index 2fe7850..857bd1f 100644
 -            }
 -            RestartIfRunningOutcome::NotReady | RestartIfRunningOutcome::AlreadyCurrent => {
 -                anyhow::ensure!(
--                    trigger != UpdateTrigger::Manual,
+-                    trigger == UpdateTrigger::Scheduled,
 -                    "managed daemon could not restart; retry when it is ready"
 -                );
 -                return Ok((
@@ -781,30 +1151,34 @@ index 2fe7850..857bd1f 100644
      }
  }
  
--fn release_selection_unstable(daemon: &Daemon, trigger: UpdateTrigger) -> Result<bool> {
--    if daemon.is_stable_standalone_release()? {
+-fn release_selection_unstable(daemon: &Daemon, trigger: UpdateTrigger<'_>) -> Result<bool> {
+-    if daemon.is_stable_standalone_release()?
+-        || matches!(trigger, UpdateTrigger::RestoreProduction(_))
+-            && manual_update::supported(daemon)?
+-    {
 -        return Ok(false);
 -    }
 -    anyhow::ensure!(
--        trigger != UpdateTrigger::Manual,
+-        trigger == UpdateTrigger::Scheduled,
 -        "standalone install selection changed during the update"
 -    );
 -    Ok(true)
 -}
 -
--fn selected_release(daemon: &Daemon) -> Result<(&Path, std::path::PathBuf, String)> {
+-fn selected_release(daemon: &Daemon) -> Result<(std::path::PathBuf, std::path::PathBuf, String)> {
 -    let home = daemon
 -        .settings_file
 -        .parent()
 -        .and_then(Path::parent)
 -        .context("daemon settings path has no Codex home")?;
--    let release = std::fs::canonicalize(home.join("packages/standalone/current"))?;
+-    let root = crate::managed_install::package_root(home);
+-    let release = std::fs::canonicalize(root.join("current"))?;
 -    let name = release
 -        .file_name()
 -        .context("managed release has no name")?
 -        .to_string_lossy()
 -        .into_owned();
--    Ok((home, release, name))
+-    Ok((root, release, name))
 -}
 -
  async fn current_updater_identity() -> Result<ExecutableIdentity> {
@@ -826,10 +1200,16 @@ index 2fe7850..857bd1f 100644
 -    })
 -}
 -
+-enum InstallerMode<'a> {
+-    Update(&'a str),
+-    RestoreProduction(&'a str),
+-    Migration,
+-}
+-
 -async fn run_installer_script(
 -    script: &[u8],
--    previous_release: &str,
--    #[cfg(unix)] codex_home: &Path,
+-    mode: InstallerMode<'_>,
+-    package_root: &Path,
 -    #[cfg(unix)] terminate: impl std::future::Future<Output = Option<()>>,
 -) -> Result<UpdateLoopControl> {
 -    #[cfg(unix)]
@@ -847,10 +1227,32 @@ index 2fe7850..857bd1f 100644
 -            .kill_on_drop(true);
 -        command
 -    };
+-    let (latest_guard, current_guard, previous_release, defer_selection) = match mode {
+-        InstallerMode::Update(release) => ("1", "0", release, "0"),
+-        InstallerMode::RestoreProduction(release) => ("0", "1", release, "0"),
+-        InstallerMode::Migration => ("0", "0", "", "1"),
+-    };
 -    let mut child = command
+-        .env(
+-            "CODEX_HOME",
+-            package_root
+-                .parent()
+-                .and_then(Path::parent)
+-                .context("package root has no Codex home")?,
+-        )
+-        .env("CODEX_INSTALL_DEFER_SELECTION", defer_selection)
+-        .env(
+-            "CODEX_INSTALL_DAEMON_ONLY",
+-            if package_root.ends_with("app-server-daemon") {
+-                "1"
+-            } else {
+-                "0"
+-            },
+-        )
 -        .env("CODEX_RELEASE", "latest")
 -        .env("CODEX_NON_INTERACTIVE", "1")
--        .env("CODEX_INSTALL_IF_LATEST", "1")
+-        .env("CODEX_INSTALL_IF_LATEST", latest_guard)
+-        .env("CODEX_INSTALL_IF_CURRENT", current_guard)
 -        .env("CODEX_UPDATE_FROM_RELEASE", previous_release)
 -        .kill_on_drop(true)
 -        .stdin(Stdio::piped())
@@ -858,6 +1260,8 @@ index 2fe7850..857bd1f 100644
 -        .stderr(Stdio::null())
 -        .spawn()
 -        .context("failed to invoke standalone Codex updater")?;
+-    #[cfg(windows)]
+-    let _installer_job = crate::backend::windows::installer_job(&child)?;
 -    let mut stdin = child
 -        .stdin
 -        .take()
@@ -874,7 +1278,7 @@ index 2fe7850..857bd1f 100644
 -    drop(stdin);
 -    #[cfg(unix)]
 -    if write_result.is_none() {
--        cancel_installer(&mut child, codex_home).await;
+-        cancel_installer(&mut child, package_root).await;
 -        return Ok(UpdateLoopControl::Stop);
 -    }
 -    write_result
@@ -884,7 +1288,7 @@ index 2fe7850..857bd1f 100644
 -    let status = tokio::select! {
 -        result = child.wait() => result,
 -        _ = &mut terminate => {
--            cancel_installer(&mut child, codex_home).await;
+-            cancel_installer(&mut child, package_root).await;
 -            return Ok(UpdateLoopControl::Stop);
 -        }
 -    };
@@ -900,7 +1304,7 @@ index 2fe7850..857bd1f 100644
 -}
 -
 -#[cfg(unix)]
--async fn cancel_installer(child: &mut tokio::process::Child, codex_home: &Path) {
+-async fn cancel_installer(child: &mut tokio::process::Child, package_root: &Path) {
 -    let Some(pid) = child.id().and_then(|pid| libc::pid_t::try_from(pid).ok()) else {
 -        return;
 -    };
@@ -912,7 +1316,7 @@ index 2fe7850..857bd1f 100644
 -    unsafe { libc::kill(-pid, libc::SIGKILL) };
 -    // A forced kill can bypass the shell trap on hosts using the mkdir lock.
 -    // The lock is ours only if its recorded owner is this still-unreaped shell.
--    let lock = codex_home.join("packages/standalone/install.lock.d");
+-    let lock = package_root.join("install.lock.d");
 -    if std::fs::read_to_string(lock.join("pid")).is_ok_and(|owner| owner.trim() == pid.to_string())
 -    {
 -        let _ = std::fs::remove_dir_all(lock);
@@ -983,10 +1387,10 @@ index 2fe7850..857bd1f 100644
  mod tests;
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index ff2b177..ac50a95 100644
+index d932742..ac50a95 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1,517 +1,27 @@
+@@ -1,1036 +1,27 @@
 -use std::sync::Mutex;
 -#[cfg(unix)]
 -use std::time::Duration;
@@ -994,7 +1398,7 @@ index ff2b177..ac50a95 100644
  use pretty_assertions::assert_eq;
 -#[cfg(unix)]
 -use tempfile::TempDir;
- 
+-
 -use super::INSTALL_URL;
 -use super::InstallerHttp;
 -use super::InstallerResponse;
@@ -1010,16 +1414,19 @@ index ff2b177..ac50a95 100644
 -#[cfg(unix)]
 -use crate::managed_install::executable_identity;
 -#[cfg(unix)]
-+use super::update_modes_for_identities;
-+use crate::RestartMode;
- use crate::managed_install::executable_identity_from_bytes;
+-use crate::managed_install::executable_identity_from_reader;
  
 -#[tokio::test]
 -async fn installer_fetch_uses_exact_url_and_preserves_bytes() {
 -    let script = b"#!/bin/sh\nprintf 'update bytes'\n".to_vec();
 -    let http = FakeInstallerHttp::new(InstallerResponse::Success(script.clone()));
--
--    assert_eq!(
++use super::update_modes_for_identities;
++use crate::RestartMode;
++use crate::managed_install::executable_identity_from_bytes;
+ 
++#[test]
++fn unchanged_updater_uses_version_based_restart() {
+     assert_eq!(
 -        fetch_installer_script(&http)
 -            .await
 -            .expect("installer fetch should succeed"),
@@ -1043,6 +1450,154 @@ index ff2b177..ac50a95 100644
 -struct FakeInstallerHttp {
 -    response: InstallerResponse,
 -    requested_urls: Mutex<Vec<String>>,
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn explicit_update_migrates_running_and_stopped_installations() {
+-    for (running, local) in [(false, false), (true, false), (false, true), (true, true)] {
+-        let home = TempDir::new().unwrap();
+-        let (legacy, release) = manual_update_daemon(&home);
+-        let root = home.path().join("packages/standalone");
+-        if local {
+-            let package = root.join("releases/local-development");
+-            std::fs::create_dir(&package).unwrap();
+-            std::fs::copy(&legacy.managed_codex_bin, package.join("codex")).unwrap();
+-            std::fs::remove_file(root.join("current")).unwrap();
+-            std::os::unix::fs::symlink(&package, root.join("current")).unwrap();
+-            std::fs::remove_file(root.join("auto-update-version")).unwrap();
+-        }
+-        let previous = root.join("current").canonicalize().unwrap();
+-        let scheduled = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"# CODEX_INSTALL_IF_LATEST\ntest \"$CODEX_INSTALL_DEFER_SELECTION\" = 0 && test \"$CODEX_INSTALL_DAEMON_ONLY\" = 0\n".to_vec(),
+-    ));
+-        super::update_once(
+-            &scheduled,
+-            &legacy,
+-            &executable_identity(&legacy.managed_codex_bin)
+-                .await
+-                .unwrap(),
+-            &mut test_terminate(),
+-            super::UpdateTrigger::Scheduled,
+-        )
+-        .await
+-        .unwrap();
+-        assert_eq!(
+-            scheduled.requested_urls(),
+-            if local {
+-                vec![]
+-            } else {
+-                vec![INSTALL_URL.to_string()]
+-            }
+-        );
+-        assert_eq!(
+-            crate::managed_install::package_root(home.path()),
+-            home.path().join("packages/standalone")
+-        );
+-        let settings = format!(
+-            r#"{{"updater":{{"autoUpdateEnabled":{running}}},"remoteControlEnabled":true}}"#
+-        );
+-        std::fs::write(&legacy.settings_file, &settings).unwrap();
+-        let daemon_settings = legacy.load_settings().await.unwrap();
+-        let old_backend = crate::backend::pid_backend(legacy.backend_paths(&daemon_settings));
+-        let old_updater =
+-            crate::backend::pid_update_loop_backend(legacy.backend_paths(&daemon_settings));
+-        let server = if running {
+-            old_backend.start().await.unwrap();
+-            old_updater.start().await.unwrap();
+-            Some(test_control_server(&legacy, home.path()).await)
+-        } else {
+-            None
+-        };
+-        let legacy_bin = std::fs::read(&legacy.managed_codex_bin).unwrap();
+-        let dedicated = home.path().join("packages/app-server-daemon");
+-        let old_installer = FakeInstallerHttp::new(InstallerResponse::Success(b"exit 99".to_vec()));
+-        assert!(
+-            super::migration::run(&old_installer, &legacy)
+-                .await
+-                .unwrap_err()
+-                .to_string()
+-                .contains("does not support daemon migration")
+-        );
+-
+-        let script = format!(
+-            r#"# CODEX_INSTALL_DEFER_SELECTION
+-set -eu
+-test "$CODEX_INSTALL_DEFER_SELECTION" = 1
+-test "$CODEX_INSTALL_IF_CURRENT" = 0
+-test "$CODEX_INSTALL_DAEMON_ONLY" = 1
+-test "$CODEX_INSTALL_IF_LATEST" = 0
+-root="$CODEX_HOME/packages/app-server-daemon"
+-mkdir -p "$root/releases/{release}/bin"
+-printf '#!/bin/sh\nif [ "$1" = --version ]; then echo codex 1.0.0; else exit 2; fi\n' > "$root/releases/{release}/bin/codex"
+-chmod +x "$root/releases/{release}/bin/codex"
+-ln -sfn 'releases/{release}' "$root/.migration-current"
+-printf '{release}' > "$root/auto-update-version"
+-"#
+-        );
+-        let http = FakeInstallerHttp::new(InstallerResponse::Success(script.as_bytes().to_vec()));
+-        let error = super::migration::run(&http, &legacy).await.unwrap_err();
+-        assert!(
+-            error
+-                .to_string()
+-                .contains("production release does not support daemon migration")
+-        );
+-        assert!(!dedicated.join("current").exists());
+-        assert_eq!(
+-            crate::managed_install::package_root(home.path()),
+-            home.path().join("packages/standalone")
+-        );
+-        assert_eq!(
+-            (
+-                old_backend.is_starting_or_running().await.unwrap(),
+-                old_updater.is_starting_or_running().await.unwrap()
+-            ),
+-            (running, running)
+-        );
+-        let compatible = FakeInstallerHttp::new(InstallerResponse::Success(script.replace("else exit 2", "elif [ \"$4\" = --check-package-ownership ] || [ \"$4\" = --help ]; then exit 0; else exec sleep 30").into_bytes()));
+-        let output = super::migration::run(&compatible, &legacy).await.unwrap();
+-        assert_eq!(output, UpdateOutput {
+-        status: UpdateStatus::Updated,
+-        installed_version: Some("1.0.0".to_string()),
+-        running_version: (running).then(|| "1.0.0".to_string()),
+-        managed_codex_path: dedicated.join("current/bin/codex"),
+-        message: "The daemon was updated and moved to its dedicated package. The legacy CLI package was left unchanged.".to_string(),
+-    });
+-        assert_eq!(
+-            crate::managed_install::package_root(home.path()),
+-            dedicated.clone()
+-        );
+-        assert!(!dedicated.join(".migration-current").exists());
+-        assert_eq!(root.join("current").canonicalize().unwrap(), previous);
+-        assert_eq!(
+-            std::fs::read(&legacy.managed_codex_bin).unwrap(),
+-            legacy_bin
+-        );
+-        assert_eq!(
+-            std::fs::read_to_string(&legacy.settings_file).unwrap(),
+-            settings
+-        );
+-        let selected = Daemon {
+-            pid_file: legacy.pid_file.with_file_name(crate::DAEMON_PID_FILE_NAME),
+-            update_pid_file: legacy
+-                .update_pid_file
+-                .with_file_name(crate::DAEMON_UPDATE_PID_FILE_NAME),
+-            managed_codex_bin: dedicated.join("current/bin/codex"),
+-            ..legacy.clone()
+-        };
+-        let new_backend = crate::backend::pid_backend(selected.backend_paths(&daemon_settings));
+-        assert_eq!(new_backend.is_starting_or_running().await.unwrap(), running);
+-        assert!(!old_backend.is_starting_or_running().await.unwrap());
+-        assert!(!old_updater.is_starting_or_running().await.unwrap());
+-        let new_updater =
+-            crate::backend::pid_update_loop_backend(selected.backend_paths(&daemon_settings));
+-        assert_eq!(new_updater.is_starting_or_running().await.unwrap(), running);
+-        new_updater.stop().await.unwrap();
+-        new_backend.stop().await.unwrap();
+-        if let Some(server) = server {
+-            server.abort();
+-        }
+-    }
 -}
 -
 -impl FakeInstallerHttp {
@@ -1099,9 +1654,15 @@ index ff2b177..ac50a95 100644
 -    });
 -    let result = tokio::time::timeout(
 -        Duration::from_secs(10),
--        super::run_installer_script(script.as_bytes(), "0.150.0-test", home.path(), async {
--            cancelled.await.ok()
--        }),
+-        super::run_installer_script(
+-            script.as_bytes(),
+-            super::InstallerMode::Update("0.150.0-test"),
+-            &home.path().join("packages/standalone"),
+-            async { cancelled.await.ok() },
++        update_modes_for_identities(
++            &executable_identity_from_bytes(b"same"),
++            &executable_identity_from_bytes(b"same"),
+         ),
 -    )
 -    .await
 -    .expect("installer cancellation timed out")
@@ -1137,8 +1698,11 @@ index ff2b177..ac50a95 100644
 -        .expect("current release");
 -    std::fs::write(standalone.join("auto-update-version"), &release).expect("latest marker");
 -    let state = home.path().join("app-server-daemon");
+-    std::fs::create_dir(&state).unwrap();
+-    std::fs::write(state.join("app-server.stderr.log"), b"").unwrap();
 -    (
 -        Daemon {
+-            log_diagnostics: false,
 -            socket_path: home.path().join("app-server-control/server.sock"),
 -            pid_file: state.join("app-server.pid"),
 -            update_pid_file: state.join("app-server-updater.pid"),
@@ -1201,22 +1765,15 @@ index ff2b177..ac50a95 100644
 -            .await
 -            .expect("send response");
 -    });
-+#[test]
-+fn unchanged_updater_uses_version_based_restart() {
-     assert_eq!(
+-    assert_eq!(
 -        super::manual_update::request(&daemon)
 -            .await
 -            .expect("request survives handoff"),
 -        expected
-+        update_modes_for_identities(
-+            &executable_identity_from_bytes(b"same"),
-+            &executable_identity_from_bytes(b"same"),
-+        ),
-+        RestartMode::IfVersionChanged
-     );
+-    );
 -    server.await.expect("replacement task");
- }
- 
+-}
+-
 -#[cfg(unix)]
 -#[tokio::test]
 -async fn manual_request_recovers_when_one_shot_updater_exits() {
@@ -1241,10 +1798,9 @@ index ff2b177..ac50a95 100644
 -            .await
 -            .expect("remove exited updater socket");
 -    });
--    // Without the marker, the ordinary startup path reports unsupported. A
+-    // Without the selected executable, the startup path reports unsupported. A
 -    // retry that only waits for a successor would time out instead.
--    std::fs::remove_file(home.path().join("packages/standalone/auto-update-version"))
--        .expect("remove latest marker");
+-    std::fs::remove_file(&daemon.managed_codex_bin).expect("remove selected binary");
 -    let result = tokio::time::timeout(
 -        Duration::from_secs(5),
 -        super::manual_update::request(&daemon),
@@ -1271,8 +1827,15 @@ index ff2b177..ac50a95 100644
 -    let socket_path = daemon.manual_update_socket_path();
 -    let http = FakeInstallerHttp::new(InstallerResponse::Success(Vec::new()));
 -    let updater_daemon = std::sync::Arc::clone(&daemon);
--    let worker =
--        tokio::spawn(async move { super::run_with_http(&http, &updater_daemon, &identity).await });
+-    let worker = tokio::spawn(async move {
+-        super::run_with_http(
+-            &http,
+-            &updater_daemon,
+-            &identity,
+-            /*restore_release*/ None,
+-        )
+-        .await
+-    });
 -    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
 -    while !socket_path.exists() {
 -        assert!(
@@ -1281,8 +1844,23 @@ index ff2b177..ac50a95 100644
 -        );
 -        tokio::time::sleep(Duration::from_millis(20)).await;
 -    }
--    std::fs::remove_file(home.path().join("packages/standalone/auto-update-version"))
--        .expect("remove latest selection");
+-    // An external installer can pin while this ordinary worker still listens.
+-    // Raw IPC must not gain the manual CLI's authority to restore production.
+-    let marker = super::selected_release(&daemon)
+-        .unwrap()
+-        .0
+-        .join("auto-update-version");
+-    let previous_marker = std::fs::read(&marker).unwrap();
+-    std::fs::remove_file(&marker).unwrap();
+-    let mut pinned = codex_uds::UnixStream::connect(&socket_path).await.unwrap();
+-    pinned.write_all(b"update\n").await.unwrap();
+-    let mut response = Vec::new();
+-    pinned.read_to_end(&mut response).await.unwrap();
+-    let response: Result<UpdateOutput, String> = serde_json::from_slice(&response).unwrap();
+-    assert_eq!(response.unwrap().status, UpdateStatus::Unsupported);
+-    assert!(!marker.exists());
+-    std::fs::write(&marker, previous_marker).unwrap();
+-    std::fs::remove_file(&daemon.managed_codex_bin).expect("remove selected binary");
 -    let mut malformed = codex_uds::UnixStream::connect(&socket_path)
 -        .await
 -        .expect("connect malformed request");
@@ -1298,45 +1876,33 @@ index ff2b177..ac50a95 100644
 -        .expect("rejected request");
 -    tokio::time::sleep(Duration::from_millis(100)).await;
 -    assert!(!worker.is_finished(), "malformed request stopped updater");
-+#[test]
-+fn changed_updater_forces_refresh_even_when_version_may_match() {
-     assert_eq!(
+-    assert_eq!(
 -        super::manual_update::request(&daemon)
 -            .await
 -            .expect("unsupported response")
 -            .status,
 -        UpdateStatus::Unsupported
--    );
++        RestartMode::IfVersionChanged
+     );
 -    tokio::time::sleep(Duration::from_millis(100)).await;
 -    assert!(!worker.is_finished(), "unsupported request stopped updater");
 -    worker.abort();
 -}
 -
 -#[cfg(unix)]
--#[tokio::test]
--async fn manual_update_restarts_managed_daemon_with_automatic_updates_disabled() {
+-async fn test_control_server(
+-    daemon: &Daemon,
+-    home: &std::path::Path,
+-) -> tokio::task::JoinHandle<()> {
 -    use futures::SinkExt;
 -    use futures::StreamExt;
--    use tokio::io::AsyncReadExt;
--    use tokio::io::AsyncWriteExt;
--
--    let home = TempDir::new().expect("home");
--    let (daemon, release) = manual_update_daemon(&home);
--    let daemon = std::sync::Arc::new(daemon);
--    std::fs::create_dir_all(daemon.settings_file.parent().expect("state directory"))
--        .expect("state directory");
--    std::fs::write(
--        &daemon.settings_file,
--        r#"{"updater":{"autoUpdateEnabled":false}}"#,
--    )
--    .expect("disabled updater");
 -    std::fs::create_dir_all(daemon.socket_path.parent().expect("socket parent"))
 -        .expect("socket directory");
 -    let mut listener = codex_uds::UnixListener::bind(&daemon.socket_path)
 -        .await
 -        .expect("control listener");
--    let codex_home = home.path().to_path_buf();
--    let server = tokio::spawn(async move {
+-    let codex_home = home.to_path_buf();
+-    tokio::spawn(async move {
 -        loop {
 -            let connection = listener.accept().await.expect("control connection");
 -            let mut websocket = tokio_tungstenite::accept_async(connection)
@@ -1348,9 +1914,9 @@ index ff2b177..ac50a95 100644
 -                .expect("initialize request")
 -                .expect("frame");
 -            let version = if std::fs::read_to_string(
--                codex_home.join("packages/standalone/auto-update-version"),
+-                crate::managed_install::package_root(&codex_home).join("auto-update-version"),
 -            )
--            .expect("selected release")
+-            .unwrap_or_default()
 -            .starts_with("1.1.0")
 -            {
 -                "1.1.0"
@@ -1369,7 +1935,198 @@ index ff2b177..ac50a95 100644
 -                .expect("initialized notification")
 -                .expect("frame");
 -        }
--    });
+-    })
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn manual_update_restarts_managed_daemon_with_automatic_updates_disabled() {
+-    check_manual_update_restart("standalone").await;
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn daemon_start_and_restart_preserve_launch_features() {
+-    for features in [
+-        std::collections::BTreeMap::new(),
+-        std::collections::BTreeMap::from([
+-            ("api_key_model_discovery".to_string(), true),
+-            ("code_mode_host".to_string(), false),
+-        ]),
+-    ] {
+-        let home = TempDir::new().unwrap();
+-        let (daemon, _) = manual_update_daemon(&home);
+-        let args_path = home.path().join("launch-args");
+-        std::fs::write(
+-        &daemon.settings_file,
+-        r#"{"featureOverrides":{"auth_elicitation":true},"updater":{"autoUpdateEnabled":false}}"#,
+-    )
+-    .unwrap();
+-        std::fs::write(&daemon.managed_codex_bin, format!(
+-        "#!/bin/sh\nif [ \"$1\" = --version ]; then echo codex 1.0.0; exit; fi\nif [ \"$3\" = --help ]; then exit; fi\nprintf '%s\\n' \"$@\" > '{}'\nexec sleep 30\n",
+-        args_path.display(),
+-    )).unwrap();
+-        let control = async {
+-            let deadline = tokio::time::Instant::now() + Duration::from_secs(/*secs*/ 10);
+-            while !args_path.exists() {
+-                assert!(
+-                    tokio::time::Instant::now() < deadline,
+-                    "daemon did not launch"
+-                );
+-                tokio::time::sleep(Duration::from_millis(/*millis*/ 20)).await;
+-            }
+-            test_control_server(&daemon, home.path())
+-                .await
+-                .abort_handle()
+-        };
+-        let (started, server) = tokio::join!(daemon.start(&features), control);
+-        assert_eq!(started.unwrap().status, crate::LifecycleStatus::Started);
+-        assert_eq!(
+-            daemon.load_settings().await.unwrap().feature_overrides,
+-            features
+-        );
+-        let expected = if features.is_empty() {
+-            "app-server\n--listen\nunix://\n--managed-daemon\n"
+-        } else {
+-            "app-server\n--listen\nunix://\n-c\nfeatures.api_key_model_discovery=true\n-c\nfeatures.code_mode_host=false\n--managed-daemon\n"
+-        };
+-        assert_eq!(std::fs::read_to_string(&args_path).unwrap(), expected);
+-        let reused = daemon
+-            .start(&std::collections::BTreeMap::from([(
+-                "api_key_model_discovery".to_string(),
+-                false,
+-            )]))
+-            .await
+-            .unwrap();
+-        assert_eq!(reused.status, crate::LifecycleStatus::AlreadyRunning);
+-        assert_eq!(
+-            daemon.load_settings().await.unwrap().feature_overrides,
+-            features
+-        );
+-        assert_eq!(std::fs::read_to_string(&args_path).unwrap(), expected);
+-        std::fs::remove_file(&args_path).unwrap();
+-        let restarted = daemon.restart().await;
+-        let deadline = tokio::time::Instant::now() + Duration::from_secs(/*secs*/ 10);
+-        while std::fs::read_to_string(&args_path).ok().as_deref() != Some(expected)
+-            && tokio::time::Instant::now() < deadline
+-        {
+-            tokio::time::sleep(Duration::from_millis(/*millis*/ 20)).await;
+-        }
+-        let args = std::fs::read_to_string(args_path);
+-        daemon.stop().await.unwrap();
+-        server.abort();
+-        assert_eq!(restarted.unwrap().status, crate::LifecycleStatus::Restarted);
+-        assert_eq!(args.unwrap(), expected);
+-    }
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn confirmed_feature_restart_preserves_ownership_and_skips_matching_settings() {
+-    use crate::LifecycleStatus;
+-    use std::collections::BTreeMap;
+-
+-    for managed in [true, false] {
+-        let home = TempDir::new().unwrap();
+-        let (daemon, _) = manual_update_daemon(&home);
+-        std::fs::write(&daemon.settings_file,
+-            r#"{"featureOverrides":{"auth_elicitation":true,"api_key_model_discovery":true},"updater":{"autoUpdateEnabled":false},"shutdownGraceSeconds":0}"#
+-        ).unwrap();
+-        let original = daemon.load_settings().await.unwrap();
+-        if managed {
+-            daemon.start_managed_backend(&original).await.unwrap();
+-        }
+-        let server = test_control_server(&daemon, home.path()).await;
+-        let _lock = daemon.acquire_operation_lock().await.unwrap();
+-        let requested = BTreeMap::from([
+-            ("api_key_model_discovery".to_string(), false),
+-            ("mcp_oauth_refresh_coordination".to_string(), true),
+-        ]);
+-        if managed {
+-            // Hide the selection without removing the script the spawned shell still needs.
+-            let selected_package = daemon.managed_codex_bin.parent().unwrap();
+-            let saved_package = selected_package.with_extension("saved");
+-            std::fs::rename(selected_package, &saved_package).unwrap();
+-            let error = daemon
+-                .restart_with_features_locked(&requested)
+-                .await
+-                .unwrap_err();
+-            std::fs::rename(saved_package, selected_package).unwrap();
+-            assert!(
+-                error.to_string().contains("daemon executable not found"),
+-                "{error:#}"
+-            );
+-            assert_eq!(daemon.load_settings().await.unwrap(), original);
+-        }
+-        let result = daemon.restart_with_features_locked(&requested).await;
+-        if managed {
+-            assert_eq!(result.unwrap().status, LifecycleStatus::Restarted);
+-            let pid = std::fs::read(&daemon.pid_file).unwrap();
+-            let mut expected = original;
+-            expected.feature_overrides.extend(requested.clone());
+-            assert_eq!(daemon.load_settings().await.unwrap(), expected);
+-            assert_eq!(
+-                daemon
+-                    .restart_with_features_locked(&requested)
+-                    .await
+-                    .unwrap()
+-                    .status,
+-                LifecycleStatus::AlreadyRunning
+-            );
+-            assert_eq!(std::fs::read(&daemon.pid_file).unwrap(), pid);
+-            daemon.stop().await.unwrap();
+-        } else {
+-            assert!(
+-                result
+-                    .unwrap_err()
+-                    .to_string()
+-                    .contains("no running managed daemon")
+-            );
+-            assert_eq!(daemon.load_settings().await.unwrap(), original);
+-        }
+-        server.abort();
+-    }
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn manual_update_restarts_local_daemon_with_automatic_updates_disabled() {
+-    check_manual_update_restart("app-server-daemon").await;
+ }
+ 
+-#[cfg(unix)]
+-async fn check_manual_update_restart(package_directory: &str) {
+-    use tokio::io::AsyncReadExt;
+-    use tokio::io::AsyncWriteExt;
+-
+-    let local_package = package_directory == "app-server-daemon";
+-    let home = TempDir::new().expect("home");
+-    let (mut daemon, mut release) = manual_update_daemon(&home);
+-    let standalone = home.path().join("packages").join(package_directory);
+-    if local_package {
+-        std::fs::rename(home.path().join("packages/standalone"), &standalone).unwrap();
+-        let local = format!("local-development-{release}");
+-        std::fs::rename(
+-            standalone.join("releases").join(&release),
+-            standalone.join("releases").join(&local),
+-        )
+-        .unwrap();
+-        std::fs::remove_file(standalone.join("current")).unwrap();
+-        std::os::unix::fs::symlink(format!("releases/{local}"), standalone.join("current"))
+-            .unwrap();
+-        std::fs::remove_file(standalone.join("auto-update-version")).unwrap();
+-        daemon.managed_codex_bin = standalone.join("current/codex");
+-        release = local;
+-    }
+-    let daemon = std::sync::Arc::new(daemon);
+-    std::fs::create_dir_all(daemon.settings_file.parent().expect("state directory"))
+-        .expect("state directory");
+-    std::fs::write(
+-        &daemon.settings_file,
+-        r#"{"updater":{"autoUpdateEnabled":false}}"#,
+-    )
+-    .expect("disabled updater");
+-    let server = test_control_server(&daemon, home.path()).await;
 -    let settings = crate::settings::DaemonSettings::default();
 -    let backend = crate::backend::pid_backend(daemon.backend_paths(&settings));
 -    backend.start().await.expect("start daemon");
@@ -1382,23 +2139,44 @@ index ff2b177..ac50a95 100644
 -            .expect("PID")
 -    };
 -    let before = current_pid();
--    let next = release.replacen("1.0.0", "1.1.0", 1);
--    let standalone = home.path().join("packages/standalone");
+-    let version = if local_package { "1.0.0" } else { "1.1.0" };
+-    let next = release
+-        .trim_start_matches("local-development-")
+-        .replacen("1.0.0", version, 1);
+-    let guard = if local_package {
+-        "CODEX_INSTALL_IF_CURRENT"
+-    } else {
+-        "CODEX_INSTALL_IF_LATEST"
+-    };
+-    let install_binary = if local_package {
+-        // Same binary and version, but a different package: it must still restart.
+-        format!(
+-            "cp '{root}/releases/{release}/codex' '{root}/releases/{next}/bin/codex'",
+-            root = standalone.display()
+-        )
+-    } else {
+-        format!(
+-            r#"printf '#!/bin/sh\nif [ "$1" = --version ]; then echo codex 1.1.0; else exec sleep 30; fi\n' > '{root}/releases/{next}/bin/codex'"#,
+-            root = standalone.display()
+-        )
+-    };
 -    let ready = home.path().join("installer-ready");
 -    let proceed = home.path().join("installer-proceed");
 -    let script = format!(
--        "#!/bin/sh\n# CODEX_INSTALL_IF_LATEST\ntest \"$CODEX_INSTALL_IF_LATEST\" = 1 || exit 4\nif [ \"$CODEX_UPDATE_FROM_RELEASE\" = '{next}' ]; then exit 0; fi\ntest \"$CODEX_UPDATE_FROM_RELEASE\" = '{release}' || exit 5\ntouch '{ready}'\nwhile [ ! -e '{proceed}' ]; do sleep .05; done\nmkdir -p '{root}/releases/{next}/bin'\nprintf '#!/bin/sh\\nif [ \"$1\" = --version ]; then echo codex 1.1.0; else exec sleep 30; fi\\n' > '{root}/releases/{next}/bin/codex'\nchmod +x '{root}/releases/{next}/bin/codex'\nln -sfn 'releases/{next}' '{root}/current'\nprintf '{next}' > '{root}/auto-update-version'\n",
+-        "#!/bin/sh\n# CODEX_INSTALL_IF_LATEST CODEX_INSTALL_IF_CURRENT CODEX_INSTALL_DAEMON_ONLY\nif [ \"$CODEX_UPDATE_FROM_RELEASE\" = '{next}' ]; then exit 0; fi\ntest \"${guard}\" = 1 || exit 4\ntest \"$CODEX_UPDATE_FROM_RELEASE\" = '{release}' || exit 5\ntouch '{ready}'\nwhile [ ! -e '{proceed}' ]; do sleep .05; done\nmkdir -p '{root}/releases/{next}/bin'\n{install_binary}\nchmod +x '{root}/releases/{next}/bin/codex'\nln -sfn 'releases/{next}' '{root}/current'\nprintf '{next}' > '{root}/auto-update-version'\n",
 -        root = standalone.display(),
 -        ready = ready.display(),
 -        proceed = proceed.display(),
 -    );
 -    let http = FakeInstallerHttp::new(InstallerResponse::Success(script.into_bytes()));
 -    let updater_daemon = std::sync::Arc::clone(&daemon);
+-    let restore_release = local_package.then(|| release.clone());
 -    let worker = tokio::spawn(async move {
 -        super::run_with_http(
 -            &http,
 -            &updater_daemon,
--            &executable_identity_from_bytes(b"updater"),
+-            &executable_identity_from_reader(&b"updater"[..]).expect("updater identity"),
+-            restore_release,
 -        )
 -        .await
 -    });
@@ -1432,8 +2210,8 @@ index ff2b177..ac50a95 100644
 -        .expect("first request task")
 -        .expect("manual update");
 -    assert_eq!(output.status, UpdateStatus::Updated);
--    assert_eq!(output.installed_version.as_deref(), Some("1.1.0"));
--    assert_eq!(output.running_version.as_deref(), Some("1.1.0"));
+-    assert_eq!(output.installed_version.as_deref(), Some(version));
+-    assert_eq!(output.running_version.as_deref(), Some(version));
 -    assert_eq!(
 -        output.managed_codex_path,
 -        standalone.join("current/bin/codex")
@@ -1447,7 +2225,9 @@ index ff2b177..ac50a95 100644
 -        .expect("second response");
 -    let second: Result<crate::UpdateOutput, String> =
 -        serde_json::from_slice(&response).expect("valid second response");
--    assert_eq!(
++#[test]
++fn changed_updater_forces_refresh_even_when_version_may_match() {
+     assert_eq!(
 -        second.expect("second update").status,
 -        UpdateStatus::NoUpdate
 -    );
@@ -1458,7 +2238,7 @@ index ff2b177..ac50a95 100644
 -        .expect("updater task")
 -        .expect("updater loop");
 -    let no_op = FakeInstallerHttp::new(InstallerResponse::Success(
--        b"#!/bin/sh\n# CODEX_INSTALL_IF_LATEST\nexit 0\n".to_vec(),
+-        b"#!/bin/sh\n# CODEX_INSTALL_IF_LATEST CODEX_INSTALL_DAEMON_ONLY\nexit 0\n".to_vec(),
 -    ));
 -    use std::io::Write;
 -    std::fs::OpenOptions::new()
@@ -1474,8 +2254,9 @@ index ff2b177..ac50a95 100644
 -    let output = manual_update_once(
 -        &no_op,
 -        &daemon,
--        &executable_identity_from_bytes(b"updater"),
+-        &executable_identity_from_reader(&b"updater"[..]).expect("updater identity"),
 -        &mut test_terminate(),
+-        super::UpdateTrigger::Manual,
 -    )
 -    .await
 -    .expect("retry with stale running binary");
@@ -1492,6 +2273,8 @@ index ff2b177..ac50a95 100644
 -        br#"
 -function Test-Installer {
 -    if ($env:CODEX_NON_INTERACTIVE -ne '1') { throw 'interactive installer' }
+-    if ($env:CODEX_INSTALL_DAEMON_ONLY -ne '1') { throw 'wrong package destination' }
+-    if ($env:CODEX_INSTALL_IF_CURRENT -ne '1' -or $env:CODEX_INSTALL_IF_LATEST -ne '0') { throw 'wrong update guard' }
 -}
 -Test-Installer
 -"#
@@ -1500,9 +2283,13 @@ index ff2b177..ac50a95 100644
 -    let script = super::fetch_installer_script(&valid)
 -        .await
 -        .expect("fetch installer");
--    super::run_installer_script(&script, "0.150.0-x86_64-pc-windows-msvc")
--        .await
--        .expect("installer succeeds");
+-    super::run_installer_script(
+-        &script,
+-        super::InstallerMode::RestoreProduction("0.150.0-x86_64-pc-windows-msvc"),
+-        std::path::Path::new("packages/app-server-daemon"),
+-    )
+-    .await
+-    .expect("installer succeeds");
 -    let failing = FakeInstallerHttp::new(InstallerResponse::Success(
 -        b"throw 'installer failed'".to_vec(),
 -    ));
@@ -1510,29 +2297,165 @@ index ff2b177..ac50a95 100644
 -        .await
 -        .expect("fetch failing installer");
 -    assert!(
--        super::run_installer_script(&script, "0.150.0-x86_64-pc-windows-msvc")
--            .await
--            .is_err()
+-        super::run_installer_script(
+-            &script,
+-            super::InstallerMode::RestoreProduction("0.150.0-x86_64-pc-windows-msvc"),
+-            std::path::Path::new("packages/app-server-daemon")
+-        )
+-        .await
+-        .is_err()
+-    );
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn update_rejects_a_package_root_change_during_download() {
+-    struct ChangingRoot<'a>(&'a std::path::Path);
+-    impl InstallerHttp for ChangingRoot<'_> {
+-        async fn get(&self, _url: &str) -> anyhow::Result<InstallerResponse> {
+-            std::os::unix::fs::symlink(
+-                self.0.join("packages/standalone"),
+-                self.0.join("packages/app-server-daemon"),
+-            )?;
+-            Ok(InstallerResponse::Success(
+-                b"# CODEX_INSTALL_IF_LATEST\nexit 99\n".to_vec(),
+-            ))
+-        }
+-    }
+-    let home = TempDir::new().unwrap();
+-    let (daemon, _) = manual_update_daemon(&home);
+-    let identity = executable_identity(&daemon.managed_codex_bin)
+-        .await
+-        .unwrap();
+-    let error = manual_update_once(
+-        &ChangingRoot(home.path()),
+-        &daemon,
+-        &identity,
+-        &mut test_terminate(),
+-        super::UpdateTrigger::Manual,
+-    )
+-    .await
+-    .unwrap_err();
+-    assert!(error.to_string().contains("package root changed"));
+-}
+-
+-#[cfg(unix)]
+-#[tokio::test]
+-async fn daemon_owned_updates_require_and_request_an_isolated_installer() {
+-    let home = TempDir::new().unwrap();
+-    let (mut daemon, release) = manual_update_daemon(&home);
+-    let root = home.path().join("packages/app-server-daemon");
+-    std::fs::rename(home.path().join("packages/standalone"), &root).unwrap();
+-    daemon.managed_codex_bin = root.join("current/codex");
+-    let identity = executable_identity(&daemon.managed_codex_bin)
+-        .await
+-        .unwrap();
+-    let old = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"# CODEX_INSTALL_IF_LATEST\nexit 0\n".to_vec(),
+-    ));
+-    let error = manual_update_once(
+-        &old,
+-        &daemon,
+-        &identity,
+-        &mut test_terminate(),
+-        super::UpdateTrigger::Manual,
+-    )
+-    .await
+-    .unwrap_err();
+-    assert!(
+-        error
+-            .to_string()
+-            .contains("does not support daemon-owned packages")
+-    );
+-    let current = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"# CODEX_INSTALL_IF_LATEST\ntest \"$CODEX_INSTALL_IF_LATEST\" = 1 && test \"$CODEX_INSTALL_DAEMON_ONLY\" = 1\n".to_vec(),
+-    ));
+-    let output = manual_update_once(
+-        &current,
+-        &daemon,
+-        &identity,
+-        &mut test_terminate(),
+-        super::UpdateTrigger::Manual,
+-    )
+-    .await
+-    .unwrap();
+-    assert_eq!(output.status, UpdateStatus::NoUpdate);
+-    assert!(!home.path().join("packages/standalone").exists());
+-
+-    // Reuse the stopped daemon to verify explicit unpinning with either preference.
+-    let marker = root.join("auto-update-version");
+-    let no_op = FakeInstallerHttp::new(InstallerResponse::Success(
+-        b"# CODEX_INSTALL_IF_CURRENT CODEX_INSTALL_DAEMON_ONLY\nexit 0\n".to_vec(),
+-    ));
+-    let script = format!(
+-        r#"# CODEX_INSTALL_IF_CURRENT CODEX_INSTALL_DAEMON_ONLY
+-set -eu
+-test "$CODEX_INSTALL_IF_CURRENT" = 1
+-test "$CODEX_INSTALL_IF_LATEST" = 0
+-test "$CODEX_INSTALL_DAEMON_ONLY" = 1
+-test "$CODEX_RELEASE" = latest
+-test "$CODEX_UPDATE_FROM_RELEASE" = '{release}'
+-printf '%s' '{release}' > '{marker}'
+-"#,
+-        marker = marker.display()
 +        update_modes_for_identities(
 +            &executable_identity_from_bytes(b"old"),
 +            &executable_identity_from_bytes(b"new"),
 +        ),
 +        RestartMode::Always
      );
+-    let restore = FakeInstallerHttp::new(InstallerResponse::Success(script.into_bytes()));
+-    for auto_update_enabled in [false, true] {
+-        let settings = format!(r#"{{"updater":{{"autoUpdateEnabled":{auto_update_enabled}}}}}"#);
+-        std::fs::write(&daemon.settings_file, &settings).unwrap();
+-        std::fs::remove_file(&marker).unwrap();
+-        let error = manual_update_once(
+-            &no_op,
+-            &daemon,
+-            &identity,
+-            &mut test_terminate(),
+-            super::UpdateTrigger::RestoreProduction(&release),
+-        )
+-        .await
+-        .unwrap_err();
+-        assert!(
+-            error
+-                .to_string()
+-                .contains("did not select a stable latest release")
+-        );
+-        assert!(!marker.exists());
+-        let restored = manual_update_once(
+-            &restore,
+-            &daemon,
+-            &identity,
+-            &mut test_terminate(),
+-            super::UpdateTrigger::RestoreProduction(&release),
+-        )
+-        .await
+-        .unwrap();
+-        // Restoring eligibility for the same package still reports noUpdate.
+-        assert_eq!(restored, output);
+-        assert!(!daemon.pid_file.exists());
+-        assert!(daemon.is_stable_standalone_release().unwrap());
+-        assert_eq!(
+-            std::fs::read_to_string(&daemon.settings_file).unwrap(),
+-            settings
+-        );
+-    }
  }
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index 67e54b7..c4daece 100644
+index 399230d..47ee738 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
-@@ -74,6 +74,7 @@ codex-tui = { workspace = true }
- codex-utils-absolute-path = { workspace = true }
- codex-utils-path = { workspace = true }
- crossterm = { workspace = true }
+@@ -79,6 +79,7 @@ codex-utils-path-uri = { workspace = true }
+ codex-utils-redacted-string = { workspace = true }
+ codex-websocket-auth = { workspace = true }
+ crossterm = { workspace = true, features = ["event-stream"] }
 +flate2 = { workspace = true }
+ futures = { workspace = true }
  http = { workspace = true }
  libc = { workspace = true }
- os_info = { workspace = true }
-@@ -81,8 +82,10 @@ owo-colors = { workspace = true }
+@@ -87,8 +88,10 @@ owo-colors = { workspace = true }
  regex-lite = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -1543,7 +2466,7 @@ index 67e54b7..c4daece 100644
  tempfile = { workspace = true }
  tokio = { workspace = true, features = [
      "io-std",
-@@ -108,6 +111,7 @@ tikv-jemallocator = { workspace = true }
+@@ -114,6 +117,7 @@ tikv-jemallocator = { workspace = true }
  codex_windows_sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
  windows-sys = { version = "0.52", features = [
      "Win32_Foundation",
@@ -1582,6 +2505,82 @@ index 44c22b6..0000000
 -        crate::desktop_app::run_app_open_or_install(workspace, cmd.download_url_override).await
 -    }
 -}
+diff --git a/codex-rs/cli/src/daemon_install.rs b/codex-rs/cli/src/daemon_install.rs
+index cf1b450..0b2fc9a 100644
+--- a/codex-rs/cli/src/daemon_install.rs
++++ b/codex-rs/cli/src/daemon_install.rs
+@@ -23,7 +23,7 @@ pub(crate) fn confirm_install(request: &InstallRequest, yes: bool) -> Result<boo
+ 
+ fn describe_install(request: &InstallRequest) -> String {
+     let mut message = format!(
+-        "Replace installed daemon version {} with CLI version {} from {}.\nThe daemon package will be installed in {}.\nThe selected package will be pinned. Run `codex app-server daemon update` to return to production updates.",
++        "Replace installed daemon version {} with CLI version {} from {}.\nThe daemon package will be installed in {}.\nThe selected package will be pinned. Run `codex update` to update codEx itself, then rerun this command to re-pin the daemon package.",
+         request.installed_version.as_deref().unwrap_or("unknown"),
+         request.version,
+         request.source.display(),
+diff --git a/codex-rs/cli/src/daemon_install_tests.rs b/codex-rs/cli/src/daemon_install_tests.rs
+index 700c237..de39c8a 100644
+--- a/codex-rs/cli/src/daemon_install_tests.rs
++++ b/codex-rs/cli/src/daemon_install_tests.rs
+@@ -12,7 +12,7 @@ fn running_daemon_replacement_prompt() {
+     insta::assert_snapshot!(describe_install(&request), @r"
+     Replace installed daemon version 0.152.0 with CLI version 0.0.0 from /cli/package.
+     The daemon package will be installed in /home/packages/app-server-daemon.
+-    The selected package will be pinned. Run `codex app-server daemon update` to return to production updates.
++    The selected package will be pinned. Run `codex update` to update codEx itself, then rerun this command to re-pin the daemon package.
+     The running daemon will restart; active or queued work may be interrupted.
+     ");
+ }
+diff --git a/codex-rs/cli/src/daemon_update_tests.rs b/codex-rs/cli/src/daemon_update_tests.rs
+index d93069f..d35b7cb 100644
+--- a/codex-rs/cli/src/daemon_update_tests.rs
++++ b/codex-rs/cli/src/daemon_update_tests.rs
+@@ -3,8 +3,8 @@ use codex_tui::DaemonUpdateSource;
+ use pretty_assertions::assert_eq;
+ use std::os::unix::fs::PermissionsExt;
+ 
+-#[test]
+-fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::Result<()> {
++#[tokio::test]
++async fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::Result<()> {
+     let dir = tempfile::tempdir()?;
+     let executable = dir.path().join("launching CLI");
+     let receipt = dir.path().join("launching CLI.args");
+@@ -13,24 +13,21 @@ fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::R
+         "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.args\"\n",
+     )?;
+     std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(/*mode*/ 0o700))?;
+-    for (source, expected) in [
+-        (
+-            DaemonUpdateSource::PublicStable,
+-            "app-server\ndaemon\nupdate\n",
+-        ),
+-        (
+-            DaemonUpdateSource::ThisCli,
+-            "app-server\ndaemon\nupdate\n--from-cli\n--yes\n",
+-        ),
+-    ] {
+-        run_update_action(UpdateAction::Daemon(source), Some(&executable))?;
+-        assert_eq!(std::fs::read_to_string(&receipt)?, expected);
+-    }
++    run_update_action(
++        UpdateAction::Daemon(DaemonUpdateSource::ThisCli),
++        Some(&executable),
++    )
++    .await?;
++    assert_eq!(
++        std::fs::read_to_string(&receipt)?,
++        "app-server\ndaemon\nupdate\n--from-cli\n--yes\n"
++    );
+     std::fs::write(&executable, "#!/bin/sh\nexit 7\n")?;
+     let error = run_update_action(
+         UpdateAction::Daemon(DaemonUpdateSource::ThisCli),
+         Some(&executable),
+     )
++    .await
+     .unwrap_err();
+     assert!(error.to_string().contains("Daemon update failed"));
+     Ok(())
 diff --git a/codex-rs/cli/src/desktop_app/mac.rs b/codex-rs/cli/src/desktop_app/mac.rs
 deleted file mode 100644
 index 12abe08..0000000
@@ -2268,18 +3267,18 @@ index ab0f757..0000000
 -    }
 -}
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
-index e42fa9b..e0e9f93 100644
+index 3dc3d07..2c60cb3 100644
 --- a/codex-rs/cli/src/doctor.rs
 +++ b/codex-rs/cli/src/doctor.rs
-@@ -72,7 +72,6 @@ use serde::Serialize;
+@@ -73,7 +73,6 @@ use serde::Serialize;
  use supports_color::Stream;
  
  mod background;
 -mod desktop;
  mod disk;
+ mod filesystem_paths;
  mod git;
- mod network;
-@@ -88,10 +87,6 @@ mod updates;
+@@ -90,10 +89,6 @@ mod updates;
  #[cfg(target_os = "windows")]
  mod windows_dev_drive;
  
@@ -2290,7 +3289,7 @@ index e42fa9b..e0e9f93 100644
  use background::background_server_check;
  use git::git_check;
  use output::HumanOutputOptions;
-@@ -547,17 +542,6 @@ async fn build_report(
+@@ -589,17 +584,6 @@ async fn build_report(
          }
      }
  
@@ -3240,7 +4239,7 @@ index b06685a..0000000
 -}
 diff --git a/codex-rs/cli/src/doctor/desktop/windows_security.rs b/codex-rs/cli/src/doctor/desktop/windows_security.rs
 deleted file mode 100644
-index 94e95ed..0000000
+index d54f1b5..0000000
 --- a/codex-rs/cli/src/doctor/desktop/windows_security.rs
 +++ /dev/null
 @@ -1,232 +0,0 @@
@@ -3318,7 +4317,7 @@ index 94e95ed..0000000
 -        .map(|id| format!("EventID={id}"))
 -        .collect::<Vec<_>>()
 -        .join(" or ");
--    let mut child = Command::new(wevtutil)
+-    let mut child = Command::from(codex_utils_process::background_command(wevtutil))
 -        .args(["qe", channel.1])
 -        .arg(format!(
 -            "/q:*[System[({events}) and TimeCreated[timediff(@SystemTime) <= 604800000]]]"
@@ -4237,7 +5236,7 @@ index fbad7d9..1e1fd1d 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index ee42ceb..3848f60 100644
+index bdd7771..23fc366 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -4248,27 +5247,29 @@ index ee42ceb..3848f60 100644
  use codex_arg0::Arg0DispatchPaths;
  use codex_arg0::arg0_dispatch_or_else;
  use codex_chatgpt::apply_command::ApplyCommand;
-@@ -19,7 +18,6 @@ use codex_cli::run_login_with_chatgpt;
+@@ -18,7 +17,6 @@ use codex_cli::run_login_with_api_key;
+ use codex_cli::run_login_with_chatgpt;
  use codex_cli::run_login_with_device_code;
  use codex_cli::run_logout;
- use codex_cloud_config::cloud_config_bundle_loader_for_storage;
 -use codex_cloud_tasks::Cli as CloudTasksCli;
  use codex_exec::Cli as ExecCli;
  use codex_exec::Command as ExecCommand;
  use codex_exec::ReviewArgs;
-@@ -54,11 +52,7 @@ use supports_color::Stream;
+@@ -50,13 +48,9 @@ use supports_color::Stream;
  #[global_allocator]
  static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
  
 -#[cfg(any(target_os = "macos", target_os = "windows"))]
 -mod app_cmd;
  mod cloud_config;
+ mod daemon_install;
+ mod daemon_telemetry;
 -#[cfg(any(target_os = "macos", target_os = "windows"))]
 -mod desktop_app;
  mod doctor;
  #[cfg(test)]
  #[path = "exec_server_args_tests.rs"]
-@@ -70,18 +64,16 @@ mod mcp_cmd;
+@@ -70,19 +64,17 @@ mod mcp_login;
  mod migrate_rollouts;
  mod plugin_cmd;
  mod queue_cmd;
@@ -4281,6 +5282,7 @@ index ee42ceb..3848f60 100644
 -#[cfg(not(windows))]
 -mod wsl_paths;
  
+ use crate::exec_server_command::ExecServerCommand;
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
  use crate::plugin_cmd::PluginSubcommand;
@@ -4289,7 +5291,7 @@ index ee42ceb..3848f60 100644
  use doctor::DoctorCommand;
  use state_db_recovery as local_state_db;
  
-@@ -111,13 +103,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -107,13 +99,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -4309,7 +5311,7 @@ index ee42ceb..3848f60 100644
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -143,6 +139,14 @@ struct MultitoolCli {
+@@ -139,6 +135,14 @@ struct MultitoolCli {
      subcommand: Option<Subcommand>,
  }
  
@@ -4324,7 +5326,7 @@ index ee42ceb..3848f60 100644
  #[derive(Debug, clap::Subcommand)]
  enum Subcommand {
      /// Browse all agent sessions on the shared local app-server daemon.
-@@ -170,18 +174,11 @@ enum Subcommand {
+@@ -169,18 +173,11 @@ enum Subcommand {
      /// [experimental] Run the app server or related tooling.
      AppServer(AppServerCommand),
  
@@ -4345,7 +5347,7 @@ index ee42ceb..3848f60 100644
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
      Doctor(DoctorCommand),
-@@ -221,10 +218,6 @@ enum Subcommand {
+@@ -220,10 +217,6 @@ enum Subcommand {
      /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
      Fork(ForkCommand),
  
@@ -4356,13 +5358,23 @@ index ee42ceb..3848f60 100644
      /// Internal: run the responses API proxy.
      #[clap(hide = true)]
      ResponsesApiProxy(ResponsesApiProxyArgs),
-@@ -791,15 +784,6 @@ enum AppServerDaemonSubcommand {
+@@ -642,7 +635,11 @@ enum AppServerDaemonSubcommand {
      /// Restart the local app server daemon.
      Restart,
  
--    /// Update the standalone installation and restart the managed daemon (may interrupt work).
--    Update,
--
+-    /// Update the daemon package (may interrupt running work).
++    /// Update the daemon package from this CLI's package (may interrupt running work).
++    ///
++    /// codEx never installs from the upstream Codex installer script, so only
++    /// `--from-cli` is accepted: the daemon package is re-pinned to the package
++    /// of the CLI that runs this command.
+     Update {
+         /// Copy and pin this CLI package.
+         #[arg(long)]
+@@ -652,12 +649,6 @@ enum AppServerDaemonSubcommand {
+         yes: bool,
+     },
+ 
 -    /// Enable remote control for future starts and a currently running managed daemon.
 -    EnableRemoteControl,
 -
@@ -4372,29 +5384,47 @@ index ee42ceb..3848f60 100644
      /// Stop the local app server daemon.
      Stop,
  
-@@ -871,7 +855,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -736,7 +727,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
--fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
-+async fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
-     let is_fatal = match &exit_info.exit_reason {
-         ExitReason::Fatal(message) => {
-             eprintln!("ERROR: {message}");
-@@ -893,79 +877,39 @@ fn handle_app_exit(exit_info: AppExitInfo) -> anyhow::Result<()> {
+-fn handle_app_exit(
++async fn handle_app_exit(
+     exit_info: AppExitInfo,
+     cli_executable: Option<&std::path::Path>,
+ ) -> anyhow::Result<()> {
+@@ -763,97 +754,56 @@ fn handle_app_exit(
          std::process::exit(1);
      }
      if let Some(action) = update_action {
--        run_update_action(action)?;
-+        run_update_action(action).await?;
+-        run_update_action(action, cli_executable)?;
++        run_update_action(action, cli_executable).await?;
      }
      Ok(())
  }
  
  /// Run the update action and print the result.
--fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
-+async fn run_update_action(action: UpdateAction) -> anyhow::Result<()> {
-     println!();
+-fn run_update_action(
++async fn run_update_action(
+     action: UpdateAction,
+     cli_executable: Option<&std::path::Path>,
+ ) -> anyhow::Result<()> {
+-    if let UpdateAction::Daemon(source) = action {
+-        let executable = cli_executable
+-            .ok_or_else(|| anyhow::anyhow!("Cannot locate the launching Codex CLI"))?;
+-        println!("Updating the local background server...");
+-        let status = std::process::Command::new(executable)
+-            .args(source.command_args())
+-            .env(codex_app_server_daemon::telemetry::HANDOFF_ENV, "1")
+-            .status()?;
+-        anyhow::ensure!(
+-            status.success(),
+-            "Daemon update failed with status {status}"
+-        );
+-        println!("Relaunch Codex to reconnect.");
+-        return Ok(());
+-    }
+-    println!();
 -    let cmd_str = action.command_str();
 -    println!("Updating Codex via `{cmd_str}`...");
 -    let status = {
@@ -4421,7 +5451,21 @@ index ee42ceb..3848f60 100644
 -                .args(args)
 -                .current_dir(update_cwd.path())
 -                .status()?
--        }
++    match action {
++        UpdateAction::Daemon(source) => {
++            let executable = cli_executable
++                .ok_or_else(|| anyhow::anyhow!("Cannot locate the launching Codex CLI"))?;
++            println!("Updating the local background server...");
++            let status = std::process::Command::new(executable)
++                .args(source.command_args())
++                .env(codex_app_server_daemon::telemetry::HANDOFF_ENV, "1")
++                .status()?;
++            anyhow::ensure!(
++                status.success(),
++                "Daemon update failed with status {status}"
++            );
++            println!("Relaunch Codex to reconnect.");
+         }
 -        #[cfg(not(windows))]
 -        {
 -            let (cmd, args) = action.command_args();
@@ -4433,17 +5477,17 @@ index ee42ceb..3848f60 100644
 -            std::process::Command::new(&command_path)
 -                .args(&normalized_args)
 -                .status()?
-+    match action {
 +        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
++            println!();
 +            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
 +            self_update::run().await?;
++            println!("\n🎉 Update ran successfully! Please restart codEx.");
          }
 -    };
 -    if !status.success() {
 -        anyhow::bail!("`{cmd_str}` failed with status {status}");
      }
 -    println!("\n🎉 Update ran successfully! Please restart Codex.");
-+    println!("\n🎉 Update ran successfully! Please restart codEx.");
      Ok(())
  }
  
@@ -4481,7 +5525,7 @@ index ee42ceb..3848f60 100644
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -977,10 +921,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -865,10 +815,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -4489,28 +5533,46 @@ index ee42ceb..3848f60 100644
 +                "Could not detect a standalone codEx install. Please update manually from the codEx fork releases: https://github.com/NIyueeE/codEx/releases"
              );
          };
--        run_update_action(action)
-+        run_update_action(action).await
+-        run_update_action(action, /*cli_executable*/ None)
++        run_update_action(action, /*cli_executable*/ None).await
      }
  }
  
-@@ -1228,7 +1172,7 @@ async fn cli_main(
+@@ -1126,7 +1076,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
--            handle_app_exit(exit_info)?;
-+            handle_app_exit(exit_info).await?;
+-            handle_app_exit(exit_info, daemon_cli_executable.as_deref())?;
++            handle_app_exit(exit_info, daemon_cli_executable.as_deref()).await?;
          }
-         Some(Subcommand::Exec(mut exec_cli)) => {
-             reject_remote_mode_for_subcommand(
-@@ -1391,20 +1335,6 @@ async fn cli_main(
+         Some(Subcommand::TcpTunnel(args)) => {
+             return codex_tcp_tunnel::run(args).await;
+@@ -1292,10 +1242,17 @@ async fn cli_main(
                      AppServerDaemonSubcommand::Restart => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
                      }
--                    AppServerDaemonSubcommand::Update => {
--                        let output = codex_app_server_daemon::update().await?;
--                        println!("{}", serde_json::to_string(&output)?);
--                    }
+-                    AppServerDaemonSubcommand::Update {
+-                        from_cli: true,
+-                        yes,
+-                    } => {
++                    AppServerDaemonSubcommand::Stop => {
++                        print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
++                    }
++                    AppServerDaemonSubcommand::Version => {
++                        print_app_server_daemon_output(AppServerLifecycleCommand::Version).await?;
++                    }
++                    AppServerDaemonSubcommand::Update { from_cli, yes } => {
++                        anyhow::ensure!(
++                            from_cli,
++                            "codEx only supports `codex app-server daemon update --from-cli`: it copies this CLI's own package. Run `codex update` to update codEx itself."
++                        );
+                         let result = codex_app_server_daemon::update_from_cli(|request| {
+                             daemon_install::confirm_install(request, yes)
+                         })
+@@ -1311,31 +1268,13 @@ async fn cli_main(
+                             println!("{}", serde_json::to_string(&output)?);
+                         }
+                     }
 -                    AppServerDaemonSubcommand::EnableRemoteControl => {
 -                        print_app_server_remote_control_output(AppServerRemoteControlMode::Enabled)
 -                            .await?;
@@ -4521,10 +5583,71 @@ index ee42ceb..3848f60 100644
 -                        )
 -                        .await?;
 -                    }
-                     AppServerDaemonSubcommand::Stop => {
-                         print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
+-                    AppServerDaemonSubcommand::Stop => {
+-                        print_app_server_daemon_output(AppServerLifecycleCommand::Stop).await?;
+-                    }
+-                    AppServerDaemonSubcommand::Version => {
+-                        print_app_server_daemon_output(AppServerLifecycleCommand::Version).await?;
+-                    }
+                     AppServerDaemonSubcommand::PidUpdateLoop {
+                         check_package_ownership: true,
+                         ..
+                     } => return Ok(()),
+-                    AppServerDaemonSubcommand::Update {
+-                        from_cli: false, ..
+-                    }
+-                    | AppServerDaemonSubcommand::PidUpdateLoop {
++                    AppServerDaemonSubcommand::PidUpdateLoop {
+                         check_package_ownership: false,
++                        restore_release,
+                         ..
+                     } => {
+                         let cli_overrides = root_config_overrides
+@@ -1347,36 +1286,13 @@ async fn cli_main(
+                             .await
+                             .map_err(anyhow::Error::from);
+                         let http_client_factory = updater_http_client_factory(config);
+-                        if matches!(
+-                            daemon_cli.subcommand,
+-                            AppServerDaemonSubcommand::Update { .. }
+-                        ) {
+-                            let result = codex_app_server_daemon::update(http_client_factory)
+-                                .await
+-                                .map(Some);
+-                            daemon_telemetry::record_command(
+-                                &root_config_overrides,
+-                                analytics_default_enabled,
+-                                "public_stable",
+-                                &result,
+-                            )
+-                            .await;
+-                            if let Some(output) = result? {
+-                                println!("{}", serde_json::to_string(&output)?);
+-                            }
+-                        } else {
+-                            let AppServerDaemonSubcommand::PidUpdateLoop {
+-                                restore_release, ..
+-                            } = daemon_cli.subcommand
+-                            else {
+-                                unreachable!()
+-                            };
+-                            codex_app_server_daemon::run_pid_update_loop(
+-                                http_client_factory,
+-                                restore_release,
+-                            )
+-                            .await?;
+-                        }
++                        // Upstream's install-script updater is gone; the fork's loop
++                        // only supervises the managed install.
++                        codex_app_server_daemon::run_pid_update_loop(
++                            http_client_factory,
++                            restore_release,
++                        )
++                        .await?;
                      }
-@@ -1456,29 +1386,6 @@ async fn cli_main(
+                 },
+                 Some(AppServerSubcommand::Proxy(proxy_cli)) => {
+@@ -1411,29 +1327,6 @@ async fn cli_main(
                  }
              }
          }
@@ -4554,25 +5677,25 @@ index ee42ceb..3848f60 100644
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1506,7 +1413,7 @@ async fn cli_main(
+@@ -1461,7 +1354,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
--            handle_app_exit(exit_info)?;
-+            handle_app_exit(exit_info).await?;
+-            handle_app_exit(exit_info, daemon_cli_executable.as_deref())?;
++            handle_app_exit(exit_info, daemon_cli_executable.as_deref()).await?;
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1593,7 +1500,7 @@ async fn cli_main(
+@@ -1548,7 +1441,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
--            handle_app_exit(exit_info)?;
-+            handle_app_exit(exit_info).await?;
+-            handle_app_exit(exit_info, daemon_cli_executable.as_deref())?;
++            handle_app_exit(exit_info, daemon_cli_executable.as_deref()).await?;
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1659,13 +1566,13 @@ async fn cli_main(
+@@ -1614,13 +1507,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -4588,7 +5711,7 @@ index ee42ceb..3848f60 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1681,19 +1588,6 @@ async fn cli_main(
+@@ -1636,19 +1529,6 @@ async fn cli_main(
              )
              .await?;
          }
@@ -4608,7 +5731,7 @@ index ee42ceb..3848f60 100644
          Some(Subcommand::Sandbox(mut sandbox_cli)) => {
              let config_profile = sandbox_cli
                  .config_profile
-@@ -2573,17 +2467,13 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2245,17 +2125,13 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -4627,11 +5750,10 @@ index ee42ceb..3848f60 100644
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2633,13 +2523,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
-             AppServerDaemonSubcommand::Bootstrap(_) => "app-server daemon bootstrap",
+@@ -2307,12 +2183,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
--            AppServerDaemonSubcommand::Update => "app-server daemon update",
+             AppServerDaemonSubcommand::Update { .. } => "app-server daemon update",
 -            AppServerDaemonSubcommand::EnableRemoteControl => {
 -                "app-server daemon enable-remote-control"
 -            }
@@ -4640,8 +5762,8 @@ index ee42ceb..3848f60 100644
 -            }
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
-             AppServerDaemonSubcommand::PidUpdateLoop => "app-server daemon pid-update-loop",
-@@ -2673,14 +2556,6 @@ fn updater_http_client_factory(
+             AppServerDaemonSubcommand::PidUpdateLoop { .. } => "app-server daemon pid-update-loop",
+@@ -2346,14 +2216,6 @@ fn updater_http_client_factory(
      }
  }
  
@@ -4656,7 +5778,7 @@ index ee42ceb..3848f60 100644
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -3776,7 +3651,24 @@ mod tests {
+@@ -3499,7 +3361,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -4682,7 +5804,7 @@ index ee42ceb..3848f60 100644
      }
  
      #[test]
-@@ -4552,31 +4444,20 @@ mod tests {
+@@ -4291,31 +4170,20 @@ mod tests {
      }
  
      #[test]
@@ -4728,7 +5850,7 @@ index ee42ceb..3848f60 100644
      }
  
      #[test]
-@@ -4891,24 +4772,17 @@ mod tests {
+@@ -4630,24 +4498,17 @@ mod tests {
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -4765,7 +5887,7 @@ index ee42ceb..3848f60 100644
              app_server_from_args(["codex", "app-server", "daemon", "stop"].as_ref()).subcommand,
              Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
 diff --git a/codex-rs/cli/src/plugin_cmd.rs b/codex-rs/cli/src/plugin_cmd.rs
-index e82200b..a1791b3 100644
+index d282452..d921164 100644
 --- a/codex-rs/cli/src/plugin_cmd.rs
 +++ b/codex-rs/cli/src/plugin_cmd.rs
 @@ -43,6 +43,13 @@ use std::sync::Arc;
@@ -4944,7 +6066,7 @@ index 0000000..af3ee05
 +}
 diff --git a/codex-rs/cli/src/remote_control_cmd.rs b/codex-rs/cli/src/remote_control_cmd.rs
 deleted file mode 100644
-index f70125c..0000000
+index 9c0d5e2..0000000
 --- a/codex-rs/cli/src/remote_control_cmd.rs
 +++ /dev/null
 @@ -1,780 +0,0 @@
@@ -4955,7 +6077,6 @@ index f70125c..0000000
 -use clap::Args;
 -use codex_app_server::AppServerRuntimeOptions;
 -use codex_app_server::AppServerTransport;
--use codex_app_server::AppServerWebsocketAuthSettings;
 -use codex_app_server_daemon::LifecycleCommand as AppServerLifecycleCommand;
 -use codex_app_server_daemon::LifecycleOutput as AppServerLifecycleOutput;
 -use codex_app_server_daemon::LifecycleStatus as AppServerLifecycleStatus;
@@ -4969,6 +6090,7 @@ index f70125c..0000000
 -use codex_protocol::protocol::SessionSource;
 -use codex_utils_absolute_path::AbsolutePathBuf;
 -use codex_utils_cli::CliConfigOverrides;
+-use codex_websocket_auth::WebsocketAuthSettings;
 -use serde::Serialize;
 -use tokio::sync::watch;
 -use tokio::task::JoinHandle;
@@ -5087,7 +6209,7 @@ index f70125c..0000000
 -        /*default_analytics_enabled*/ false,
 -        transport,
 -        SessionSource::VSCode,
--        AppServerWebsocketAuthSettings::default(),
+-        WebsocketAuthSettings::default(),
 -        runtime_options,
 -    );
 -    let mut app_server_task = tokio::spawn(async move { app_server.await.map(|_| ()) });
@@ -6321,46 +7443,447 @@ index b90dc1e..0000000
 -        assert_eq!(normalize_for_wsl("/home/u/x"), "/home/u/x");
 -    }
 -}
+diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
+index 002012a..b3b9c0d 100644
+--- a/codex-rs/cli/tests/app_server_daemon.rs
++++ b/codex-rs/cli/tests/app_server_daemon.rs
+@@ -92,6 +92,25 @@ impl TestDaemon {
+         Ok(serde_json::from_slice(&output.stdout)?)
+     }
+ 
++    /// Runs the public-stable daemon update, which codEx refuses: only
++    /// `--from-cli` is accepted, so the command must fail with that hint.
++    fn update_without_from_cli(&self) -> Result<std::process::Output> {
++        let output = self
++            .command()
++            .args(["app-server", "daemon", "update"])
++            .output()?;
++        ensure!(
++            !output.status.success(),
++            "daemon update unexpectedly succeeded"
++        );
++        ensure!(
++            String::from_utf8_lossy(&output.stderr).contains("--from-cli"),
++            "daemon update did not explain the --from-cli requirement: {}",
++            String::from_utf8_lossy(&output.stderr)
++        );
++        Ok(output)
++    }
++
+     fn pid(&self, name: &str) -> Result<u32> {
+         let record = std::fs::read(self.home.path().join("app-server-daemon").join(name))
+             .with_context(|| format!("failed to read {name}"))?;
+@@ -456,7 +475,7 @@ fn unmanaged_app_server_does_not_launch_updater() -> Result<()> {
+     let output = daemon.lifecycle("start")?;
+     assert_eq!(output["status"], "alreadyRunning");
+     assert_eq!(output["backend"], Value::Null);
+-    assert_eq!(daemon.lifecycle("update")?["status"], "unsupported");
++    daemon.update_without_from_cli()?;
+     assert!(
+         !daemon
+             .home
+@@ -477,7 +496,7 @@ fn manual_update_rejects_an_unowned_installation() -> Result<()> {
+             .join("packages/standalone/current/bin/codex"),
+     )?;
+ 
+-    assert_eq!(daemon.lifecycle("update")?["status"], "unsupported");
++    daemon.update_without_from_cli()?;
+     assert!(daemon.pid("app-server.pid").is_err());
+     assert!(daemon.pid("app-server-updater.pid").is_err());
+     Ok(())
+diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
+index 1ec06aa..554738c 100644
+--- a/codex-rs/cli/tests/worktree.rs
++++ b/codex-rs/cli/tests/worktree.rs
+@@ -563,7 +563,7 @@ trust_level = "trusted"
+         if matches!(startup_result, Ok(Ok(()))) && renamed.is_ok() {
+             if !fork && backend == "embedded" {
+                 for (input, expected) in [
+-                    ("/daemon\r", "Install latest public stable"),
++                    ("/daemon\r", "Update from this CLI build"),
+                     ("\r", "Update and exit"),
+                     ("\x1b[B\r", "Updating the local background server..."),
+                 ] {
+diff --git a/codex-rs/tui/src/app/daemon_menu.rs b/codex-rs/tui/src/app/daemon_menu.rs
+index bf9934d..436b562 100644
+--- a/codex-rs/tui/src/app/daemon_menu.rs
++++ b/codex-rs/tui/src/app/daemon_menu.rs
+@@ -56,28 +56,22 @@ impl App {
+             .package_layout
+             .is_some()
+         });
+-        let items = [
+-            (
+-                DaemonUpdateSource::PublicStable,
+-                "Install latest public stable",
+-            ),
+-            (DaemonUpdateSource::ThisCli, "Use this CLI build"),
+-        ]
+-        .into_iter()
+-        .map(|(source, name)| SelectionItem {
+-            name: name.to_string(),
+-            is_disabled: unavailable.is_some(),
+-            disabled_reason: (unavailable.is_none()
+-                && source == DaemonUpdateSource::ThisCli
+-                && !has_package)
+-                .then(|| "This CLI has no local package to copy".to_string()),
+-            actions: vec![Box::new(move |tx| {
+-                tx.send(AppEvent::ConfirmDaemonUpdate(source));
+-            })],
+-            dismiss_on_select: true,
+-            ..Default::default()
+-        })
+-        .collect();
++        // codEx only offers the local package source: the public-stable source
++        // runs the upstream Codex installer script, which would replace codEx.
++        let items = [(DaemonUpdateSource::ThisCli, "Update from this CLI build")]
++            .into_iter()
++            .map(|(source, name)| SelectionItem {
++                name: name.to_string(),
++                is_disabled: unavailable.is_some(),
++                disabled_reason: (unavailable.is_none() && !has_package)
++                    .then(|| "This CLI has no local package to copy".to_string()),
++                actions: vec![Box::new(move |tx| {
++                    tx.send(AppEvent::ConfirmDaemonUpdate(source));
++                })],
++                dismiss_on_select: true,
++                ..Default::default()
++            })
++            .collect();
+         self.chat_widget.show_selection_view(SelectionViewParams {
+             header: Box::new(DaemonMenuHeader(header)),
+             items,
+@@ -93,12 +87,17 @@ impl App {
+             return;
+         }
+         let mut explanation = match source {
+-            DaemonUpdateSource::PublicStable => "Install the latest public stable release. Restore production updates; keep your automatic-update setting.".to_string(),
+             DaemonUpdateSource::ThisCli => {
+                 let version = codex_install_context::InstallContext::current()
+                     .package_manifest()
+-                    .map_or_else(|| CODEX_CLI_VERSION.to_string(), |manifest| manifest.version.to_string());
+-                format!("Use this CLI package v{version} from {}. Copy the complete package and pin it against automatic updates.", executable.display())
++                    .map_or_else(
++                        || CODEX_CLI_VERSION.to_string(),
++                        |manifest| manifest.version.to_string(),
++                    );
++                format!(
++                    "Update the daemon to this CLI package v{version} from {}. Copy the complete package and pin it against automatic updates.",
++                    executable.display()
++                )
+             }
+         };
+         explanation.push_str("\nThis may restart the daemon and interrupt active or queued work.\nCodex exits to update in this terminal. Relaunch it afterward.");
+diff --git a/codex-rs/tui/src/app/daemon_menu_tests.rs b/codex-rs/tui/src/app/daemon_menu_tests.rs
+index 0928bf3..137444e 100644
+--- a/codex-rs/tui/src/app/daemon_menu_tests.rs
++++ b/codex-rs/tui/src/app/daemon_menu_tests.rs
+@@ -90,29 +90,19 @@ async fn daemon_menu_is_read_only_and_confirmation_can_cancel_or_handoff() {
+     let overview = render_bottom_popup(&app.chat_widget, /*width*/ 80);
+     insta::assert_snapshot!(overview.lines().find(|line| line.contains("Service v")).unwrap().trim(), @"Service v0.153.0 < Codex CLI v0.154.0 · /daemon");
+     let executable = app.daemon_cli_executable.clone();
+-    for (width, source, snapshot) in [
+-        (
+-            80,
+-            DaemonUpdateSource::PublicStable,
+-            "daemon_stable_confirmation",
+-        ),
+-        (100, DaemonUpdateSource::ThisCli, "daemon_cli_confirmation"),
+-    ] {
++    {
+         app.daemon_cli_executable = executable.clone();
+         app.open_daemon_menu();
+-        if source == DaemonUpdateSource::PublicStable {
+-            insta::assert_snapshot!(
+-                "daemon_menu",
+-                render_bottom_popup(&app.chat_widget, /*width*/ 80)
+-            );
+-        } else {
+-            app.chat_widget.handle_key_event(KeyCode::Down.into());
+-        }
++        insta::assert_snapshot!(
++            "daemon_menu",
++            render_bottom_popup(&app.chat_widget, /*width*/ 80)
++        );
+         assert!(rx.try_recv().is_err());
+         app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-        assert!(
+-            matches!(rx.try_recv().unwrap(), AppEvent::ConfirmDaemonUpdate(selected) if selected == source)
+-        );
++        assert!(matches!(
++            rx.try_recv().unwrap(),
++            AppEvent::ConfirmDaemonUpdate(DaemonUpdateSource::ThisCli)
++        ));
+         app.daemon_cli_executable = Some(
+             AbsolutePathBuf::from_absolute_path(if cfg!(windows) {
+                 r"C:\cli-build\bin\codex"
+@@ -121,57 +111,51 @@ async fn daemon_menu_is_read_only_and_confirmation_can_cancel_or_handoff() {
+             })
+             .unwrap(),
+         );
+-        app.confirm_daemon_update(source);
++        app.confirm_daemon_update(DaemonUpdateSource::ThisCli);
+         insta::assert_snapshot!(
+-            snapshot,
+-            render_bottom_popup(&app.chat_widget, width)
++            "daemon_cli_confirmation",
++            render_bottom_popup(&app.chat_widget, /*width*/ 100)
+                 .replace(r"C:\cli-build\bin\codex", "/x/cli-build/bin/codex")
+         );
+         // The default choice cancels without emitting an update or exiting.
+         app.chat_widget.handle_key_event(KeyCode::Enter.into());
+         assert!(rx.try_recv().is_err());
+         assert_eq!(app.pending_update_action, None);
+-        app.confirm_daemon_update(source);
++        app.confirm_daemon_update(DaemonUpdateSource::ThisCli);
+         app.chat_widget.handle_key_event(KeyCode::Down.into());
+         app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-        assert!(
+-            matches!(rx.try_recv().unwrap(), AppEvent::RunDaemonUpdate(selected) if selected == source)
+-        );
++        assert!(matches!(
++            rx.try_recv().unwrap(),
++            AppEvent::RunDaemonUpdate(DaemonUpdateSource::ThisCli)
++        ));
+     }
+ 
+     // Maintenance remains available when startup selects the embedded server.
+     app.app_server_target = AppServerTarget::Embedded;
+     app.chat_widget.remote_connection = None;
+     app.daemon_cli_executable = executable;
+-    for source in [
+-        DaemonUpdateSource::PublicStable,
+-        DaemonUpdateSource::ThisCli,
+-    ] {
+-        app.open_daemon_menu();
+-        if source == DaemonUpdateSource::PublicStable {
+-            insta::assert_snapshot!(
+-                "daemon_disconnected",
+-                render_bottom_popup(&app.chat_widget, /*width*/ 80)
+-            );
+-        } else {
+-            app.chat_widget.handle_key_event(KeyCode::Down.into());
+-        }
+-        assert!(rx.try_recv().is_err());
+-        app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-        assert!(
+-            matches!(rx.try_recv().unwrap(), AppEvent::ConfirmDaemonUpdate(selected) if selected == source)
+-        );
+-        app.confirm_daemon_update(source);
+-        app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-        assert!(rx.try_recv().is_err());
+-        assert_eq!(app.pending_update_action, None);
+-        app.confirm_daemon_update(source);
+-        app.chat_widget.handle_key_event(KeyCode::Down.into());
+-        app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-        assert!(
+-            matches!(rx.try_recv().unwrap(), AppEvent::RunDaemonUpdate(selected) if selected == source)
+-        );
+-    }
++    app.open_daemon_menu();
++    insta::assert_snapshot!(
++        "daemon_disconnected",
++        render_bottom_popup(&app.chat_widget, /*width*/ 80)
++    );
++    assert!(rx.try_recv().is_err());
++    app.chat_widget.handle_key_event(KeyCode::Enter.into());
++    assert!(matches!(
++        rx.try_recv().unwrap(),
++        AppEvent::ConfirmDaemonUpdate(DaemonUpdateSource::ThisCli)
++    ));
++    app.confirm_daemon_update(DaemonUpdateSource::ThisCli);
++    app.chat_widget.handle_key_event(KeyCode::Enter.into());
++    assert!(rx.try_recv().is_err());
++    assert_eq!(app.pending_update_action, None);
++    app.confirm_daemon_update(DaemonUpdateSource::ThisCli);
++    app.chat_widget.handle_key_event(KeyCode::Down.into());
++    app.chat_widget.handle_key_event(KeyCode::Enter.into());
++    assert!(matches!(
++        rx.try_recv().unwrap(),
++        AppEvent::RunDaemonUpdate(DaemonUpdateSource::ThisCli)
++    ));
+ 
+     std::fs::remove_file(package.path().join("codex-package.json")).unwrap();
+     // The full CLI can have any filename; capability comes from its entry point.
+@@ -182,11 +166,10 @@ async fn daemon_menu_is_read_only_and_confirmation_can_cancel_or_handoff() {
+         "daemon_unpackaged_cli",
+         render_bottom_popup(&app.chat_widget, /*width*/ 80)
+     );
++    // Without a local package the only source is disabled, so confirming the
++    // highlighted item emits nothing.
+     app.chat_widget.handle_key_event(KeyCode::Enter.into());
+-    assert!(matches!(
+-        rx.try_recv().unwrap(),
+-        AppEvent::ConfirmDaemonUpdate(DaemonUpdateSource::PublicStable)
+-    ));
++    assert!(rx.try_recv().is_err());
+ 
+     app.daemon_cli_executable = None;
+     app.open_daemon_menu();
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
+index 4de9db0..3f3e8a6 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
+@@ -1,10 +1,10 @@
+ ---
+ source: tui/src/app/daemon_menu_tests.rs
+-expression: "render_bottom_popup(&app.chat_widget,\nwidth).replace(r\"C:\\cli-build\\bin\\codex\", \"/x/cli-build/bin/codex\")"
++expression: "render_bottom_popup(&app.chat_widget,\n100).replace(r\"C:\\cli-build\\bin\\codex\", \"/x/cli-build/bin/codex\")"
+ ---
+   Update daemon and exit Codex?
+-  Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the complete package and pin it
+-  against automatic updates.
++  Update the daemon to this CLI package v0.160.0 from /x/cli-build/bin/codex. Copy the complete
++  package and pin it against automatic updates.
+   This may restart the daemon and interrupt active or queued work.
+   Codex exits to update in this terminal. Relaunch it afterward.
+ 
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
+index 70a7611..359895a 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
+@@ -6,7 +6,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   Not connected to the local background server.
+ 
+ 
+-› 1. Install latest public stable
+-  2. Use this CLI build
++› 1. Update from this CLI build
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
+index bc8a91e..921158d 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
+@@ -6,7 +6,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   Running daemon: v0.153.0
+ 
+ 
+-› 1. Install latest public stable
+-  2. Use this CLI build
++› 1. Update from this CLI build
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
+index 8232050..e1743ed 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
+@@ -7,7 +7,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   Run the Codex CLI to manage the daemon from this menu.
+ 
+ 
+-›    Install latest public stable
+-     Use this CLI build
++›    Update from this CLI build
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
+index ea209ab..842e54e 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
+@@ -8,7 +8,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   remote connections.
+ 
+ 
+-›    Install latest public stable
+-     Use this CLI build
++›    Update from this CLI build
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
+deleted file mode 100644
+index f49bcbe..0000000
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
++++ /dev/null
+@@ -1,15 +0,0 @@
+----
+-source: tui/src/app/daemon_menu_tests.rs
+-expression: "render_bottom_popup(&app.chat_widget,\nwidth).replace(r\"C:\\cli-build\\bin\\codex\", \"/x/cli-build/bin/codex\")"
+----
+-  Update daemon and exit Codex?
+-  Install the latest public stable release. Restore production updates; keep
+-  your automatic-update setting.
+-  This may restart the daemon and interrupt active or queued work.
+-  Codex exits to update in this terminal. Relaunch it afterward.
+-
+-
+-› 1. Cancel
+-  2. Update and exit
+-
+-  enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
+index dd6f597..d138e59 100644
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
++++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
+@@ -6,7 +6,7 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
+   Not connected to the local background server.
+ 
+ 
+-› 1. Install latest public stable
+-     Use this CLI build (disabled)  This CLI has no local package to copy
++›    Update from this CLI build (disabled)  This CLI has no local package to
++                                            copy
+ 
+   enter select · esc back
+diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+index 335071a..b37853d 100644
+--- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
++++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
+@@ -3,8 +3,6 @@ source: tui/src/app/tests/active_reconnect_tests.rs
+ expression: "format!(\"{history}\\n{}\",\nrender_bottom_popup(&app.chat_widget,\n80)).replace(&test_path_buf(\"/tmp/project\").display().to_string(),\n\"/tmp/project\")"
+ ---
+ • This conversation is unavailable. Its cached transcript and draft remain here; input is paused. Open the agent picker or return to the parent to continue.
+-⚠ A background Codex service is running v2.0.0, different from your Codex CLI
+-  v0.0.0.
+ › unavailable draft
+ 
+   gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index 82e62f0..5dc106d 100644
+index c5fa224..4523ffa 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
-@@ -1,6 +1,7 @@
- //! Informational, warning, update, and policy notice history cells.
- 
- use super::*;
+@@ -5,6 +5,7 @@ use crate::style::accent_color;
+ use crate::terminal_hyperlinks::LineWrapPolicy;
+ use crate::terminal_hyperlinks::remap_source_wrapped_line;
+ use crate::wrapping::adaptive_wrap_line_to_width;
 +use codex_utils_cli::FORK_REPO;
  
  #[cfg_attr(not(test), allow(dead_code))]
  const RECAP_HEADING: &str = "Conversation recap";
-@@ -26,12 +27,14 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -30,17 +31,13 @@ impl HistoryCell for UpdateAvailableHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
          use ratatui_macros::line;
          use ratatui_macros::text;
 -        let update_instruction = if let Some(update_action) = self.update_action {
--            line!["Run ", update_action.command_str().cyan(), " to update."]
+-            line![
+-                "Run ",
+-                update_action.command_str().fg(accent_color()),
+-                " to update."
+-            ]
 +        let update_instruction = if self.update_action.is_some() {
 +            line!["Run ", "codex update".cyan(), " to update."]
          } else {
              line![
                  "See ",
--                "https://github.com/openai/codex".cyan().underlined(),
+-                "https://github.com/openai/codex"
+-                    .fg(accent_color())
 +                format!("https://github.com/{FORK_REPO}")
 +                    .cyan()
-+                    .underlined(),
+                     .underlined(),
                  " for installation options."
              ]
-         };
-@@ -46,7 +49,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -56,8 +53,8 @@ impl HistoryCell for UpdateAvailableHistoryCell {
              update_instruction,
              "",
              "See full release notes:",
 -            "https://github.com/openai/codex/releases/latest"
+-                .fg(accent_color())
 +            format!("https://github.com/{FORK_REPO}/releases/latest")
-                 .cyan()
++                .cyan()
                  .underlined(),
          ];
-@@ -60,10 +63,10 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+ 
+@@ -70,10 +67,10 @@ impl HistoryCell for UpdateAvailableHistoryCell {
      }
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
@@ -6374,7 +7897,7 @@ index 82e62f0..5dc106d 100644
          };
          vec![
              Line::from("Update available!"),
-@@ -71,7 +74,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
+@@ -81,7 +78,7 @@ impl HistoryCell for UpdateAvailableHistoryCell {
              Line::from(update_instruction),
              Line::from(""),
              Line::from("See full release notes:"),
@@ -6401,23 +7924,28 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index ad0fc4b..f50c9d9 100644
+index e5cc9a0..4e03460 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-@@ -1,9 +1,9 @@
+@@ -1,10 +1,12 @@
  ---
--source: tui/src/history_cell.rs
-+source: tui/src/history_cell/tests.rs
+ source: tui/src/history_cell/tests.rs
+-assertion_line: 778
  expression: rendered
  ---
- ╭─────────────────────────────────────╮
--│ >_ OpenAI Codex (v0.0.0)            │
-+│ >_ codEx (v0.155.1)                 │
- │                                     │
- │ model:     gpt-5   /model to change │
- │ directory: /tmp/project             │
+-
+-  >_ OpenAI Codex (v0.0.0)
+-     /tmp/project
++╭─────────────────────────────────────╮
++│ >_ codEx (v0.160.0)                 │
++│                                     │
++│ model:     gpt-5   /model to change │
++│ directory: /tmp/project             │
++╰─────────────────────────────────────╯
+ 
+   Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..62b7b6b 100644
+index c8f352d..d154929 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -6432,7 +7960,7 @@ index c8f352d..62b7b6b 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.155.1 -> 9.9.9            │
++│ ✨ Update available! 0.160.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -6457,10 +7985,10 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 138c9b5..0ac0303 100644
+index 9b0dc60..1300c41 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1289,35 +1289,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1371,35 +1371,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -6496,14 +8024,67 @@ index 138c9b5..0ac0303 100644
  #[test]
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+index 53c8053..6263326 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
+@@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
+ expression: rendered
+ ---
+ 
+-  Update available · 0.0.0
+-  → 9.9.9
++  Update available ·
++  0.160.0 → 9.9.9
+   Release notes:
+-  https://github.com/opena
+-  i/codex/releases/latest
++  https://github.com/NIyue
++  eE/codEx/releases/latest
+ ↑
+ › 3. Skip until next version
+ 
+diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+index b547642..ecbe5c5 100644
+--- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
++++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
+@@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
+ expression: terminal.backend()
+ ---
+ 
+-  Update available · 0.0.0 → 9.9.9
+-  Release notes: https://github.com/openai/codex/releases/latest
++  Update available · 0.160.0 → 9.9.9
++  Release notes: https://github.com/NIyueeE/codEx/releases/latest
+ 
+-› 1. Update now (runs `npm install -g @openai/codex`)                           
++› 1. Update now (runs `codex update`)                                           
+   2. Skip
+   3. Skip until next version
+ 
+diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
+index a0ff9cb..64c1149 100644
+--- a/codex-rs/tui/src/startup_orchestration.rs
++++ b/codex-rs/tui/src/startup_orchestration.rs
+@@ -903,7 +903,6 @@ pub(super) async fn run_main_inner(
+             (
+                 "update_target",
+                 match source {
+-                    DaemonUpdateSource::PublicStable => "public_stable",
+                     DaemonUpdateSource::ThisCli => "this_cli",
+                 },
+             ),
 diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
-index 225c457..eb4c3c2 100644
+index 860d0bd..be30a6c 100644
 --- a/codex-rs/tui/src/update_action.rs
 +++ b/codex-rs/tui/src/update_action.rs
-@@ -8,19 +8,12 @@ use codex_install_context::StandalonePlatform;
+@@ -8,21 +8,14 @@ use codex_install_context::StandalonePlatform;
  /// Update action the CLI should perform after the TUI exits.
  #[derive(Debug, Clone, Copy, PartialEq, Eq)]
  pub enum UpdateAction {
+-    /// Replace the local daemon after restoring the terminal.
++    /// Replace the local daemon package with this CLI's package after restoring the terminal.
+     Daemon(DaemonUpdateSource),
 -    /// Update via `npm install -g @openai/codex@latest`.
 -    NpmGlobalLatest,
 -    /// Update via `bun install -g @openai/codex@latest`.
@@ -6525,7 +8106,7 @@ index 225c457..eb4c3c2 100644
      StandaloneWindows,
  }
  
-@@ -28,52 +21,20 @@ impl UpdateAction {
+@@ -30,53 +23,20 @@ impl UpdateAction {
      #[cfg(any(not(debug_assertions), test))]
      pub(crate) fn from_install_context(context: &InstallContext) -> Option<Self> {
          match &context.method {
@@ -6553,6 +8134,7 @@ index 225c457..eb4c3c2 100644
 -    /// Returns the list of command-line arguments for invoking the update.
 -    pub fn command_args(self) -> (&'static str, &'static [&'static str]) {
 -        match self {
+-            UpdateAction::Daemon(source) => ("codex", source.command_args()),
 -            UpdateAction::NpmGlobalLatest => ("npm", &["install", "-g", "@openai/codex"]),
 -            UpdateAction::BunGlobalLatest => ("bun", &["install", "-g", "@openai/codex"]),
 -            UpdateAction::VitePlusGlobalLatest => ("vp", &["install", "-g", "@openai/codex"]),
@@ -6586,7 +8168,7 @@ index 225c457..eb4c3c2 100644
  }
  
  #[cfg(not(debug_assertions))]
-@@ -105,28 +66,35 @@ mod tests {
+@@ -108,28 +68,35 @@ mod tests {
                  method: InstallMethod::Npm,
                  package_layout: None,
              }),
@@ -6626,7 +8208,7 @@ index 225c457..eb4c3c2 100644
          );
          assert_eq!(
              UpdateAction::from_install_context(&InstallContext {
-@@ -151,30 +119,4 @@ mod tests {
+@@ -154,45 +121,23 @@ mod tests {
              Some(UpdateAction::StandaloneWindows)
          );
      }
@@ -6657,30 +8239,51 @@ index 225c457..eb4c3c2 100644
 -        );
 -    }
  }
+ 
+ /// Package source explicitly selected by the user in the daemon menu.
++///
++/// codEx supports exactly one daemon package source: the running CLI's own
++/// package. Upstream's "public stable" source installs from the Codex installer
++/// script, which would replace codEx, so the fork removed that entry point;
++/// `codex update` updates codEx itself.
+ #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+ pub enum DaemonUpdateSource {
+-    PublicStable,
++    /// Copy and pin the package of the CLI that is running right now.
+     ThisCli,
+ }
+ 
+ impl DaemonUpdateSource {
+     pub fn command_args(self) -> &'static [&'static str] {
+         match self {
+-            Self::PublicStable => &["app-server", "daemon", "update"],
+             Self::ThisCli => &["app-server", "daemon", "update", "--from-cli", "--yes"],
+         }
+     }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index 688d113..e749b63 100644
+index 30e948d..4f824ff 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
-@@ -26,7 +26,8 @@ use ratatui::widgets::Clear;
- use ratatui::widgets::WidgetRef;
+@@ -39,7 +39,8 @@ use ratatui::widgets::Wrap;
+ #[cfg(not(debug_assertions))]
  use tokio_stream::StreamExt;
  
 -const RELEASE_NOTES_URL: &str = "https://github.com/openai/codex/releases/latest";
 +// Keep in sync with `codex_utils_cli::FORK_REPO`.
 +const RELEASE_NOTES_URL: &str = "https://github.com/NIyueeE/codEx/releases/latest";
  
+ #[cfg(not(debug_assertions))]
  pub(crate) enum UpdatePromptOutcome {
-     Continue,
-@@ -189,7 +190,7 @@ impl WidgetRef for &UpdatePromptScreen {
+@@ -205,7 +206,7 @@ impl WidgetRef for &UpdatePromptScreen {
          Clear.render(area, buf);
-         let mut column = ColumnRenderable::new();
+         let mut column = FlexRenderable::new();
  
 -        let update_command = self.update_action.command_str();
 +        let update_command = "codex update";
  
-         column.push("");
-         column.push(Line::from(vec![
-@@ -256,7 +257,7 @@ mod tests {
+         column.push(/*flex*/ 1, RenderableItem::Borrowed(&""));
+         column.push(
+@@ -286,7 +287,7 @@ mod tests {
          UpdatePromptScreen::new(
              FrameRequester::test_dummy(),
              "9.9.9".into(),
@@ -6690,7 +8293,7 @@ index 688d113..e749b63 100644
      }
  
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index 696290d..27f89c8 100644
+index b0aa3de..0c8243e 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
 @@ -8,10 +8,14 @@ pub(crate) fn is_newer(latest: &str, current: &str) -> Option<bool> {
@@ -6711,7 +8314,7 @@ index 696290d..27f89c8 100644
  }
  
  #[cfg(any(not(debug_assertions), test))]
-@@ -65,11 +69,20 @@ mod tests {
+@@ -63,11 +67,20 @@ mod tests {
              extract_version_from_latest_tag("rust-v1.5.0").expect("failed to parse version"),
              "1.5.0"
          );
@@ -6735,7 +8338,7 @@ index 696290d..27f89c8 100644
  
      #[test]
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index b801426..39e4085 100644
+index 9bbdf31..39e4085 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -1,10 +1,6 @@
@@ -6802,11 +8405,12 @@ index b801426..39e4085 100644
      http_client_factory: HttpClientFactory,
  ) -> anyhow::Result<()> {
      let client_pool = RouteAwareClientPool::with_chatgpt_cloudflare_cookies(
-@@ -81,38 +71,7 @@ async fn check_for_update(
+@@ -81,39 +71,7 @@ async fn check_for_update(
          ClientRouteClass::Other,
      )
      .with_legacy_custom_ca_fallback();
 -    let latest_version = match action {
+-        Some(UpdateAction::Daemon(_)) => return Ok(()),
 -        Some(UpdateAction::BrewUpgrade) => {
 -            let HomebrewCaskInfo { version } = client_pool
 -                .get(HOMEBREW_CASK_API_URL)
@@ -6842,7 +8446,7 @@ index b801426..39e4085 100644
  
      // Preserve any previously dismissed version if present.
      let prev_info = read_version_info(version_file).ok();
-@@ -133,10 +92,15 @@ async fn check_for_update(
+@@ -134,10 +92,15 @@ async fn check_for_update(
  async fn fetch_latest_github_release_version(
      client_pool: &RouteAwareClientPool,
  ) -> anyhow::Result<String> {
@@ -6859,7 +8463,7 @@ index b801426..39e4085 100644
          .headers(default_headers())
          .send()
          .await?
-@@ -146,6 +110,25 @@ async fn fetch_latest_github_release_version(
+@@ -147,6 +110,25 @@ async fn fetch_latest_github_release_version(
      extract_version_from_latest_tag(&latest_tag_name)
  }
  

@@ -1,11 +1,11 @@
-From 6424fe20387cf5c0922491424d80dc36c59b8657 Mon Sep 17 00:00:00 2001
-From: Won Park <won@openai.com>
-Date: Fri, 14 Aug 2026 01:13:01 +0800
+From 22227633d36f56f13b816cb2b61d4b250541938e Mon Sep 17 00:00:00 2001
+From: ref <ref@localhost>
+Date: Fri, 2 Oct 2026 18:51:52 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
- .github/scripts/install-musl-build-tools.sh   |   12 +-
- .github/workflows/bazel.yml                   |  554 -----
+ .github/scripts/install-musl-build-tools.sh   |   11 +-
+ .github/workflows/bazel.yml                   |  549 -----
  .github/workflows/blob-size-policy.yml        |   53 -
  .github/workflows/blocking-ci.yml             |  212 +-
  .github/workflows/cargo-deny.yml              |   31 -
@@ -14,41 +14,40 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/python-runtime-build.yml    |  114 -
  .github/workflows/python-runtime-release.yml  |   63 -
  .github/workflows/python-sdk-release.yml      |  172 --
- .github/workflows/r2-release.yml              |   53 -
- .github/workflows/repo-checks.yml             |   86 +-
+ .github/workflows/r2-release.yml              |   59 -
+ .github/workflows/repo-checks.yml             |   89 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ----
  .github/workflows/rust-ci-full.yml            |  574 -----
  .github/workflows/rust-ci.yml                 |  263 --
  .../rust-release-argument-comment-lint.yml    |  113 -
- .github/workflows/rust-release-prepare.yml    |   57 -
- .github/workflows/rust-release-windows.yml    |  413 ----
+ .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2135 ++---------------
+ .github/workflows/rust-release.yml            | 2174 ++---------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
- .github/workflows/sdk.yml                     |  159 --
+ .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
  install.sh                                    |  198 ++
- patches/BUILD.bazel                           |   30 -
+ patches/BUILD.bazel                           |   35 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 -
  patches/llvm_windows_arm64_powl.patch         |   25 -
  patches/llvm_windows_mingw_compat.patch       |   50 -
- patches/ring_windows_msvc_include_dirs.patch  |   98 -
+ patches/ring_windows_msvc_include_dirs.patch  |  112 -
  patches/rules_cc_rusty_v8_custom_libcxx.patch |   44 -
  ...ules_rs_build_script_deps_annotation.patch |   58 -
  ...s_rust_build_script_tools_transition.patch |   19 -
  ...s_rust_windows_msvc_direct_link_args.patch |  109 -
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
- patches/v8_bazel_rules.patch                  |  502 ----
+ patches/v8_bazel_rules.patch                  |  509 ----
  patches/v8_module_deps.patch                  |  285 ---
  patches/v8_source_portability.patch           |  316 ---
  .../webrtc-sys_hermetic_darwin_sysroot.patch  |   75 -
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 44 files changed, 659 insertions(+), 8102 deletions(-)
+ 43 files changed, 657 insertions(+), 8328 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -61,7 +60,6 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  delete mode 100644 .github/workflows/rust-ci-full.yml
  delete mode 100644 .github/workflows/rust-ci.yml
  delete mode 100644 .github/workflows/rust-release-argument-comment-lint.yml
- delete mode 100644 .github/workflows/rust-release-prepare.yml
  delete mode 100644 .github/workflows/rust-release-windows.yml
  delete mode 100644 .github/workflows/rust-release-zsh.yml
  delete mode 100644 .github/workflows/rusty-v8-release.yml
@@ -90,15 +88,15 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  delete mode 100644 patches/zstd-sys_windows_msvc_include_dirs.patch
 
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index 49035f5..9382592 100644
+index a7d37b7..90af719 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
  fi
  
  sudo apt-get update "${apt_update_args[@]}"
--sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils
-+sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl linux-libc-dev musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils
+-sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils perl make
++sudo apt-get install -y "${apt_install_args[@]}" ca-certificates curl linux-libc-dev musl-tools pkg-config libcap-dev g++ clang libc++-dev libc++abi-dev lld xz-utils perl make
  
  case "${TARGET}" in
    x86_64-unknown-linux-musl)
@@ -114,11 +112,10 @@ index 49035f5..9382592 100644
  # Use the musl toolchain as the Rust linker to avoid Zig injecting its own CRT.
  if command -v "${arch}-linux-musl-gcc" >/dev/null; then
    musl_linker="$(command -v "${arch}-linux-musl-gcc")"
-@@ -47,11 +52,6 @@ else
-   exit 1
- fi
+@@ -50,10 +55,6 @@ fi
+ OPENSSL_CC="${musl_linker}" bash "$(dirname "${BASH_SOURCE[0]}")/install-musl-openssl.sh"
  
--zig_target="${TARGET/-unknown-linux-musl/-linux-musl}"
+ zig_target="${TARGET/-unknown-linux-musl/-linux-musl}"
 -runner_temp="${RUNNER_TEMP:-/tmp}"
 -tool_root="${runner_temp}/codex-musl-tools-${TARGET}"
 -mkdir -p "${tool_root}"
@@ -128,10 +125,10 @@ index 49035f5..9382592 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index 568086a..0000000
+index ede5a7f..0000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
-@@ -1,554 +0,0 @@
+@@ -1,549 +0,0 @@
 -name: Bazel
 -
 -# Note this workflow was originally derived from:
@@ -294,6 +291,11 @@ index 568086a..0000000
 -        shell: pwsh
 -        run: python .github/scripts/test_run_bazel_with_buildbuddy.py
 -
+-      - name: Test Windows Bazel target selector
+-        if: matrix.shard == 1
+-        shell: pwsh
+-        run: python -m unittest discover -s .github/scripts -p test_select_windows_bazel_targets.py
+-
 -      - name: Prepare Bazel CI
 -        id: prepare_bazel
 -        uses: ./.github/actions/prepare-bazel-ci
@@ -314,29 +316,19 @@ index 568086a..0000000
 -          set -euo pipefail
 -
 -          bazel_test_query='tests(//...) except tests(//third_party/v8:all) except attr(tags, "manual", tests(//...))'
--          mapfile -t bazel_targets < <(
--            ./.github/scripts/run-bazel-query-ci.sh --output=label -- "${bazel_test_query}" \
--              | LC_ALL=C sort
--          )
+-          bazel_targets_file="$(mktemp)"
+-          selected_targets_file="$(mktemp)"
+-          trap 'rm -f "${bazel_targets_file}" "${selected_targets_file}"' EXIT
 -
--          selected_targets=()
--          for bazel_target in "${bazel_targets[@]}"; do
--            target_bucket="$(
--              printf '%s\n' "${bazel_target}" \
--                | cksum \
--                | awk -v shard_count="${BAZEL_TEST_SHARD_COUNT}" '{ print ($1 % shard_count) + 1 }'
--            )"
--            if [[ "${target_bucket}" == "${BAZEL_TEST_SHARD}" ]]; then
--              selected_targets+=("${bazel_target}")
--            fi
--          done
--
--          if [[ ${#selected_targets[@]} -eq 0 ]]; then
--            echo "No Bazel test targets selected for Windows shard ${BAZEL_TEST_SHARD}/${BAZEL_TEST_SHARD_COUNT}." >&2
--            exit 1
--          fi
--
--          echo "Selected ${#selected_targets[@]} of ${#bazel_targets[@]} Bazel test targets for Windows shard ${BAZEL_TEST_SHARD}/${BAZEL_TEST_SHARD_COUNT}."
+-          # Keep query and selection in the foreground so failures cannot leave
+-          # different jobs assigning different partial target lists.
+-          ./.github/scripts/run-bazel-query-ci.sh --output=label -- "${bazel_test_query}" \
+-            | LC_ALL=C sort > "${bazel_targets_file}"
+-          python .github/scripts/select_windows_bazel_targets.py \
+-            --shard "${BAZEL_TEST_SHARD}" \
+-            --shard-count "${BAZEL_TEST_SHARD_COUNT}" \
+-            < "${bazel_targets_file}" > "${selected_targets_file}"
+-          mapfile -t selected_targets < "${selected_targets_file}"
 -
 -          bazel_test_args=(
 -            test
@@ -1460,10 +1452,10 @@ index 0e01f23..0000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
-index 96a0768..0000000
+index d1783bb..0000000
 --- a/.github/workflows/r2-release.yml
 +++ /dev/null
-@@ -1,53 +0,0 @@
+@@ -1,59 +0,0 @@
 -name: publish-r2-release
 -
 -on:
@@ -1505,23 +1497,29 @@ index 96a0768..0000000
 -          AWS_SECRET_ACCESS_KEY: ${{ secrets.CODEX_R2_SECRET_ACCESS_KEY }}
 -          AWS_ENDPOINT_URL: ${{ vars.CODEX_R2_ENDPOINT_URL }}
 -          AWS_REGION: ${{ vars.CODEX_R2_REGION }}
+-          AWS_RETRY_MODE: standard
+-          AWS_MAX_ATTEMPTS: "6"
 -          GH_TOKEN: ${{ github.token }}
 -          RELEASE_TAG: ${{ inputs.tag }}
 -          RELEASE_MAKE_LATEST: ${{ inputs.make_latest }}
 -          RELEASE_PRERELEASE: ${{ inputs.prerelease }}
 -          RELEASE_STAGE: ${{ inputs.stage }}
+-          PYTHONPATH: .github/scripts
 -        run: |
 -          set -euo pipefail
+-          # The publisher parallelizes objects; serialize parts within each object to avoid R2 throttling.
+-          aws configure set default.s3.preferred_transfer_client classic
+-          aws configure set default.s3.max_concurrent_requests 1
 -          python3 .github/scripts/publish_r2_release.py \
 -            --tag "${RELEASE_TAG}" \
 -            --make-latest "${RELEASE_MAKE_LATEST}" \
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index d43bcdc..562d2d4 100644
+index 4f05cd0..562d2d4 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -6,69 +6,55 @@ on:
+@@ -6,72 +6,55 @@ on:
  jobs:
    build-test:
      runs-on: ubuntu-latest
@@ -1576,6 +1574,9 @@ index d43bcdc..562d2d4 100644
 +            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
 +          fi
  
+-      - name: Test release version comparison
+-        run: python3 -m unittest discover -s .github/scripts -p 'test_releases.py'
+-
 -      - name: Test PyPI release verification
 -        run: uv run --no-project --with packaging==26.2 python -m unittest discover -s .github/scripts -p 'test_verify_pypi_release.py'
 +      - name: Verify codex-tui does not import codex-core directly
@@ -3040,82 +3041,19 @@ index 5bf1121..0000000
 -        with:
 -          name: argument-comment-lint-${{ matrix.target }}
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
-diff --git a/.github/workflows/rust-release-prepare.yml b/.github/workflows/rust-release-prepare.yml
-deleted file mode 100644
-index 80e2311..0000000
---- a/.github/workflows/rust-release-prepare.yml
-+++ /dev/null
-@@ -1,57 +0,0 @@
--name: rust-release-prepare
--on:
--  workflow_dispatch:
--  schedule:
--    - cron: "0 */4 * * *"
--
--concurrency:
--  group: ${{ github.workflow }}
--  cancel-in-progress: false
--
--permissions:
--  contents: write
--  pull-requests: write
--
--jobs:
--  prepare:
--    # Prevent scheduled runs on forks (no secrets, wastes Actions minutes)
--    if: github.repository == 'openai/codex'
--    environment:
--      name: rust-release-prepare
--      deployment: false
--    runs-on: ubuntu-latest
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          ref: main
--          fetch-depth: 0
--          persist-credentials: false
--
--      - name: Update models.json
--        env:
--          OPENAI_API_KEY: ${{ secrets.CODEX_OPENAI_API_KEY }}
--        run: |
--          set -euo pipefail
--
--          client_version="99.99.99"
--          terminal_info="github-actions"
--          user_agent="codex_cli_rs/99.99.99 (Linux $(uname -r); $(uname -m)) ${terminal_info}"
--          base_url="${OPENAI_BASE_URL:-https://chatgpt.com/backend-api/codex}"
--
--          headers=(
--            -H "Authorization: Bearer ${OPENAI_API_KEY}"
--            -H "User-Agent: ${user_agent}"
--          )
--
--          url="${base_url%/}/models?client_version=${client_version}"
--          curl --http1.1 --fail --show-error --location "${headers[@]}" "${url}" | jq 'del(.models[].base_instructions)' > codex-rs/models-manager/models.json
--
--      - name: Open pull request (if changed)
--        uses: peter-evans/create-pull-request@c0f553fe549906ede9cf27b5156039d195d2ece0 # v8.1.0
--        with:
--          commit-message: "Update models.json"
--          title: "Update models.json"
--          body: "Automated update of models.json."
--          branch: "bot/update-models-json"
--          reviewers: "pakrym-oai,aibrahim-oai"
--          delete-branch: true
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
 deleted file mode 100644
-index 234abf9..0000000
+index 20490c5..0000000
 --- a/.github/workflows/rust-release-windows.yml
 +++ /dev/null
-@@ -1,413 +0,0 @@
+@@ -1,624 +0,0 @@
 -name: rust-release-windows
 -
 -on:
 -  workflow_call:
 -
 -env:
--  WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-command-runner codex-app-server"
+-  WINDOWS_BINARIES: "codex codex-code-mode-host codex-responses-api-proxy codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner codex-app-server"
 -
 -jobs:
 -  build-windows-binaries:
@@ -3150,14 +3088,14 @@ index 234abf9..0000000
 -          - runner: windows-x64
 -            target: x86_64-pc-windows-msvc
 -            bundle: helpers
--            binaries: "codex-windows-sandbox-setup codex-command-runner"
+-            binaries: "codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner"
 -            runs_on:
 -              group: ${{ github.event.repository.name }}-runners
 -              labels: ${{ github.event.repository.name }}-windows-x64
 -          - runner: windows-arm64
 -            target: aarch64-pc-windows-msvc
 -            bundle: helpers
--            binaries: "codex-windows-sandbox-setup codex-command-runner"
+-            binaries: "codex-windows-sandbox-setup codex-windows-sandbox-service codex-command-runner"
 -            runs_on:
 -              group: ${{ github.event.repository.name }}-runners
 -              labels: ${{ github.event.repository.name }}-windows-arm64
@@ -3220,6 +3158,8 @@ index 234abf9..0000000
 -          for binary in ${{ matrix.binaries }}; do
 -            build_args+=(--bin "$binary")
 -          done
+-          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+-          export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
 -
 -      - name: Upload Cargo timings
@@ -3256,6 +3196,134 @@ index 234abf9..0000000
 -          name: windows-binaries-${{ matrix.target }}-${{ matrix.bundle }}
 -          path: |
 -            ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/staged-${{ matrix.bundle }}/*
+-
+-  build-windows-voice:
+-    name: Build Windows voice - ${{ matrix.target }}
+-    runs-on: ${{ matrix.runs_on }}
+-    timeout-minutes: 120
+-    permissions:
+-      contents: read
+-    strategy:
+-      fail-fast: false
+-      matrix:
+-        include:
+-          - target: x86_64-pc-windows-msvc
+-            arch: x86_64
+-            python_arch: x64
+-            runs_on:
+-              group: ${{ github.event.repository.name }}-runners
+-              labels: ${{ github.event.repository.name }}-windows-x64
+-          - target: aarch64-pc-windows-msvc
+-            arch: aarch64
+-            python_arch: arm64
+-            runs_on:
+-              group: ${{ github.event.repository.name }}-runners
+-              labels: ${{ github.event.repository.name }}-windows-arm64
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
+-        with:
+-          python-version: "3.12"
+-          architecture: ${{ matrix.python_arch }}
+-      - name: Prepare Bazel CI
+-        uses: ./.github/actions/prepare-bazel-ci
+-        with:
+-          target: ${{ matrix.target }}
+-          cache-scope: release-voice-windows
+-      - uses: ./.github/actions/setup-msvc-env
+-        with:
+-          target: ${{ matrix.target }}
+-      - name: Refresh Bazel PATH for the selected MSVC target
+-        shell: pwsh
+-        run: ./.github/scripts/compute-bazel-windows-path.ps1
+-      - name: Download pinned Windows build inputs
+-        shell: pwsh
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          $manifest = Get-Content -Raw .github/scripts/voice-cygwin-snapshot.json | ConvertFrom-Json
+-          $pin = $manifest.archive
+-          $source = $manifest.sourceArchive
+-          $directory = Join-Path $env:RUNNER_TEMP "voice-cygwin-snapshot"
+-          New-Item -ItemType Directory -Path $directory | Out-Null
+-          gh release download $pin.tag --repo "${{ github.repository }}" --pattern $pin.name --pattern $source.name --dir $directory
+-          if ($LASTEXITCODE -ne 0) { throw "Cannot obtain the public Cygwin inputs and source" }
+-          $sourceFile = Join-Path $directory $source.name
+-          if ((Get-Item $sourceFile).Length -ne $source.bytes -or
+-              (Get-FileHash $sourceFile -Algorithm SHA256).Hash.ToLowerInvariant() -ne $source.sha256) {
+-            throw "Public Cygwin source archive mismatch"
+-          }
+-          "VOICE_CYGWIN_ARCHIVE=$(Join-Path $directory $pin.name)" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+-      - name: Verify and install pinned public build tools
+-        shell: pwsh
+-        run: |
+-          & ./.github/scripts/setup-voice-windows.ps1 -Target "${{ matrix.target }}" -SnapshotArchive $env:VOICE_CYGWIN_ARCHIVE
+-          if (-not $env:SystemRoot) { throw "Windows SystemRoot is required for native audio actions" }
+-          "VOICE_WINDOWS_SYSTEM_ROOT=$env:SystemRoot" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+-          $hostArch = $env:PROCESSOR_ARCHITEW6432
+-          if (-not $hostArch) { $hostArch = $env:PROCESSOR_ARCHITECTURE }
+-          if (-not $hostArch) { throw "Windows host architecture is required" }
+-          "VOICE_WINDOWS_HOST_ARCH=$hostArch" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+-      - name: Build same-commit native runtime and helper
+-        shell: bash
+-        env:
+-          ARCH: ${{ matrix.arch }}
+-          VOICE_ARCH: ${{ matrix.arch }}
+-          # Avoid Java JIT crashes in the Windows ARM64 voice build.
+-          BAZEL_HOST_JVM_ARG: ${{ matrix.arch == 'aarch64' && '-Xint' || '' }}
+-          BUILDBUDDY_API_KEY: ""
+-        run: |
+-          (cd codex-rs && cargo update --workspace)
+-          python .github/scripts/watch_voice_bazel.py "$(cygpath -w "$BASH")" ./.github/scripts/run-bazel-ci.sh \
+-            --remote-download-toplevel \
+-            --print-failed-action-summary \
+-            --windows-msvc-host-platform \
+-            -- \
+-            test -c opt \
+-            --platforms=//:local_windows_msvc \
+-            --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain \
+-            --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0 \
+-            --repo_env=BAZEL_MSVC_RUNTIME_VISUAL_STUDIO_EULA=1 \
+-            --inject_repository="voice_windows_tools=$VOICE_WINDOWS_BAZEL_REPOSITORY" \
+-            --//third_party/voice:windows_installed_tools=@voice_windows_tools//:tools \
+-            --action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT" \
+-            --host_action_env="SystemRoot=$VOICE_WINDOWS_SYSTEM_ROOT" \
+-            --action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH" \
+-            --host_action_env="PROCESSOR_ARCHITECTURE=$VOICE_WINDOWS_HOST_ARCH" \
+-            --output_groups=default,receipt,sdk \
+-            --workspace_status_command=./scripts/workspace-status.cmd \
+-            --build_metadata=COMMIT_SHA="$GITHUB_SHA" \
+-            -- \
+-            "//third_party/voice:native_runtime_windows_$ARCH" \
+-            @rules_rust//cargo/private/cargo_build_script_runner:test \
+-            //codex-rs/voice-host:codex-voice-host
+-      - name: Stage verified voice build output
+-        shell: bash
+-        env:
+-          TARGET: ${{ matrix.target }}
+-          ARCH: ${{ matrix.arch }}
+-        run: |
+-          set -euo pipefail
+-          runtime="bazel-bin/third_party/voice/native_runtime_windows_${ARCH}"
+-          PYTHONPATH=third_party/voice python - "$runtime" "$TARGET" <<'PY'
+-          from pathlib import Path
+-          import sys
+-          from package_runtime import runtime_files
+-          runtime_files(Path(sys.argv[1]).resolve(strict=True), sys.argv[2])
+-          PY
+-          output="voice-unsigned/${TARGET}"
+-          mkdir -p "$output"
+-          cp -R "$runtime" "$output/runtime"
+-          cp bazel-bin/codex-rs/voice-host/codex-voice-host.exe "$output/codex-voice-host.exe"
+-          chmod -R u+w "$output"
+-          tar -C "$output" -czf "voice-unsigned-${TARGET}.tar.gz" runtime codex-voice-host.exe
+-      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: voice-${{ matrix.target }}-unsigned
+-          path: voice-unsigned-${{ matrix.target }}.tar.gz
+-          if-no-files-found: error
 -
 -  build-windows-symbols:
 -    needs:
@@ -3304,12 +3372,13 @@ index 234abf9..0000000
 -  build-windows:
 -    needs:
 -      - build-windows-binaries
+-      - build-windows-voice
 -    name: Build - ${{ matrix.runner }} - ${{ matrix.target }}
 -    runs-on: ${{ matrix.runs_on }}
 -    environment:
 -      name: azure-artifact-signing
 -      deployment: false
--    timeout-minutes: 90
+-    timeout-minutes: 120
 -    permissions:
 -      contents: read
 -      id-token: write
@@ -3376,6 +3445,76 @@ index 234abf9..0000000
 -          account-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
 -          certificate-profile-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
 -
+-      - name: Download matching native voice build
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
+-          name: voice-${{ matrix.target }}-unsigned
+-          path: ${{ runner.temp }}/unsigned-voice
+-
+-      - name: Stage voice files for signing
+-        id: voice_files
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          target="${{ matrix.target }}"
+-          unsigned="${RUNNER_TEMP}/unsigned-voice/extracted"
+-          signed="${GITHUB_WORKSPACE}/signed-voice/${target}"
+-          mkdir -p "$unsigned" "$signed"
+-          tar -xzf "$(cygpath -u "${RUNNER_TEMP}/unsigned-voice/voice-unsigned-${target}.tar.gz")" -C "$(cygpath -u "$unsigned")"
+-          python "${GITHUB_WORKSPACE}/third_party/voice/release_runtime.py" stage \
+-            --source "$unsigned/runtime" --target "$target" --output "$signed/runtime"
+-          cp "$unsigned/codex-voice-host.exe" "$signed/codex-voice-host.exe"
+-          chmod -R u+w "$signed"
+-          {
+-            echo 'files<<EOF'
+-            echo "$signed/codex-voice-host.exe"
+-            find "$signed/runtime/bin" -name '*.dll' -type f -print
+-            echo 'EOF'
+-          } >> "$GITHUB_OUTPUT"
+-
+-      - name: Sign Windows voice helper and native DLLs
+-        uses: azure/trusted-signing-action@1d365fec12862c4aa68fcac418143d73f0cea293 # v0.5.11
+-        with:
+-          endpoint: ${{ secrets.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+-          trusted-signing-account-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_ACCOUNT_NAME }}
+-          certificate-profile-name: ${{ secrets.AZURE_ARTIFACT_SIGNING_CERTIFICATE_PROFILE_NAME }}
+-          exclude-environment-credential: true
+-          exclude-workload-identity-credential: true
+-          exclude-managed-identity-credential: true
+-          exclude-shared-token-cache-credential: true
+-          exclude-visual-studio-credential: true
+-          exclude-visual-studio-code-credential: true
+-          exclude-azure-cli-credential: false
+-          exclude-azure-powershell-credential: true
+-          exclude-azure-developer-cli-credential: true
+-          exclude-interactive-browser-credential: true
+-          cache-dependencies: false
+-          files: ${{ steps.voice_files.outputs.files }}
+-
+-      - uses: ./.github/actions/setup-msvc-env
+-        with:
+-          target: ${{ matrix.target }}
+-
+-      - name: Seal and verify signed voice output
+-        shell: pwsh
+-        run: |
+-          $target = "${{ matrix.target }}"
+-          $signed = Join-Path $env:GITHUB_WORKSPACE "signed-voice/$target"
+-          python (Join-Path $env:GITHUB_WORKSPACE 'third_party/voice/windows_crt.py') --root (Join-Path $signed 'runtime') --target $target --helper (Join-Path $signed 'codex-voice-host.exe')
+-          if ($LASTEXITCODE -ne 0) { throw 'Cannot stage verified Microsoft CRT' }
+-          $files = @(Join-Path $signed "codex-voice-host.exe") + @(
+-            Get-ChildItem (Join-Path $signed "runtime/bin") -Filter *.dll -File |
+-              ForEach-Object FullName
+-          )
+-          if ($files.Count -lt 8) { throw "Voice DLL closure is incomplete" }
+-          foreach ($file in $files) {
+-            $signature = Get-AuthenticodeSignature $file
+-            if ($signature.Status -ne 'Valid') { throw "Unsigned voice file: $file ($($signature.Status))" }
+-          }
+-          python (Join-Path $env:GITHUB_WORKSPACE 'third_party/voice/release_runtime.py') seal --target $target --output (Join-Path $signed 'runtime')
+-          if ($LASTEXITCODE -ne 0) { throw 'Cannot seal signed voice runtime' }
+-          "VOICE_RELEASE_DIR=$signed" | Out-File $env:GITHUB_ENV -Encoding utf8 -Append
+-
 -      - name: Stage artifacts
 -        shell: bash
 -        run: |
@@ -3393,22 +3532,34 @@ index 234abf9..0000000
 -          set -euo pipefail
 -          target="${{ matrix.target }}"
 -          archive_script="${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh"
--          temp_root="${RUNNER_TEMP}/codex-package-archives"
+-          voice_args=(--voice-release-dir "$VOICE_RELEASE_DIR")
+-          voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
+-          bash "$archive_script" \
+-            --target "$target" --bundle primary \
+-            --entrypoint-dir "$CARGO_TARGET_DIR/$target/release" \
+-            --archive-dir "dist/$target" "${voice_args[@]}"
+-          bash "$archive_script" \
+-            --target "$target" --bundle app-server \
+-            --entrypoint-dir "$CARGO_TARGET_DIR/$target/release" \
+-            --archive-dir "dist/$target"
 -
--          # The package helper rewrites cached DotSlash executables. Keep the
--          # concurrent processes in separate temp roots because Windows cannot
--          # replace an executable while another process is using it.
--          mkdir -p "$temp_root/primary" "$temp_root/app-server"
--          printf '%s\0' primary app-server |
--            xargs -0 -P0 -I{} env \
--              TMPDIR="$temp_root/{}" \
--              TMP="$temp_root/{}" \
--              TEMP="$temp_root/{}" \
--              bash "$archive_script" \
--                --target "$target" \
--                --bundle "{}" \
--                --entrypoint-dir "$CARGO_TARGET_DIR/$target/release" \
--                --archive-dir "dist/$target"
+-      - name: Verify packaged Windows voice closure
+-        shell: pwsh
+-        run: |
+-          $target = "${{ matrix.target }}"
+-          $package = Join-Path $env:RUNNER_TEMP "verify-voice-archive-$target"
+-          New-Item -ItemType Directory -Path $package | Out-Null
+-          tar -xzf "dist/$target/codex-package-$target.tar.gz" -C $package
+-          if ($LASTEXITCODE -ne 0) { throw "Cannot extract the final Windows package" }
+-          $voice = Join-Path $package 'codex-resources/voice'
+-          $helper = Join-Path $voice 'bin/codex-voice-host.exe'
+-          if (-not (Test-Path $helper) -or -not (Test-Path (Join-Path $voice 'bin/gstreamer-1.0-0.dll'))) {
+-            throw 'Signed Windows voice files are missing from the canonical package'
+-          }
+-          $signature = Get-AuthenticodeSignature $helper
+-          if ($signature.Status -ne 'Valid') { throw "Packaged helper signature: $($signature.Status)" }
+-          python -c 'import sys; from pathlib import Path; sys.path.insert(0, sys.argv[3]); from package_runtime import runtime_files; runtime_files(Path(sys.argv[1]), sys.argv[2], public_release=True)' $voice $target (Join-Path $env:GITHUB_WORKSPACE 'third_party/voice')
+-          if ($LASTEXITCODE -ne 0) { throw 'Packaged runtime receipt verification failed' }
 -
 -      - name: Build Python runtime wheel
 -        shell: bash
@@ -3431,12 +3582,20 @@ index 234abf9..0000000
 -          python -m venv "${RUNNER_TEMP}/python-runtime-build-venv"
 -          "${RUNNER_TEMP}/python-runtime-build-venv/Scripts/python.exe" -m pip install build
 -
+-          # The wheel's Windows support floor predates the native voice
+-          # runtime's verified device/VC++ prerequisites. Keep it voice-free.
+-          wheel_package="${RUNNER_TEMP}/codex-package-${{ matrix.target }}"
+-          python - "$wheel_package" <<'PY'
+-          import sys
+-          from pathlib import Path
+-          assert not (Path(sys.argv[1]) / "codex-resources" / "voice").exists()
+-          PY
 -          stage_dir="${RUNNER_TEMP}/openai-codex-cli-bin-${{ matrix.target }}"
 -          wheel_dir="${GITHUB_WORKSPACE}/python-runtime-dist/${{ matrix.target }}"
 -          python "${GITHUB_WORKSPACE}/sdk/python/scripts/update_sdk_artifacts.py" \
 -            stage-runtime \
 -            "$stage_dir" \
--            "dist/${{ matrix.target }}/codex-package-${{ matrix.target }}.tar.gz" \
+-            "$wheel_package" \
 -            --codex-version "${GITHUB_REF_NAME}" \
 -            --platform-tag "$platform_tag"
 -          "${RUNNER_TEMP}/python-runtime-build-venv/Scripts/python.exe" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
@@ -3466,7 +3625,10 @@ index 234abf9..0000000
 -          #   codex-<target>.zip
 -          # Variables in the single-quoted script expand in the child shell.
 -          # shellcheck disable=SC2016
--          printf '%s\0' "$dest"/* |
+-          # Start larger binaries first so both workers stay busy.
+-          find "$dest" -maxdepth 1 -type f -printf '%s %p\0' |
+-            sort -z -nr |
+-            cut -z -d ' ' -f 2- |
 -            xargs -0 -n1 -P2 bash -c '
 -            set -euo pipefail
 -            f=$1
@@ -3489,25 +3651,12 @@ index 234abf9..0000000
 -            # Must run from inside the dest dir so 7z does not embed the
 -            # directory path inside the zip.
 -            if [[ "$base" == "codex-${target}.exe" ]]; then
--              # Bundle the sandbox helper binaries into the main codex zip so
--              # WinGet installs include the required helpers next to codex.exe.
--              # Fall back to the single-binary zip if the helpers are missing
--              # to avoid breaking releases.
+-              # Preserve WinGet executable paths while including the signed
+-              # runtime, resources, and package metadata from the canonical tar.
 -              bundle_dir="$(mktemp -d)"
--              runner_src="$dest/codex-command-runner-${target}.exe"
--              setup_src="$dest/codex-windows-sandbox-setup-${target}.exe"
--              if [[ -f "$runner_src" && -f "$setup_src" ]]; then
--                cp "$dest/$base" "$bundle_dir/$base"
--                cp "$runner_src" "$bundle_dir/codex-command-runner.exe"
--                cp "$setup_src" "$bundle_dir/codex-windows-sandbox-setup.exe"
--                # Use an absolute path so bundle zips land in the real dist
--                # dir even when 7z runs from a temp directory.
--                (cd "$bundle_dir" && 7z a "$repo_root/$dest/${base}.zip" .)
--              else
--                echo "warning: missing sandbox binaries; falling back to single-binary zip"
--                echo "warning: expected $runner_src and $setup_src"
--                (cd "$dest" && 7z a "${base}.zip" "$base")
--              fi
+-              tar -xzf "$dest/codex-package-${target}.tar.gz" -C "$bundle_dir"
+-              python "${GITHUB_WORKSPACE}/scripts/build_winget_package.py" "$(cygpath -w "$bundle_dir")"
+-              (cd "$bundle_dir" && 7z a "$repo_root/$dest/${base}.zip" .)
 -              rm -rf "$bundle_dir"
 -            else
 -              (cd "$dest" && 7z a "${base}.zip" "$base")
@@ -3524,7 +3673,7 @@ index 234abf9..0000000
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-zsh.yml b/.github/workflows/rust-release-zsh.yml
 deleted file mode 100644
-index e814ec3..0000000
+index 030cc92..0000000
 --- a/.github/workflows/rust-release-zsh.yml
 +++ /dev/null
 @@ -1,182 +0,0 @@
@@ -3704,17 +3853,17 @@ index e814ec3..0000000
 -          prerelease: true
 -
 -      - name: Publish DotSlash manifest
--        uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
+-        uses: ./.github/actions/publish-dotslash
 -        env:
 -          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 -        with:
 -          tag: ${{ needs.metadata.outputs.release_tag }}
--          config: .github/dotslash-zsh-config.json
+-          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index b3863a0..8c60d19 100644
+index 26d4985..8c60d19 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,228 +1,231 @@
+@@ -1,227 +1,231 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -3789,16 +3938,15 @@ index b3863a0..8c60d19 100644
            [[ "${GITHUB_REF_TYPE}" == "tag" ]] \
              || { echo "❌  Not a tag ref"; exit 1; }
  
--          # Release tags must match the version in Cargo.toml.
--          # Keep this pattern in sync with VERSION_RE in
--          # .github/scripts/publish_r2_release.py.
--          [[ "${GITHUB_REF_NAME}" =~ ^rust-v[0-9]+\.[0-9]+\.[0-9]+(-(alpha(\.[0-9]+){0,2}|beta(\.[0-9]+)?))?$ ]] \
+-          tag_ver="${GITHUB_REF_NAME#rust-v}"
+-          [[ "${GITHUB_REF_NAME}" == rust-v* ]] \
+-            && python3 .github/scripts/releases.py "${tag_ver}" \
 +          version="${GITHUB_REF_NAME#rust-v}"
 +          version="${version#v}"
 +          [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] \
              || { echo "❌  Tag '${GITHUB_REF_NAME}' doesn't match expected format"; exit 1; }
  
--          tag_ver="${GITHUB_REF_NAME#rust-v}"
+-          # Release tags must match the version in Cargo.toml.
 -          cargo_ver="$(grep -m1 '^version' codex-rs/Cargo.toml \
 +          cargo_ver="$(grep -m1 '^version' Cargo.toml \
                          | sed -E 's/version *= *"([^"]+)".*/\1/')"
@@ -4100,7 +4248,7 @@ index b3863a0..8c60d19 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -238,1783 +241,125 @@ jobs:
+@@ -237,1827 +241,125 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4258,7 +4406,10 @@ index b3863a0..8c60d19 100644
 -          dest="dist/${{ matrix.target }}"
 +          dest="dist/${target}"
            mkdir -p "$dest"
--
++          cp "${release_dir}/codex" "$dest/codex"
++          cp "${release_dir}/bwrap" "$dest/bwrap"
++          chmod +x "$dest/codex" "$dest/bwrap"
+ 
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host, but only the primary bundle publishes
 -            # standalone binary archives to avoid duplicate release asset names.
@@ -4459,20 +4610,7 @@ index b3863a0..8c60d19 100644
 -        with:
 -          bazelisk-version: 1.28.1
 -      - name: Build matching helper and native runtime
-+          cp "${release_dir}/codex" "$dest/codex"
-+          cp "${release_dir}/bwrap" "$dest/bwrap"
-+          chmod +x "$dest/codex" "$dest/bwrap"
-+
-+          # The archive layout is consumed by `codex update`: `codex` and
-+          # `bwrap` at the archive root.
-+          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-+          sha256sum "$dest/codex-${target}.tar.gz" | \
-+            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-+            > "$dest/codex-${target}.tar.gz.sha256"
-+
-+      - name: Stage archive (Windows)
-+        if: matrix.platform == 'windows'
-         shell: bash
+-        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          PREFIX: ${{ matrix.prefix }}
@@ -4582,7 +4720,13 @@ index b3863a0..8c60d19 100644
 -          output_dir="${GITHUB_WORKSPACE}/signed-macos/${TARGET}"
 -          report_dir="${GITHUB_WORKSPACE}/macos-binary-signing-verification/${TARGET}"
 -          mkdir -p "$output_dir" "$report_dir"
--
++          # The archive layout is consumed by `codex update`: `codex` and
++          # `bwrap` at the archive root.
++          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
++          sha256sum "$dest/codex-${target}.tar.gz" | \
++            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
++            > "$dest/codex-${target}.tar.gz.sha256"
+ 
 -          for binary in ${BINARIES}; do
 -            unsigned_path="${input_dir}/${binary}-${TARGET}-unsigned.zst"
 -            signed_path="${output_dir}/${binary}"
@@ -4620,7 +4764,9 @@ index b3863a0..8c60d19 100644
 -
 -      - name: Fetch, sign, and notarize pinned macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
--        shell: bash
++      - name: Stage archive (Windows)
++        if: matrix.platform == 'windows'
+         shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          APPLE_NOTARIZATION_AKV_KEY_NAME: ${{ secrets.AKV_NOTARIZATION_KEY_NAME }}
@@ -5531,17 +5677,11 @@ index b3863a0..8c60d19 100644
 -
 -          echo "path=${notes_path}" >> "${GITHUB_OUTPUT}"
 -
--      - name: Download target artifacts
+-      - name: Download release artifacts
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
 -          path: dist
--          pattern: "{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}"
--
--      - name: Download supplemental release artifacts
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
--          path: dist
--          pattern: "{*-symbols,argument-comment-lint-*,python-runtime-wheel-*}"
+-          pattern: "{{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc},*-symbols,argument-comment-lint-*,python-runtime-wheel-*,npm-packages}"
 -
 -      - name: Download verified provisioned macOS packages
 -        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
@@ -5594,10 +5734,18 @@ index b3863a0..8c60d19 100644
 -          if [[ "${version}" == *-* ]]; then
 -            echo "make_latest=false" >> $GITHUB_OUTPUT
 -            echo "prerelease=true" >> $GITHUB_OUTPUT
--          else
++          # Tag re-pushes supersede earlier builds; replace the previous
++          # release's assets instead of deleting the release, so a failed or
++          # cancelled run can never leave the tag without a release.
++          if gh release view "${tag}" >/dev/null 2>&1; then
++            echo "Release ${tag} already exists; replacing its assets with the new build."
+           else
 -            echo "make_latest=true" >> $GITHUB_OUTPUT
 -            echo "prerelease=false" >> $GITHUB_OUTPUT
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+           fi
 -
 -      - name: Determine npm publish settings
 -        id: npm_publish_settings
@@ -5613,24 +5761,10 @@ index b3863a0..8c60d19 100644
 -          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(\.[0-9]+)?$ ]]; then
 -            echo "should_publish=true" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
-+          # Tag re-pushes supersede earlier builds; replace the previous
-+          # release's assets instead of deleting the release, so a failed or
-+          # cancelled run can never leave the tag without a release.
-+          if gh release view "${tag}" >/dev/null 2>&1; then
-+            echo "Release ${tag} already exists; replacing its assets with the new build."
-           else
+-          else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-           fi
--
--      - name: Download staged npm packages
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
--          name: npm-packages
--          path: dist/npm
+-          fi
 -
 -      - name: Stage installer scripts
 -        run: |
@@ -5638,13 +5772,18 @@ index b3863a0..8c60d19 100644
 -          cp scripts/install/install.ps1 dist/install.ps1
 -
 -      - name: Create GitHub Release
--        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
+-        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
 -        with:
 -          name: ${{ steps.release_name.outputs.name }}
 -          tag_name: ${{ github.ref_name }}
 -          body_path: ${{ steps.release_notes.outputs.path }}
 -          files: dist/**
 -          overwrite_files: true
+-          # Release asset uploads follow normal REST API behavior. GitHub recommends
+-          # serial API requests to avoid secondary rate limits:
+-          # https://docs.github.com/en/rest/releases/assets#upload-a-release-asset
+-          # https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#avoid-concurrent-requests
+-          preserve_order: true
 -          make_latest: ${{ steps.release_name.outputs.make_latest }}
 -          # Mark as prerelease only when the version has a suffix after x.y.z
 -          # (e.g. -alpha, -beta). Otherwise publish a normal release.
@@ -5653,6 +5792,7 @@ index b3863a0..8c60d19 100644
 -  publish-r2-assets:
 -    name: publish-r2-assets
 -    needs: release
+-    if: ${{ !cancelled() && needs.release.result == 'success' }}
 -    permissions:
 -      contents: read
 -    uses: ./.github/workflows/r2-release.yml
@@ -5666,6 +5806,13 @@ index b3863a0..8c60d19 100644
 -  publish-r2:
 -    name: publish-r2
 -    needs: [release, publish-dotslash, publish-r2-assets]
+-    if: >-
+-      ${{
+-        !cancelled() &&
+-        needs.release.result == 'success' &&
+-        needs.publish-dotslash.result == 'success' &&
+-        needs.publish-r2-assets.result == 'success'
+-      }}
 -    permissions:
 -      contents: read
 -    uses: ./.github/workflows/r2-release.yml
@@ -5679,6 +5826,7 @@ index b3863a0..8c60d19 100644
 -  publish-dotslash:
 -    name: publish-dotslash
 -    needs: release
+-    if: ${{ !cancelled() && needs.release.result == 'success' }}
 -    runs-on: ubuntu-latest
 -    permissions:
 -      contents: write
@@ -5688,19 +5836,14 @@ index b3863a0..8c60d19 100644
 -        with:
 -          persist-credentials: false
 -
--      - uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
+-      - uses: ./.github/actions/publish-dotslash
 -        env:
 -          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 -        with:
 -          tag: ${{ github.ref_name }}
--          config: .github/dotslash-config.json
--
--      - uses: facebook/dotslash-publish-release@9c9ec027515c34db9282a09a25a9cab5880b2c52 # v2
--        env:
--          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
--        with:
--          tag: ${{ github.ref_name }}
--          config: .github/dotslash-argument-comment-lint-config.json
+-          configs: |
+-            .github/dotslash-config.json
+-            .github/dotslash-argument-comment-lint-config.json
 -
 -      - name: Publish the provisioned macOS package manifest
 -        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
@@ -5914,8 +6057,8 @@ index b3863a0..8c60d19 100644
 -        needs.release.result == 'success' &&
 -        !contains(needs.release.outputs.version, '-')
 -      }}
--    # This job only invokes a GitHub Action to open/update the winget-pkgs PR;
--    # it does not execute Windows-only tooling, so Linux is sufficient.
+-    # komac opens the winget-pkgs PR using the published Windows archives;
+-    # it runs on Linux and does not execute the Windows binaries.
 -    runs-on: ubuntu-latest
 -    permissions:
 -      contents: read
@@ -5924,15 +6067,45 @@ index b3863a0..8c60d19 100644
 -      deployment: false
 -
 -    steps:
--      - name: Publish to WinGet
--        uses: vedantmgoyal9/winget-releaser@7bd472be23763def6e16bd06cc8b1cdfab0e2fd5
+-      # Adapted from the WinGet Releaser version previously used by this job:
+-      # https://github.com/vedantmgoyal9/winget-releaser/blob/7bd472be23763def6e16bd06cc8b1cdfab0e2fd5/action.yml
+-      # Keep dependencies explicit because its cargo-binstall@main reference
+-      # violates the policy requiring full commit SHA action pins.
+-      - name: Install cargo-binstall
+-        uses: cargo-bins/cargo-binstall@b874e25ea559687bec77e281e9b271aa1367b624 # v1.23.0
 -        with:
--          identifier: OpenAI.Codex
--          version: ${{ needs.release.outputs.version }}
--          release-tag: ${{ needs.release.outputs.tag }}
--          fork-user: openai-oss-forks
--          installers-regex: '^codex-(?:x86_64|aarch64)-pc-windows-msvc\.exe\.zip$'
--          token: ${{ secrets.WINGET_PUBLISH_PAT }}
+-          version: "1.23.0"
+-        env:
+-          GITHUB_TOKEN: ${{ github.token }}
+-
+-      - name: Install komac
+-        env:
+-          GITHUB_TOKEN: ${{ github.token }}
+-        run: cargo-binstall komac --version 2.16.0 --no-confirm
+-
+-      - name: Publish to WinGet
+-        shell: bash
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-          GITHUB_TOKEN: ${{ secrets.WINGET_PUBLISH_PAT }}
+-          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+-          RELEASE_TAG: ${{ needs.release.outputs.tag }}
+-          KOMAC_FORK_OWNER: openai-oss-forks
+-          KOMAC_CREATED_WITH: Codex release workflow
+-          KOMAC_CREATED_WITH_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+-        run: |
+-          set -euo pipefail
+-          installer_urls="$(gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" \
+-            --json assets \
+-            --jq '.assets[] | select(.name | test("^codex-(x86_64|aarch64)-pc-windows-msvc\\.exe\\.zip$")) | .url')"
+-          mapfile -t urls <<< "$installer_urls"
+-          if [[ ${#urls[@]} -ne 2 ]]; then
+-            echo "::error::Expected x86_64 and aarch64 Windows archives for $RELEASE_TAG"
+-            exit 1
+-          fi
+-          komac sync-fork
+-          komac update OpenAI.Codex --version "$RELEASE_VERSION" --submit --urls "${urls[@]}"
+-          komac cleanup --only-merged
 -
 -  update-branch:
 -    name: Update latest-alpha-cli branch
@@ -5940,11 +6113,9 @@ index b3863a0..8c60d19 100644
 -      ${{
 -        !cancelled() &&
 -        needs.release.result == 'success' &&
+-        needs.release.outputs.npm_tag == 'alpha' &&
 -        needs.publish-r2.result == 'success' &&
--        (
--          needs.release.outputs.should_publish_npm != 'true' ||
--          needs.publish-npm.result == 'success'
--        )
+-        needs.publish-npm.result == 'success'
 -      }}
 -    permissions:
 -      contents: write
@@ -5956,7 +6127,26 @@ index b3863a0..8c60d19 100644
 -    runs-on: ubuntu-latest
 -
 -    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-      - name: Determine whether to update the GitHub canary branch
+-        id: github_canary
+-        shell: bash
+-        env:
+-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-          RELEASE_VERSION: ${{ needs.release.outputs.version }}
+-          PYTHONPATH: .github/scripts
+-        run: |
+-          set -euo pipefail
+-          # Despite its name, raw+json returns raw TOML. The default response
+-          # is JSON metadata with the file contents encoded as base64.
+-          update="$(gh api "repos/$GITHUB_REPOSITORY/contents/codex-rs/Cargo.toml?ref=latest-alpha-cli" \
+-            -H 'Accept: application/vnd.github.raw+json' \
+-            | python3 .github/scripts/check_github_canary.py "$RELEASE_VERSION")"
+-          echo "update=$update" >> "$GITHUB_OUTPUT"
 -      - name: Update latest-alpha-cli branch
+-        if: success() && steps.github_canary.outputs.update == 'true'
 -        env:
 -          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 -        run: |
@@ -6454,10 +6644,10 @@ index 32ec3af..0000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 18b6cb4..0000000
+index 3f91dd1..0000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
-@@ -1,159 +0,0 @@
+@@ -1,161 +0,0 @@
 -name: sdk
 -
 -on:
@@ -6527,13 +6717,15 @@ index 18b6cb4..0000000
 -          node-version: 22
 -          cache: pnpm
 -
--      - name: Set up Bazel CI
+-      - name: Prepare Bazel CI
 -        id: setup_bazel
--        uses: ./.github/actions/setup-bazel-ci
+-        uses: ./.github/actions/prepare-bazel-ci
 -        with:
 -          target: x86_64-unknown-linux-gnu
+-          cache-scope: sdk
 -
 -      - name: Build codex and the code-mode host with Bazel
+-        id: build_bazel
 -        env:
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        shell: bash
@@ -6607,12 +6799,12 @@ index 18b6cb4..0000000
 -          uv run --only-group dev --frozen --no-sync pytest
 -
 -      - name: Save bazel repository cache
--        if: always() && !cancelled() && steps.setup_bazel.outputs.cache-hit != 'true'
+-        if: always() && !cancelled() && steps.build_bazel.outcome == 'success' && steps.setup_bazel.outputs.repository-cache-hit != 'true'
 -        continue-on-error: true
 -        uses: actions/cache/save@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
 -        with:
 -          path: ${{ steps.setup_bazel.outputs.repository-cache-path }}
--          key: bazel-cache-x86_64-unknown-linux-gnu-${{ hashFiles('MODULE.bazel', 'codex-rs/Cargo.lock', 'codex-rs/Cargo.toml') }}
+-          key: ${{ steps.setup_bazel.outputs.repository-cache-key }}
 -
 -      - name: Check for a clean worktree
 -        if: always() && !cancelled()
@@ -7273,10 +7465,10 @@ index 0000000..834ee10
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 2afcf05..0000000
+index 6fd6ade..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,30 +0,0 @@
+@@ -1,35 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -7284,14 +7476,19 @@ index 2afcf05..0000000
 -    "llvm_windows_arm64_powl.patch",
 -    "llvm_windows_mingw_compat.patch",
 -    "rules_rust_build_script_tools_transition.patch",
+-    "rules_rust_compiler_thp.patch",
 -    "rules_rust_group_build_script_arg_files.patch",
+-    "rules_rust_windows_execroot_separators.patch",
 -    "rules_rust_windows_msvc_direct_link_args.patch",
 -    "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
 -    "rules_cc_rusty_v8_custom_libcxx.patch",
 -    "rules_foreign_cc_make_cppflags.patch",
 -    "rules_foreign_cc_make_xcompile.patch",
+-    "rules_foreign_cc_make_msvc_stdint.patch",
 -    "rules_rs_build_script_deps_annotation.patch",
+-    "rules_rs_rust_debug_modes.patch",
 -    "rules_rs_windows_msvc_linker.patch",
+-    "rules_rs_workspace_package_version.patch",
 -    "rules_rs_zlib_snapshot_urls.patch",
 -    "rusty_v8_prebuilt_out_dir.patch",
 -    "ring_windows_msvc_include_dirs.patch",
@@ -7561,15 +7758,14 @@ index 66cf4e7..0000000
 -         ":winpthread",
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index 06f944a..0000000
+index 7bb49cb..0000000
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ /dev/null
-@@ -1,98 +0,0 @@
+@@ -1,112 +0,0 @@
 -diff --git a/build.rs b/build.rs
--index 9843ad8aa..573075489 100644
 ---- a/build.rs
 -+++ b/build.rs
--@@ -346,7 +346,28 @@ fn ring_build_rs_main(c_root_dir: &Path, core_name_and_version: &str) {
+-@@ -346,7 +346,27 @@
 -     // we want to optimize for minimizing the build tools required: No Perl,
 -     // no nasm, etc.
 -     let generated_dir = if !is_git {
@@ -7598,7 +7794,22 @@ index 06f944a..0000000
 -     } else {
 -         generate_sources_and_preassemble(
 -             &out_dir,
--@@ -569,6 +591,15 @@ fn configure_cc(c: &mut cc::Build, target: &Target, c_root_dir: &Path, include_d
+-@@ -561,7 +581,13 @@
+-     let compiler = c.get_compiler();
+-     // FIXME: On Windows AArch64 we currently must use Clang to compile C code
+-     let compiler = if target.os == WINDOWS && target.arch == AARCH64 && !compiler.is_like_clang() {
+--        let _ = c.compiler("clang");
+-+        // Keep inherited MSVC flags compatible with the selected Clang driver.
+-+        let clang = if compiler.is_like_msvc() {
+-+            "clang-cl"
+-+        } else {
+-+            "clang"
+-+        };
+-+        let _ = c.compiler(clang);
+-         c.get_compiler()
+-     } else {
+-         compiler
+-@@ -569,6 +595,15 @@
 - 
 -     let _ = c.include(c_root_dir.join("include"));
 -     let _ = c.include(include_dir);
@@ -7804,7 +8015,7 @@ index dcbc456..0000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index aa5fb27..0000000
+index a8eba2b..0000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
 @@ -1,109 +0,0 @@
@@ -7814,7 +8025,7 @@ index aa5fb27..0000000
 -     use_bpf_linker = toolchain.target_arch in ("bpfeb", "bpfel") and toolchain.linker
 --    if not ld or toolchain.linker_preference == "rust" or use_bpf_linker:
 -+    use_windows_msvc_linker = (
--+        toolchain.target_arch == "x86_64" and
+-+        toolchain.target_arch in ("x86_64", "aarch64") and
 -+        toolchain.target_os == "windows" and
 -+        toolchain.target_abi == "msvc" and
 -+        toolchain.linker != None and
@@ -8020,10 +8231,10 @@ index 4242a29..0000000
 -       } else if target.contains("apple")
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 deleted file mode 100644
-index c907d32..0000000
+index dde0efd..0000000
 --- a/patches/v8_bazel_rules.patch
 +++ /dev/null
-@@ -1,502 +0,0 @@
+@@ -1,509 +0,0 @@
 -# What: adapt upstream V8 Bazel rules to this workspace's hermetic toolchains
 -# and externally provided dependencies.
 -# Scope: Bazel BUILD/defs/BUILD.icu integration only, including dependency
@@ -8033,7 +8244,7 @@ index c907d32..0000000
 -index bbe1495..6673518 100644
 ---- a/orig/v8-15.0.245.2/bazel/defs.bzl
 -+++ b/mod/v8-15.0.245.2/bazel/defs.bzl
--@@ -33,9 +33,21 @@ _create_option_int = rule(
+-@@ -33,9 +33,25 @@ _create_option_int = rule(
 - )
 - 
 - def v8_flag(name, default = False):
@@ -8056,8 +8267,14 @@ index c907d32..0000000
 -+        visibility = ["//visibility:public"],
 -+    )
 - 
-- def v8_string(name, default = ""):
--     _create_option_string(name = name, build_setting_default = default)
+--def v8_string(name, default = ""):
+--    _create_option_string(name = name, build_setting_default = default)
+-+def v8_string(name, default = "", visibility = None):
+-+    _create_option_string(
+-+        name = name,
+-+        build_setting_default = default,
+-+        visibility = visibility,
+-+    )
 -@@ -97,7 +109,13 @@ v8_config = rule(
 - 
 - def _default_args():
@@ -8195,12 +8412,13 @@ index c907d32..0000000
 - v8_flag(name = "v8_enable_verify_csa")
 - 
 - v8_flag(name = "v8_enable_verify_heap")
--@@ -313,7 +317,7 @@ v8_int(
+-@@ -313,7 +317,8 @@ v8_int(
 - # If no explicit value for v8_enable_pointer_compression, we set it to 'none'.
 - v8_string(
 -     name = "v8_enable_pointer_compression",
 --    default = "none",
 -+    default = "False",
+-+    visibility = ["//visibility:public"],
 - )
 - 
 - # Default setting for v8_enable_pointer_compression.
