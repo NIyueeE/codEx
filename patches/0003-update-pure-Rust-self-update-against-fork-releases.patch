@@ -1,6 +1,6 @@
-From f6f453d621de4f383a59a9ae158d0cbdb6523571 Mon Sep 17 00:00:00 2001
+From f61a2b809a120e21d28b125a9cad4c81a08abd0d Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
-Date: Fri, 2 Oct 2026 18:51:45 +0000
+Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
 
 ---
@@ -44,6 +44,7 @@ Subject: update: pure-Rust self-update against fork releases
  ...n_menu__tests__daemon_remote_guidance.snap |    3 +-
  ...nu__tests__daemon_stable_confirmation.snap |   15 -
  ...on_menu__tests__daemon_unpackaged_cli.snap |    4 +-
+ .../src/app/tests/active_reconnect_tests.rs   |    7 +
  ...e_reconnect__unavailable_conversation.snap |    2 -
  codex-rs/tui/src/history_cell/notices.rs      |   25 +-
  ...pdate_available_history_cell_snapshot.snap |   11 -
@@ -61,7 +62,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 57 files changed, 1241 insertions(+), 6056 deletions(-)
+ 58 files changed, 1248 insertions(+), 6056 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -7825,6 +7826,24 @@ index dd6f597..d138e59 100644
 +                                            copy
  
    enter select · esc back
+diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
+index 8f9c547..71c2b57 100644
+--- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
++++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
+@@ -420,6 +420,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
+             assert!(ops.try_recv().is_err());
+         } else if recovered_queue {
+             assert!(!app.chat_widget.has_queued_follow_up_messages());
++            // The footer grows a "warning" chip as soon as any warning cell lands in
++            // the transcript, and which environment-specific diagnostics arrive
++            // (sandbox/config notices from the embedded app server, server-version
++            // notices) is not what this snapshot covers. Pin the warning surface to
++            // empty so the restored layout is asserted deterministically on every
++            // runner instead of depending on event ordering.
++            app.chat_widget.sync_warnings(&[]);
+             assert_snapshot!(
+                 "restored_conversation",
+                 render_bottom_popup(&app.chat_widget, /*width*/ 80)
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 index 335071a..b37853d 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap

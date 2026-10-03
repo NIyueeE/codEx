@@ -1,13 +1,13 @@
-From 22227633d36f56f13b816cb2b61d4b250541938e Mon Sep 17 00:00:00 2001
+From cda07d7df20f07b863d54489e3684a4a706534f6 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
-Date: Fri, 2 Oct 2026 18:51:52 +0000
+Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
  .github/scripts/install-musl-build-tools.sh   |   11 +-
  .github/workflows/bazel.yml                   |  549 -----
  .github/workflows/blob-size-policy.yml        |   53 -
- .github/workflows/blocking-ci.yml             |  212 +-
+ .github/workflows/blocking-ci.yml             |  215 +-
  .github/workflows/cargo-deny.yml              |   31 -
  .github/workflows/codespell.yml               |    3 +-
  .github/workflows/postmerge-ci.yml            |   40 -
@@ -47,7 +47,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 43 files changed, 657 insertions(+), 8328 deletions(-)
+ 43 files changed, 660 insertions(+), 8328 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -738,10 +738,10 @@ index f80fb0e..0000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index c6f0055..2319dca 100644
+index c6f0055..3a51b03 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,185 @@
+@@ -1,29 +1,188 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
@@ -829,6 +829,9 @@ index c6f0055..2319dca 100644
 +        run: |
 +          cd "${CODE_DIR}"
 +          cargo install --locked cargo-nextest
++          # A few TUI tests spawn the CLI binary, which `nextest -p codex-tui`
++          # does not build; build it first so they can locate target/debug/codex.
++          cargo build --bin codex
 +          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
  
 -  cargo-deny:
@@ -943,7 +946,7 @@ index c6f0055..2319dca 100644
  
    codespell:
      name: Codespell
-@@ -35,35 +191,21 @@ jobs:
+@@ -35,35 +194,21 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  

@@ -73,6 +73,9 @@ jobs:
         run: |
           cd "${CODE_DIR}"
           cargo install --locked cargo-nextest
+          # A few TUI tests spawn the CLI binary, which `nextest -p codex-tui`
+          # does not build; build it first so they can locate target/debug/codex.
+          cargo build --bin codex
           RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
 
   test-core:

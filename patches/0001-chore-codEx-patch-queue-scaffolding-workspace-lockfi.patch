@@ -1,6 +1,6 @@
-From 00e93c2a6081c45cc6091bade5ee1b5e23aaa768 Mon Sep 17 00:00:00 2001
+From f27fcc357a0c7318679979115e3ea1dafc5bb486 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
-Date: Fri, 2 Oct 2026 18:51:40 +0000
+Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
 
 ---
@@ -14,9 +14,9 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/bootstrap.sh                          |  55 +++
  scripts/check-patch-modules.sh                | 239 +++++++++++
  scripts/gen-patches.sh                        | 107 +++++
- scripts/patch-modules.conf                    | 247 +++++++++++
+ scripts/patch-modules.conf                    | 248 +++++++++++
  scripts/update.sh                             | 125 ++++++
- 12 files changed, 1281 insertions(+), 216 deletions(-)
+ 12 files changed, 1282 insertions(+), 216 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -2351,10 +2351,10 @@ index 0000000..f49b884
 +find "${output_dir}" -name '*.patch' | sort
 diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
 new file mode 100644
-index 0000000..80ba78b
+index 0000000..5ea53f1
 --- /dev/null
 +++ b/scripts/patch-modules.conf
-@@ -0,0 +1,247 @@
+@@ -0,0 +1,248 @@
 +# codEx patch-module manifest.
 +#
 +# The fork's delta to upstream is organized as exactly one patch per module,
@@ -2465,6 +2465,7 @@ index 0000000..80ba78b
 +codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 +codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
++codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +
 +[input]
 +subject: input: single Esc is a no-op, double Esc interrupts
