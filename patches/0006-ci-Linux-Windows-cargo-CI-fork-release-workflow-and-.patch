@@ -1,4 +1,4 @@
-From 2182fc799d9fa26ca14f4391024b77e436a29569 Mon Sep 17 00:00:00 2001
+From dd4d4b99207e3292a8877befdf4a6e53713315f4 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2228 +++--------------
+ .github/workflows/rust-release.yml            | 2237 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 778 insertions(+), 8744 deletions(-)
+ 46 files changed, 787 insertions(+), 8744 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,10 +4359,10 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..edfa4f0 100644
+index 26d4985..3631765 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,227 +1,239 @@
+@@ -1,227 +1,248 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4624,9 +4624,28 @@ index 26d4985..edfa4f0 100644
 -        name: Install musl build tools
 +      - name: Install musl build tools
 +        if: matrix.platform == 'linux'
-+        env:
-+          TARGET: ${{ matrix.target }}
+         env:
+           TARGET: ${{ matrix.target }}
+-        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 +        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
+ 
+-      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+-        name: Disable aws-lc jitter entropy (musl)
+-        shell: bash
++      # The symbols/strip script shells out to objcopy, which the musl
++      # dependency list does not pull in. Upstream installs binutils for the
++      # same reason; without it that step dies with "command not found".
++      - name: Install binutils for the symbols archive
++        if: matrix.platform == 'linux'
+         run: |
+-          set -euo pipefail
+-          # Avoid problematic aws-lc jitter entropy code path on musl builders.
+-          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
+-          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
+-          target_no_jitter="${target_no_jitter//-/_}"
+-          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
++          sudo apt-get update -y
++          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils
 +
 +      # ---- Windows MSVC toolchain -----------------------------------------
 +      # Reuse upstream's MSVC helper, which resolves the Visual Studio
@@ -4638,30 +4657,24 @@ index 26d4985..edfa4f0 100644
 +      - name: Expose MSVC SDK environment
 +        if: matrix.platform == 'windows'
 +        shell: pwsh
-         env:
-           TARGET: ${{ matrix.target }}
--        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
++        env:
++          TARGET: ${{ matrix.target }}
 +        run: |
 +          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
  
--      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
--        name: Disable aws-lc jitter entropy (musl)
--        shell: bash
 +      # ---- rusty_v8 prebuilt artifacts (both platforms) --------------------
 +      # The fork reuses the upstream openai/codex rusty-v8 release assets. Both
 +      # platforms verify the downloaded checksum manifest against the manifest
 +      # committed under third_party/v8 before trusting its contents.
-+      - name: Configure rusty_v8 artifact overrides and verify checksums
+       - name: Configure rusty_v8 artifact overrides and verify checksums
+-        uses: ./.github/actions/setup-rusty-v8
+-        with:
+-          target: ${{ matrix.target }}
 +        if: matrix.platform == 'linux'
 +        env:
 +          TARGET: ${{ matrix.target }}
-         run: |
-           set -euo pipefail
--          # Avoid problematic aws-lc jitter entropy code path on musl builders.
--          echo "AWS_LC_SYS_NO_JITTER_ENTROPY=1" >> "$GITHUB_ENV"
--          target_no_jitter="AWS_LC_SYS_NO_JITTER_ENTROPY_${{ matrix.target }}"
--          target_no_jitter="${target_no_jitter//-/_}"
--          echo "${target_no_jitter}=1" >> "$GITHUB_ENV"
++        run: |
++          set -euo pipefail
 +          cd "${TREE_DIR}"
 +          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
 +          release_tag="rusty-v8-v${version}"
@@ -4694,11 +4707,7 @@ index 26d4985..edfa4f0 100644
 +          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
 +          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
 +          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
- 
--      - name: Configure rusty_v8 artifact overrides and verify checksums
--        uses: ./.github/actions/setup-rusty-v8
--        with:
--          target: ${{ matrix.target }}
++
 +      - name: Configure rusty_v8 artifact overrides (Windows)
 +        if: matrix.platform == 'windows'
 +        shell: bash
@@ -4755,7 +4764,7 @@ index 26d4985..edfa4f0 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +249,203 @@ jobs:
+@@ -237,1827 +258,203 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
