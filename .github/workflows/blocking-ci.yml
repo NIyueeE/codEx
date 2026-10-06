@@ -23,7 +23,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Enable unprivileged user namespaces (Linux)
         run: |
@@ -58,7 +58,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Enable unprivileged user namespaces (Linux)
         run: |
@@ -91,7 +91,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Enable unprivileged user namespaces (Linux)
         run: |
@@ -127,7 +127,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
@@ -173,16 +173,55 @@ jobs:
       # Type-check the Windows-only code paths (self-update swap, sandbox
       # helpers) on a native runner. Cross-checking from Linux is impossible
       # because ring/aws-lc-sys build scripts need a Windows C toolchain.
+      # `--tests` keeps the Windows test code and every
+      # `cfg(not(target_os = "windows"))` item compiled, so the Unix updater
+      # path cannot rot unseen.
       - name: Type-check the CLI for Windows
         shell: bash
         run: |
           cd "${CODE_DIR}"
-          cargo check --target x86_64-pc-windows-msvc -p codex-cli
+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
       - name: Type-check the TUI for Windows
         shell: bash
         run: |
           cd "${CODE_DIR}"
           cargo check --target x86_64-pc-windows-msvc -p codex-tui
+
+  # Upstream runs cargo-deny and clippy as their own reusable workflows
+  # (cargo-deny.yml and rust-ci-full.yml), which the fork does not carry.
+  # cargo-deny is portable as-is: plain cargo plus a javascript-free action.
+  #
+  # clippy is deliberately absent. `cargo clippy -- -D warnings` also lints
+  # workspace path dependencies, and rust-v0.160.0's own codex-core carries an
+  # unused import (`core/src/tools/registry.rs:16`), which upstream has since
+  # removed on main. Adding the gate before the base tag carries that fix would
+  # fail every run; silencing it would mean shipping a fork-local lint
+  # exception. Neither is this fork's call to make, so add the gate with the
+  # upgrade that picks the fix up.
+  cargo-deny:
+    name: cargo-deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - name: Bootstrap tree if needed
+        run: |
+          if [[ ! -d codex-rs ]]; then
+            bash scripts/bootstrap.sh
+          fi
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      # The fork's own patches rewrite Cargo.lock at every upgrade and add
+      # dependencies (self-update, /rewind), so licence, ban, and advisory
+      # drift has to stay visible.
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.95.0
+          manifest-path: ${{ hashFiles('codex-rs/Cargo.toml') != '' && 'codex-rs/Cargo.toml' || 'tree/codex-rs/Cargo.toml' }}
 
   codespell:
     name: Codespell
@@ -202,6 +241,7 @@ jobs:
       - test-tui
       - test-core
       - check-windows
+      - cargo-deny
       - codespell
       - repo-checks
     runs-on: ubuntu-24.04

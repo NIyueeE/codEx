@@ -41,7 +41,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Validate tag matches Cargo.toml version
         shell: bash
@@ -105,7 +105,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -142,10 +142,9 @@ jobs:
           & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
 
       # ---- rusty_v8 prebuilt artifacts (both platforms) --------------------
-      # The fork reuses the upstream openai/codex rusty-v8 release assets: the
-      # inline Linux step below keeps the musl flow byte-for-byte as it was,
-      # and Windows goes through upstream's action, which knows the `.lib.gz`
-      # archive naming for MSVC targets.
+      # The fork reuses the upstream openai/codex rusty-v8 release assets. Both
+      # platforms verify the downloaded checksum manifest against the manifest
+      # committed under third_party/v8 before trusting its contents.
       - name: Configure rusty_v8 artifact overrides and verify checksums
         if: matrix.platform == 'linux'
         env:
@@ -164,10 +163,19 @@ jobs:
           archive_path="${binding_dir}/${archive_name}"
           binding_path="${binding_dir}/${binding_name}"
           checksums_path="${binding_dir}/${checksums_name}"
+          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
           mkdir -p "${binding_dir}"
+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
+          # The manifest is authoritative only after its bytes match the copy
+          # pinned in this repository.
+          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
+          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
+          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
+            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
+            exit 1
+          fi
           curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
           curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
-          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
           if [[ "$(wc -l < "${checksums_path}")" -ne 2 ]]; then
             echo "Expected exactly two checksums for ${TARGET} in ${checksums_path}" >&2
             exit 1
@@ -250,76 +258,154 @@ jobs:
           cd "${CODE_DIR}"
           cargo build --target "${{ matrix.target }}" --release --bin codex
 
-      # Windows launches helpers such as the sandbox setup out of
-      # `codex-resources/`; without them a packaged codEx cannot start a
-      # sandboxed session. The Linux archive carries bwrap for the same reason.
-      - name: Build Windows helper binaries
-        if: matrix.platform == 'windows'
+      # Upstream ships every one of these inside `bin/` or `codex-resources/`;
+      # a canonical package is rejected when one is missing. bwrap is built and
+      # digested separately above.
+      - name: Build helper binaries
         shell: bash
+        env:
+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
         run: |
           cd "${CODE_DIR}"
-          cargo build --target "${{ matrix.target }}" --release \
-            --bin codex-windows-sandbox-setup \
-            --bin codex-command-runner \
-            --bin codex-code-mode-host
+          target="${{ matrix.target }}"
+          helpers=(--bin codex-code-mode-host)
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            helpers+=(--bin codex-windows-sandbox-setup --bin codex-command-runner)
+          fi
+          cargo build --target "$target" --release "${helpers[@]}"
 
-      # ---- Stage -----------------------------------------------------------
-      - name: Stage archive (Linux)
-        if: matrix.platform == 'linux'
+      # Cargo keeps release binaries symbolicateable until packaging has
+      # archived their symbols; see the `[profile.release]` comment in
+      # codex-rs/Cargo.toml. Strip before assembling the package so the
+      # published payload is the stripped one.
+      - name: Build symbols archive and strip binaries
         shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
           cd "${CODE_DIR}"
-          target="${{ matrix.target }}"
-          release_dir="target/${target}/release"
-          [[ -f "${release_dir}/codex" ]] || { echo "codex binary not found"; exit 1; }
-          [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+          binaries="codex codex-code-mode-host"
+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
+            binaries+=" codex-windows-sandbox-setup codex-command-runner"
+          fi
+          bash "${TREE_DIR}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+            --target "$TARGET" \
+            --artifact-name "$TARGET" \
+            --release-dir "target/${TARGET}/release" \
+            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
+            --binaries "$binaries"
 
-          dest="dist/${target}"
+      # ---- Package ---------------------------------------------------------
+      # Upstream's canonical layout: `codex-package.json` plus `bin/`,
+      # `codex-resources/`, and `codex-path/` at the archive root. `install.sh`
+      # expands it into a standalone release, `codex update` swaps its members,
+      # and app-server-daemon copies it whole when it installs the daemon.
+      - name: Assemble package archive
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
+        run: |
+          set -euo pipefail
+          cd "${CODE_DIR}"
+          tree_dir="$(cd "${TREE_DIR}" && pwd)"
+          release_dir="target/${TARGET}/release"
+          [[ -f "${release_dir}/codex" || -f "${release_dir}/codex.exe" ]] || {
+            echo "codex binary not found in ${release_dir}"
+            exit 1
+          }
+
+          archive_stem="${GITHUB_WORKSPACE}/symbols-dist/${TARGET}/codex-symbols-${TARGET}.tar.gz"
+          symbols_args=()
+          if [[ -f "$archive_stem" ]]; then
+            symbols_args=(--symbols-archive "$archive_stem")
+          fi
+
+          version="$(grep -m1 '^version' "${tree_dir}/codex-rs/Cargo.toml" | sed -E 's/.*"(.*)".*/\1/')"
+          dest="${GITHUB_WORKSPACE}/dist/${TARGET}"
           mkdir -p "$dest"
-          cp "${release_dir}/codex" "$dest/codex"
-          cp "${release_dir}/bwrap" "$dest/bwrap"
-          chmod +x "$dest/codex" "$dest/bwrap"
 
-          # The archive layout is consumed by `codex update`: `codex` and
-          # `bwrap` at the archive root.
-          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex bwrap
-          sha256sum "$dest/codex-${target}.tar.gz" | \
-            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-            > "$dest/codex-${target}.tar.gz.sha256"
+          package_args=(
+            --target "$TARGET"
+            --variant codex
+            --package-version "$version"
+            --cargo-profile release
+            --package-dir "${RUNNER_TEMP}/codex-package-${TARGET}"
+            --archive-output "${dest}/codex-${TARGET}.tar.gz"
+            --force
+          )
 
-      - name: Stage archive (Windows)
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: |
-          set -euo pipefail
-          cd "${CODE_DIR}"
-          target="${{ matrix.target }}"
-          release_dir="target/${target}/release"
-          [[ -f "${release_dir}/codex.exe" ]] || { echo "codex.exe not found"; exit 1; }
+          if [[ "$PLATFORM" == "linux" ]]; then
+            [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
+            package_args+=(
+              --code-mode-host-bin "${release_dir}/codex-code-mode-host"
+              --bwrap-bin "${release_dir}/bwrap"
+            )
+          else
+            package_args+=(
+              --code-mode-host-bin "${release_dir}/codex-code-mode-host.exe"
+              --codex-command-runner-bin "${release_dir}/codex-command-runner.exe"
+              --codex-windows-sandbox-setup-bin "${release_dir}/codex-windows-sandbox-setup.exe"
+            )
+          fi
 
-          dest="dist/${target}"
-          resources="$dest/codex-resources"
-          mkdir -p "$resources"
-          # `codex update` expects the same `codex-<target>.tar.gz` name and
-          # root-level `codex.exe`; the helper binaries mirror the install
-          # layout the managed standalone release uses.
-          cp "${release_dir}/codex.exe" "$dest/codex.exe"
-          for helper in codex-windows-sandbox-setup codex-command-runner codex-code-mode-host; do
-            [[ -f "${release_dir}/${helper}.exe" ]] || { echo "${helper}.exe not found"; exit 1; }
-            cp "${release_dir}/${helper}.exe" "$resources/${helper}.exe"
-          done
+          # The builder fetches ripgrep (and, on Unix, the patched zsh) from
+          # upstream's pinned DotSlash manifests.
+          export CODEX_REPO_ROOT="$tree_dir"
+          python3 "${tree_dir}/scripts/build_codex_package.py" "${package_args[@]}"
 
-          tar -C "$dest" -czf "$dest/codex-${target}.tar.gz" codex.exe codex-resources
-          sha256sum "$dest/codex-${target}.tar.gz" | \
-            awk '{print $1 "  codex-'${target}'.tar.gz"}' \
-            > "$dest/codex-${target}.tar.gz.sha256"
+          sha256sum "${dest}/codex-${TARGET}.tar.gz" | \
+            awk '{print $1 "  codex-'${TARGET}'.tar.gz"}' \
+            > "${dest}/codex-${TARGET}.tar.gz.sha256"
+
+          # The package must be exactly what the running CLI accepts, or the
+          # daemon silently falls back to rejecting the local package.
+          python3 - "${RUNNER_TEMP}/codex-package-${TARGET}" "$PLATFORM" <<'PY'
+          import json, sys
+          from pathlib import Path
+
+          package = Path(sys.argv[1])
+          windows = sys.argv[2] == "windows"
+          suffix = ".exe" if windows else ""
+          manifest = json.loads((package / "codex-package.json").read_text(encoding="utf-8"))
+          assert manifest["layoutVersion"] == 1, manifest
+          assert manifest["entrypoint"] == f"bin/codex{suffix}", manifest
+
+          required = [
+              f"bin/codex{suffix}",
+              f"bin/codex-code-mode-host{suffix}",
+              f"codex-path/rg{suffix}",
+          ]
+          if windows:
+              required += [
+                  "codex-resources/codex-command-runner.exe",
+                  "codex-resources/codex-windows-sandbox-setup.exe",
+              ]
+          else:
+              required += ["codex-resources/bwrap", "codex-resources/zsh/bin/zsh"]
+
+          missing = [name for name in required if not (package / name).is_file()]
+          if missing:
+              raise SystemExit(f"packaged files are missing: {missing}")
+          print(f"package OK: {manifest['version']} {manifest['target']} {manifest['entrypoint']}")
+          PY
 
       - name: Upload archive
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: dist-${{ matrix.target }}
-          path: ${{ env.CODE_DIR }}/dist/${{ matrix.target }}/*
+          path: dist/${{ matrix.target }}/*
+          if-no-files-found: error
+
+      # Debug symbols for the stripped payload, so a crash report from a
+      # released binary stays symbolicateable. bwrap is hashed after stripping,
+      # so its symbols are not part of this archive.
+      - name: Upload symbols archive
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+        with:
+          name: ${{ matrix.target }}-symbols
+          path: symbols-dist/${{ matrix.target }}/*
           if-no-files-found: error
 
   release:
@@ -333,7 +419,7 @@ jobs:
           persist-credentials: false
 
       - name: Download archives
-        uses: actions/download-artifact@fa0a91b85d4f404e444e00e005971372dc801d16 # v6.1.8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           pattern: dist-*
           merge-multiple: true

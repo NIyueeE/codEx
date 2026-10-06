@@ -23,7 +23,7 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree)" >> "$GITHUB_ENV"
+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
       - name: Validate patch-module layout

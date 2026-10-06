@@ -7,10 +7,16 @@
 # recognizes:
 #
 #   $CODEX_HOME/packages/standalone/releases/<version>-<target>/
-#     codex
-#     codex-resources/bwrap
+#     codex-package.json
+#     bin/codex
+#     codex-path/rg
+#     codex-resources/{bwrap,zsh/bin/zsh}
+#     codex -> bin/codex
 #
-# A `codex` symlink is placed in $CODEX_INSTALL_DIR (default ~/.local/bin).
+# The package layout is the same one upstream publishes: it is what
+# `InstallContext` recognizes and what `codex app-server daemon` copies when
+# it installs the shared background server. A `codex` symlink is placed in
+# $CODEX_INSTALL_DIR (default ~/.local/bin).
 #
 # Usage:
 #   curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
@@ -153,12 +159,17 @@ install() {
 
   step "Installing to $release_dir..."
   rm -rf "$staging_dir"
-  mkdir -p "$staging_dir/codex-resources" "$RELEASES_DIR"
+  mkdir -p "$staging_dir" "$RELEASES_DIR"
   tar -xzf "$archive_path" -C "$staging_dir"
-  [ -f "$staging_dir/codex" ] || die "release archive does not contain a codex binary"
-  [ -f "$staging_dir/bwrap" ] || die "release archive does not contain bwrap"
-  mv "$staging_dir/bwrap" "$staging_dir/codex-resources/bwrap"
-  chmod +x "$staging_dir/codex" "$staging_dir/codex-resources/bwrap"
+  # The release archive is a canonical Codex package: the metadata file that
+  # makes the install recognizable, plus bin/, codex-resources/, codex-path/.
+  [ -f "$staging_dir/codex-package.json" ] ||
+    die "release archive is not a Codex package (codex-package.json is missing)"
+  [ -x "$staging_dir/bin/codex" ] || die "release archive does not contain bin/codex"
+  [ -f "$staging_dir/codex-resources/bwrap" ] || die "release archive does not contain codex-resources/bwrap"
+  # `codex update` and manual invocations use this alias at the package root.
+  # CodexPackageLayout and the daemon's package hash both ignore it.
+  ln -sfn "bin/codex" "$staging_dir/codex"
 
   # Atomically replace a previous install of the same version.
   if [ -e "$release_dir" ]; then
