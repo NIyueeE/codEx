@@ -77,6 +77,12 @@ fi
 # A manual conflict resolution may have changed subjects or file ownership;
 # verify the applied queue still matches the patch-module manifest before
 # spending time on the build.
+#
+# The work tree's BASE_TAG has to carry the new tag first: check-patch-modules
+# derives the base from the tree, so with the old tag in place `base..HEAD`
+# would also count every upstream commit between the two tags and report the
+# fork's own commits as touching files they do not own.
+echo "${upstream_tag}" > "${work_dir}/BASE_TAG"
 if ! bash "${script_dir}/check-patch-modules.sh" --tree "${work_dir}"; then
   echo "The applied patch queue does not match the patch-module manifest." >&2
   exit 1
