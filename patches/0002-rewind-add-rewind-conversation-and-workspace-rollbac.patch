@@ -1,4 +1,4 @@
-From cede4522bfc867e6d56ea3424556a9c3713c7f09 Mon Sep 17 00:00:00 2001
+From 997fce531c372dc7ccd160cfd3eccb561f40d845 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:22 +0000
 Subject: rewind: add /rewind conversation and workspace rollback

@@ -1,16 +1,20 @@
-From 1e2af7afbaf23e82f78432762efba112bd059530 Mon Sep 17 00:00:00 2001
+From abf6b6721bf73d98c48e0c2e79335692ea2cd07a Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
 
 ---
  announcement_tip.toml                         |  17 -
+ .../src/request_processors/plugins.rs         |  14 +-
+ .../src/request_processors/plugins/search.rs  |  11 +-
+ .../core-plugins/src/marketplace_context.rs   |  13 +-
+ codex-rs/tui/src/app/background_requests.rs   |  10 +-
  codex-rs/tui/src/npm_registry.rs              | 130 ----
  ...ooltips__tests__desktop_app_tip_linux.snap |   8 -
  ...ooltips__tests__desktop_app_tip_macos.snap |   7 -
  ...ltips__tests__desktop_app_tip_windows.snap |   8 -
  codex-rs/tui/src/tooltips.rs                  | 587 ++----------------
- 6 files changed, 46 insertions(+), 711 deletions(-)
+ 10 files changed, 90 insertions(+), 715 deletions(-)
  delete mode 100644 announcement_tip.toml
  delete mode 100644 codex-rs/tui/src/npm_registry.rs
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
@@ -40,6 +44,126 @@ index 79c0dae..0000000
 -# Matches 0.x.y versions from 0.0.y through 0.119.y; excludes 0.120.0 and newer.
 -version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
 -to_date = "2026-05-08"
+diff --git a/codex-rs/app-server/src/request_processors/plugins.rs b/codex-rs/app-server/src/request_processors/plugins.rs
+index 713794c..16d8a8a 100644
+--- a/codex-rs/app-server/src/request_processors/plugins.rs
++++ b/codex-rs/app-server/src/request_processors/plugins.rs
+@@ -46,6 +46,15 @@ mod local;
+ mod reconcile;
+ mod search;
+ 
++/// Whether codEx serves the vendor's curated remote plugin collection.
++///
++/// Disabled: the CLI reaches the vendor catalog through the marketplace
++/// context, which codEx already pins to local and Git marketplaces. The
++/// vertical collection below is fetched directly instead, so it needs its own
++/// switch to keep the headless-only policy true for the TUI's plugin list.
++/// Flip to `true` to restore upstream behaviour.
++const OPENAI_CURATED_COLLECTION_ENABLED: bool = false;
++
+ fn plugin_redirect_mode(plugin_root: &Path) -> StreamableHttpRedirectMode {
+     if is_agent_plugin_manifest(plugin_root) {
+         StreamableHttpRedirectMode::AgentPluginV1
+@@ -674,7 +683,10 @@ impl PluginRequestProcessor {
+ 
+         // TODO(remote plugins): Remove this once remote plugins are ready and vertical plugins are
+         // served directly from the normal remote catalog.
+-        if include_vertical && !config.features.enabled(Feature::RemotePlugin) {
++        if include_vertical
++            && OPENAI_CURATED_COLLECTION_ENABLED
++            && !config.features.enabled(Feature::RemotePlugin)
++        {
+             match codex_core_plugins::remote::fetch_openai_curated_remote_collection_marketplace(
+                 &remote_plugin_service_config,
+                 auth.as_ref(),
+diff --git a/codex-rs/app-server/src/request_processors/plugins/search.rs b/codex-rs/app-server/src/request_processors/plugins/search.rs
+index 6cc25e4..0a49f5a 100644
+--- a/codex-rs/app-server/src/request_processors/plugins/search.rs
++++ b/codex-rs/app-server/src/request_processors/plugins/search.rs
+@@ -12,6 +12,14 @@ const MAX_PLUGIN_SEARCH_LIMIT: u32 = 1_000;
+ const MAX_LOCAL_PLUGIN_SEARCH_RESULTS: usize = 100;
+ const PLUGIN_SEARCH_NO_MATCH_RANK: usize = 6;
+ 
++/// Whether plugin search may query the vendor's remote catalog.
++///
++/// Disabled with the rest of the remote plugin surface: codEx targets
++/// headless, self-hosted use and never searches the chatgpt.com backend.
++/// Local and Git marketplaces are unaffected. Flip to `true` to restore
++/// upstream behaviour.
++const REMOTE_PLUGIN_SEARCH_ENABLED: bool = false;
++
+ impl PluginRequestProcessor {
+     pub(crate) async fn plugin_search(
+         &self,
+@@ -52,7 +60,8 @@ impl PluginRequestProcessor {
+ 
+         let auth = self.auth_manager.auth().await;
+         let auth_mode = auth.as_ref().map(CodexAuth::api_auth_mode);
+-        let remote_plugin_enabled = config.features.enabled(Feature::RemotePlugin);
++        let remote_plugin_enabled =
++            REMOTE_PLUGIN_SEARCH_ENABLED && config.features.enabled(Feature::RemotePlugin);
+         let use_remote_global_catalog =
+             remote_plugin_enabled && auth_mode.is_some_and(DomainAuthMode::uses_codex_backend);
+         let remote_scope = if remote_plugin_enabled {
+diff --git a/codex-rs/core-plugins/src/marketplace_context.rs b/codex-rs/core-plugins/src/marketplace_context.rs
+index bab5781..b43e551 100644
+--- a/codex-rs/core-plugins/src/marketplace_context.rs
++++ b/codex-rs/core-plugins/src/marketplace_context.rs
+@@ -5,6 +5,15 @@
+ 
+ use super::*;
+ 
++/// Whether codEx consults the vendor's remote plugin catalog.
++///
++/// Disabled and private to this module: codEx targets headless, self-hosted
++/// use and never fetches the curated marketplace from the chatgpt.com
++/// backend. Local and Git marketplaces are unaffected. This is the single
++/// switch for every caller that asks the marketplace context whether remote
++/// plugins are enabled; flip it to `true` to restore upstream behaviour.
++const REMOTE_PLUGIN_CATALOG_ENABLED: bool = false;
++
+ /// Request-wide plugin settings and the ordered repository configurations for one marketplace request.
+ #[derive(Clone)]
+ pub struct PluginMarketplaceContext {
+@@ -27,7 +36,9 @@ impl PluginMarketplaceContext {
+     }
+ 
+     pub fn remote_plugins_enabled(&self) -> bool {
+-        self.global_config.plugins_enabled && self.global_config.remote_plugin_enabled
++        REMOTE_PLUGIN_CATALOG_ENABLED
++            && self.global_config.plugins_enabled
++            && self.global_config.remote_plugin_enabled
+     }
+ 
+     pub(super) fn list_marketplaces(
+diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
+index 8b29753..db754b7 100644
+--- a/codex-rs/tui/src/app/background_requests.rs
++++ b/codex-rs/tui/src/app/background_requests.rs
+@@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;
+ use crate::app_info::app_info_from_api;
+ use crate::chatwidget::ThreadUsageOutcome;
+ use crate::config_update::format_config_error;
++
++/// Whether the TUI asks the app server for the vendor's remote plugin sections.
++///
++/// Disabled: the server refuses the remote catalog anyway, so requesting it
++/// would only add round trips. Local and Git marketplaces are unaffected.
++/// Flip to `true` to restore upstream behaviour.
++const REMOTE_PLUGIN_SECTIONS_ENABLED: bool = false;
+ use codex_app_server_protocol::AppsListParams;
+ use codex_app_server_protocol::AppsListResponse;
+ use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;
+@@ -269,7 +276,8 @@ impl App {
+         let request_handle = app_server.request_handle();
+         let app_event_tx = self.app_event_tx.clone();
+         let plugin_sharing_enabled = self.config.features.enabled(Feature::PluginSharing);
+-        let remote_plugin_enabled = self.config.features.enabled(Feature::RemotePlugin);
++        let remote_plugin_enabled =
++            REMOTE_PLUGIN_SECTIONS_ENABLED && self.config.features.enabled(Feature::RemotePlugin);
+         tokio::spawn(async move {
+             let result = fetch_plugins_list(request_handle.clone(), cwd.clone())
+                 .await
 diff --git a/codex-rs/tui/src/npm_registry.rs b/codex-rs/tui/src/npm_registry.rs
 deleted file mode 100644
 index 61ff242..0000000

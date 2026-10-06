@@ -1,4 +1,4 @@
-From f61a2b809a120e21d28b125a9cad4c81a08abd0d Mon Sep 17 00:00:00 2001
+From b518f5dc34cd1d826a7b32ea55ed72ab0f701d63 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -26,12 +26,14 @@ Subject: update: pure-Rust self-update against fork releases
  .../src/doctor/desktop/windows_security.rs    |  232 ----
  .../doctor/desktop/windows_security_tests.rs  |   85 --
  codex-rs/cli/src/doctor/desktop_tests.rs      |   97 --
+ codex-rs/cli/src/doctor/output.rs             |   54 -
+ ..._doctor_human_report_environment_rows.snap |   12 +-
  codex-rs/cli/src/doctor/updates.rs            |  469 +-------
- codex-rs/cli/src/main.rs                      |  397 ++-----
+ codex-rs/cli/src/main.rs                      |  431 +++----
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  780 ------------
- codex-rs/cli/src/self_update.rs               |  522 +++++++++
+ codex-rs/cli/src/self_update.rs               |  681 +++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
@@ -62,7 +64,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 58 files changed, 1248 insertions(+), 6056 deletions(-)
+ 60 files changed, 1441 insertions(+), 6122 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -4670,6 +4672,131 @@ index b5bd937..0000000
 -    )
 -    .expect("desktop log fixture should be created");
 -}
+diff --git a/codex-rs/cli/src/doctor/output.rs b/codex-rs/cli/src/doctor/output.rs
+index a614250..021fe09 100644
+--- a/codex-rs/cli/src/doctor/output.rs
++++ b/codex-rs/cli/src/doctor/output.rs
+@@ -34,10 +34,6 @@ const GROUPS: &[OutputGroup] = &[
+         title: "Configuration",
+         keys: &["config", "auth", "mcp", "sandbox"],
+     },
+-    OutputGroup {
+-        title: "Desktop App",
+-        keys: &["desktop"],
+-    },
+     OutputGroup {
+         title: "Updates",
+         keys: &["updates"],
+@@ -504,9 +500,6 @@ fn notes_for_report(report: &DoctorReport) -> Vec<DoctorNote> {
+         update_note(check, report)
+             .into_iter()
+             .for_each(|note| notes.push(note));
+-        desktop_update_note(check)
+-            .into_iter()
+-            .for_each(|note| notes.push(note));
+     }
+     if let Some(check) = find_check(report, "state") {
+         rollout_note(check)
+@@ -556,21 +549,6 @@ fn update_note(check: &DoctorCheck, report: &DoctorReport) -> Option<DoctorNote>
+     })
+ }
+ 
+-fn desktop_update_note(check: &DoctorCheck) -> Option<DoctorNote> {
+-    let status = detail::detail_value(check, "desktop update status")?;
+-    let build = detail::detail_value(check, "desktop latest build")?;
+-    let summary = match status.as_str() {
+-        "ready to install" => format!("build {build} available (ready to install)"),
+-        "available" => format!("build {build} available"),
+-        _ => return None,
+-    };
+-    Some(DoctorNote {
+-        status: DisplayStatus::Update,
+-        name: "desktop".to_string(),
+-        summary,
+-    })
+-}
+-
+ fn rollout_note(check: &DoctorCheck) -> Option<DoctorNote> {
+     let active = detail::detail_value(check, "active rollout files")?;
+     let (files, bytes) = detail::rollout_files_and_bytes(&active)?;
+@@ -1442,38 +1420,6 @@ Background Server
+             .expect("endpoint security check should include exclusion targets");
+         *targets = "exclusion targets: verified Codex app and required helpers".into();
+         report.checks.push(security);
+-        report.checks.extend([
+-            DoctorCheck::new(
+-                "desktop.app.version",
+-                "desktop",
+-                CheckStatus::Ok,
+-                "the desktop application is installed",
+-            )
+-            .detail("version: 1.2.3")
+-            .detail("running: true")
+-            .detail("log directory: $HOME/Library/Logs/com.openai.codex"),
+-            DoctorCheck::new(
+-                "desktop.app_server.handshake",
+-                "desktop",
+-                CheckStatus::Ok,
+-                "the desktop app-server initialized successfully",
+-            ),
+-        ]);
+-        let update = report
+-            .checks
+-            .iter_mut()
+-            .find(|check| check.category == "updates")
+-            .unwrap();
+-        for (status, expected) in [
+-            ("available", "build 123 available"),
+-            ("ready to install", "build 123 available (ready to install)"),
+-        ] {
+-            update.details = vec![
+-                format!("desktop update status: {status}"),
+-                "desktop latest build: 123".to_string(),
+-            ];
+-            assert_eq!(desktop_update_note(update).unwrap().summary, expected);
+-        }
+         insta::assert_snapshot!(
+             "doctor_human_report_environment_rows",
+             render_human_report(&report, detailed_no_color_unicode_options())
+diff --git a/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap b/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
+index 7aec692..63dd1b3 100644
+--- a/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
++++ b/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
+@@ -5,7 +5,6 @@ expression: "render_human_report(&report, detailed_no_color_unicode_options())"
+ Codex Doctor v0.0.0
+ 
+ Notes
+-   ↑ desktop      build 123 available (ready to install)
+    ⚠ terminal     narrow terminal
+    ✗ auth         token expired - Run `codex login`.
+    ⚠ git          this worktree is not on a Windows Dev Drive - create a trusted Windows Dev Drive: https://learn.microsoft.com/en-us/windows/dev-drive/
+@@ -48,17 +47,8 @@ Configuration
+   ✗ auth         token expired — Run `codex login`.
+       OPENAI_API_KEY           present
+ 
+-Desktop App
+-  ✓ desktop      the desktop application is installed
+-      version                  1.2.3
+-      running                  true
+-      log directory            $HOME/Library/Logs/com.openai.codex
+-  ✓ desktop      the desktop app-server initialized successfully
+-
+ Updates
+   ✓ updates      update configuration is locally consistent
+-      desktop update status    ready to install
+-      desktop latest build     123
+ 
+ Connectivity
+   ✓ network      network environment readable
+@@ -69,7 +59,7 @@ Background Server
+   ✓ app-server   background server is not running
+ 
+ ─────────────────────────────────────────────────────────────
+-15 ok · 5 notes · 3 warn · 1 fail failed
++13 ok · 4 notes · 3 warn · 1 fail failed
+ 
+ --summary compact output           --all expand truncated lists
+ --json redacted report
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
 index fbad7d9..1e1fd1d 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
@@ -5237,7 +5364,7 @@ index fbad7d9..1e1fd1d 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index bdd7771..23fc366 100644
+index bdd7771..3bcb7be 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -5539,7 +5666,17 @@ index bdd7771..23fc366 100644
      }
  }
  
-@@ -1126,7 +1076,7 @@ async fn cli_main(
+@@ -1070,6 +1020,9 @@ async fn cli_main(
+         .shared
+         .take_auto_review_config_overrides(&mut root_config_overrides);
+     reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
++    if subcommand.is_none() {
++        reject_removed_launcher_prompt(interactive.prompt.as_deref())?;
++    }
+     if let Some(subcommand) = subcommand.as_ref() {
+         profile_v2_for_subcommand(&interactive, subcommand)?;
+     }
+@@ -1126,7 +1079,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -5548,7 +5685,7 @@ index bdd7771..23fc366 100644
          }
          Some(Subcommand::TcpTunnel(args)) => {
              return codex_tcp_tunnel::run(args).await;
-@@ -1292,10 +1242,17 @@ async fn cli_main(
+@@ -1292,10 +1245,17 @@ async fn cli_main(
                      AppServerDaemonSubcommand::Restart => {
                          print_app_server_daemon_output(AppServerLifecycleCommand::Restart).await?;
                      }
@@ -5570,7 +5707,7 @@ index bdd7771..23fc366 100644
                          let result = codex_app_server_daemon::update_from_cli(|request| {
                              daemon_install::confirm_install(request, yes)
                          })
-@@ -1311,31 +1268,13 @@ async fn cli_main(
+@@ -1311,31 +1271,13 @@ async fn cli_main(
                              println!("{}", serde_json::to_string(&output)?);
                          }
                      }
@@ -5604,7 +5741,7 @@ index bdd7771..23fc366 100644
                          ..
                      } => {
                          let cli_overrides = root_config_overrides
-@@ -1347,36 +1286,13 @@ async fn cli_main(
+@@ -1347,36 +1289,13 @@ async fn cli_main(
                              .await
                              .map_err(anyhow::Error::from);
                          let http_client_factory = updater_http_client_factory(config);
@@ -5648,7 +5785,7 @@ index bdd7771..23fc366 100644
                      }
                  },
                  Some(AppServerSubcommand::Proxy(proxy_cli)) => {
-@@ -1411,29 +1327,6 @@ async fn cli_main(
+@@ -1411,29 +1330,6 @@ async fn cli_main(
                  }
              }
          }
@@ -5678,7 +5815,7 @@ index bdd7771..23fc366 100644
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1461,7 +1354,7 @@ async fn cli_main(
+@@ -1461,7 +1357,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -5687,7 +5824,7 @@ index bdd7771..23fc366 100644
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1548,7 +1441,7 @@ async fn cli_main(
+@@ -1548,7 +1444,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -5696,7 +5833,7 @@ index bdd7771..23fc366 100644
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1614,13 +1507,13 @@ async fn cli_main(
+@@ -1614,13 +1510,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -5712,7 +5849,7 @@ index bdd7771..23fc366 100644
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1636,19 +1529,6 @@ async fn cli_main(
+@@ -1636,19 +1532,6 @@ async fn cli_main(
              )
              .await?;
          }
@@ -5732,7 +5869,32 @@ index bdd7771..23fc366 100644
          Some(Subcommand::Sandbox(mut sandbox_cli)) => {
              let config_profile = sandbox_cli
                  .config_profile
-@@ -2245,17 +2125,13 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2197,6 +2080,24 @@ fn reject_unsupported_worktree_for_subcommand(
+     }
+ }
+ 
++/// Reject a bare positional prompt that names a launcher codEx removed.
++///
++/// `Subcommand::App`, `Cloud`, and `RemoteControl` no longer exist, so clap
++/// would otherwise accept `codex app` as the TUI's positional prompt and open
++/// the interactive session with "app" as its first message. Failing closed
++/// keeps the removed entry points visibly absent. (`codex cloud-tasks` is not
++/// a positional match: it parses as a subcommand, so clap rejects it.)
++fn reject_removed_launcher_prompt(prompt: Option<&str>) -> anyhow::Result<()> {
++    let Some(name) =
++        prompt.filter(|name| matches!(*name, "app" | "cloud" | "remote-control" | "cloud-tasks"))
++    else {
++        return Ok(());
++    };
++    anyhow::bail!(
++        "`codex {name}` is not part of codEx: it targets headless, self-hosted use and ships the CLI/TUI only. See the README for what this fork removes."
++    )
++}
++
+ fn reject_root_strict_config_for_subcommand(
+     strict_config: bool,
+     subcommand: &Option<Subcommand>,
+@@ -2245,17 +2146,13 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -5751,7 +5913,7 @@ index bdd7771..23fc366 100644
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2307,12 +2183,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2307,12 +2204,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
              AppServerDaemonSubcommand::Update { .. } => "app-server daemon update",
@@ -5764,7 +5926,7 @@ index bdd7771..23fc366 100644
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop { .. } => "app-server daemon pid-update-loop",
-@@ -2346,14 +2216,6 @@ fn updater_http_client_factory(
+@@ -2346,14 +2237,6 @@ fn updater_http_client_factory(
      }
  }
  
@@ -5779,7 +5941,7 @@ index bdd7771..23fc366 100644
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -3499,7 +3361,24 @@ mod tests {
+@@ -3499,7 +3382,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -5805,7 +5967,28 @@ index bdd7771..23fc366 100644
      }
  
      #[test]
-@@ -4291,31 +4170,20 @@ mod tests {
+@@ -4260,17 +4160,17 @@ mod tests {
+             "`--strict-config` is not supported for `codex mcp`"
+         );
+ 
+-        let cli = MultitoolCli::try_parse_from(["codex", "--strict-config", "remote-control"])
++        let cli = MultitoolCli::try_parse_from(["codex", "--strict-config", "plugin", "list"])
+             .expect("parse");
+         let err = reject_root_strict_config_for_subcommand(
+             cli.interactive.strict_config,
+             &cli.subcommand,
+         )
+-        .expect_err("remote-control should not support root --strict-config");
++        .expect_err("plugin should not support root --strict-config");
+ 
+         assert_eq!(
+             err.to_string(),
+-            "`--strict-config` is not supported for `codex remote-control`"
++            "`--strict-config` is not supported for `codex plugin`"
+         );
+     }
+ 
+@@ -4291,31 +4191,31 @@ mod tests {
      }
  
      #[test]
@@ -5823,10 +6006,31 @@ index bdd7771..23fc366 100644
 -            "remote-control",
 -        )
 -        .expect_err("remote-control should reject root --remote");
--
++    fn closed_source_launcher_and_cloud_subcommands_are_absent() {
++        // codEx is used headless: the Desktop launcher, the Codex Cloud
++        // browser, and the remote-control daemon are all removed. clap accepts
++        // their bare names as the TUI's positional prompt, so the dispatcher
++        // has to reject them explicitly instead of opening a session.
++        for name in ["app", "cloud", "remote-control", "cloud-tasks"] {
++            let cli = MultitoolCli::try_parse_from(["codex", name]).expect("parse");
++            let err = reject_removed_launcher_prompt(cli.interactive.prompt.as_deref())
++                .expect_err("removed launcher names must be rejected");
++            assert!(
++                err.to_string()
++                    .contains(&format!("`codex {name}` is not part of codEx")),
++                "{err}"
++            );
++        }
+ 
 -        assert!(err.to_string().contains("remote-control"));
 -    }
--
++        // A real prompt still opens the TUI.
++        let cli = MultitoolCli::try_parse_from(["codex", "fix the bug"]).expect("parse");
++        assert!(
++            reject_removed_launcher_prompt(cli.interactive.prompt.as_deref()).is_ok(),
++            "an ordinary prompt must still parse"
++        );
+ 
 -    #[test]
 -    fn remote_control_pair_parses() {
 -        let cli = MultitoolCli::try_parse_from(["codex", "remote-control", "pair"]).expect("parse");
@@ -5834,24 +6038,12 @@ index bdd7771..23fc366 100644
 -            panic!("expected remote-control subcommand");
 -        };
 -        assert_eq!(remote_control.subcommand_name(), "remote-control pair");
-+    fn closed_source_launcher_and_cloud_subcommands_are_absent() {
-+        // codEx is used headless: the Desktop launcher, the Codex Cloud
-+        // browser, and the remote-control daemon are all removed.
-+        for argv in [
-+            ["codex", "app"].as_slice(),
-+            ["codex", "cloud"].as_slice(),
-+            ["codex", "cloud-tasks"].as_slice(),
-+            ["codex", "remote-control", "pair"].as_slice(),
-+        ] {
-+            assert!(
-+                MultitoolCli::try_parse_from(argv).is_err(),
-+                "{argv:?} should no longer parse"
-+            );
-+        }
++        // `remote-control start` has a second token, so clap rejects it.
++        assert!(MultitoolCli::try_parse_from(["codex", "remote-control", "pair"]).is_err());
      }
  
      #[test]
-@@ -4630,24 +4498,17 @@ mod tests {
+@@ -4630,24 +4530,17 @@ mod tests {
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -6853,20 +7045,23 @@ index 9c0d5e2..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..49ef6b9
+index 0000000..792e68e
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,522 @@
+@@ -0,0 +1,681 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
 +//! current platform from the fork's latest GitHub release, verifies its
 +//! sha256 against the published checksum asset, and atomically replaces the
-+//! running binary and the bundled `bwrap` resource. The archive is built by
-+//! the fork's release workflow with `codex` and `bwrap` at the archive root,
-+//! so the new binary's embedded `CODEX_BWRAP_SHA256` matches the new bwrap.
++//! running binary and the bundled `bwrap` resource. The archive is the same
++//! canonical Codex package upstream publishes, so its layout comes from
++//! `codex-package.json` rather than a fixed set of files at the archive root;
++//! the new binary's embedded `CODEX_BWRAP_SHA256` matches the new bwrap.
 +
++use std::ffi::OsStr;
 +use std::path::Path;
++use std::path::PathBuf;
 +use std::time::Duration;
 +
 +use anyhow::Context;
@@ -6884,16 +7079,14 @@ index 0000000..49ef6b9
 +use sha2::Sha256;
 +use tar::Archive;
 +
-+/// Executable name inside the release archive.
++/// Package metadata file at the root of a release archive.
++const PACKAGE_MANIFEST_NAME: &str = "codex-package.json";
++/// Package layout version this updater understands.
++const PACKAGE_LAYOUT_VERSION: u32 = 1;
++/// Executable name that release asset names are derived from.
 +const CODEX_BINARY_NAME: &str = "codex";
-+/// Windows executable name inside the release archive.
-+#[cfg(target_os = "windows")]
-+const CODEX_BINARY_NAME_WINDOWS: &str = "codex.exe";
 +/// Directory beside the running binary that holds a pending update.
 +const STAGING_DIR_NAME: &str = "codex-update-staging";
-+/// Bundled helper directory inside a release archive and an install.
-+#[cfg(target_os = "windows")]
-+const RESOURCES_DIR_NAME: &str = "codex-resources";
 +/// Bubblewrap binary name inside the release archive (Unix sandbox helper).
 +const BWRAP_BINARY_NAME: &str = "bwrap";
 +/// HTTP timeout for a single release asset download.
@@ -7025,11 +7218,9 @@ index 0000000..49ef6b9
 +
 +    #[cfg(not(target_os = "windows"))]
 +    {
-+        let new_codex = staging_dir.join(CODEX_BINARY_NAME);
-+        let new_bwrap = staging_dir.join(BWRAP_BINARY_NAME);
-+        if !new_codex.is_file() || !new_bwrap.is_file() {
-+            anyhow::bail!("release archive is missing {CODEX_BINARY_NAME} or {BWRAP_BINARY_NAME}");
-+        }
++        let staged = StagedPackage::read(&staging_dir)?;
++        let new_codex = staged.entrypoint_in(&staging_dir);
++        let new_bwrap = staged.resources_in(&staging_dir).join(BWRAP_BINARY_NAME);
 +        let Some(resources_dir) = resources_dir else {
 +            anyhow::bail!(
 +                "standalone install has no resources directory; cannot replace bundled bwrap. Please update manually from https://github.com/{FORK_REPO}/releases"
@@ -7054,13 +7245,121 @@ index 0000000..49ef6b9
 +    }
 +}
 +
-+/// Staging directory beside the running binary that holds the extracted
-+/// release until it is swapped in.
-+fn staging_dir(current_exe: &Path) -> anyhow::Result<std::path::PathBuf> {
-+    let parent = current_exe
++/// The layout of the package carried by a release archive.
++///
++/// The fork publishes the same canonical packages upstream does: a
++/// `codex-package.json` manifest next to `bin/`, `codex-resources/`, and
++/// `codex-path/`. `codex update` therefore has to read the manifest instead of
++/// assuming a fixed set of files at the archive root.
++#[derive(Debug)]
++struct StagedPackage {
++    /// The manifest's `entrypoint`, relative to the package root.
++    entrypoint: PathBuf,
++    /// The manifest's `resourcesDir`, relative to the package root.
++    resources_dir: PathBuf,
++}
++
++impl StagedPackage {
++    /// Parse a freshly extracted release archive, rejecting anything that is
++    /// not a canonical package.
++    fn read(staging_dir: &Path) -> anyhow::Result<Self> {
++        let manifest_path = staging_dir.join(PACKAGE_MANIFEST_NAME);
++        let manifest: PackageManifest = serde_json::from_slice(
++            &std::fs::read(&manifest_path).with_context(|| {
++                format!(
++                    "release archive is not a Codex package ({} is missing); reinstall from https://github.com/{FORK_REPO}/releases",
++                    manifest_path.display()
++                )
++            })?,
++        )
++        .context("release archive has an unreadable codex-package.json")?;
++
++        anyhow::ensure!(
++            manifest.layout_version == PACKAGE_LAYOUT_VERSION,
++            "release archive uses unsupported package layout {}",
++            manifest.layout_version
++        );
++        let entrypoint = PathBuf::from(&manifest.entrypoint);
++        let resources_dir = PathBuf::from(&manifest.resources_dir);
++        anyhow::ensure!(
++            staging_dir.join(&entrypoint).is_file(),
++            "release archive is missing its entrypoint {}",
++            manifest.entrypoint
++        );
++        anyhow::ensure!(
++            staging_dir.join(&resources_dir).is_dir(),
++            "release archive is missing its resources directory {}",
++            manifest.resources_dir
++        );
++        Ok(Self {
++            entrypoint,
++            resources_dir,
++        })
++    }
++
++    /// Resolve the entrypoint inside a directory that holds this package's
++    /// layout (either the staging directory or the install it is swapped into).
++    fn entrypoint_in(&self, package_root: &Path) -> PathBuf {
++        package_root.join(&self.entrypoint)
++    }
++
++    /// Resolve the bundled resources directory inside a package root.
++    fn resources_in(&self, package_root: &Path) -> PathBuf {
++        package_root.join(&self.resources_dir)
++    }
++}
++
++/// The subset of `codex-package.json` that the updater needs.
++#[derive(serde::Deserialize)]
++#[serde(rename_all = "camelCase")]
++struct PackageManifest {
++    layout_version: u32,
++    entrypoint: String,
++    resources_dir: String,
++}
++
++/// Staging directory that holds the extracted release until it is swapped in.
++///
++/// It sits inside the package, next to the layout the running binary belongs
++/// to, so a swap anchored at the same package root stays on one filesystem.
++fn staging_dir(current_exe: &Path) -> anyhow::Result<PathBuf> {
++    Ok(package_root(current_exe)?.join(STAGING_DIR_NAME))
++}
++
++/// The package root the running executable belongs to.
++///
++/// `bin/codex` belongs to the directory above `bin/`. A binary that is still
++/// running from inside the staging directory belongs to the package the
++/// staging directory was created in, so the deferred swap resolves the install
++/// it has to replace.
++#[cfg(not(target_os = "windows"))]
++fn package_root(current_exe: &Path) -> anyhow::Result<PathBuf> {
++    let bin_dir = current_exe
 +        .parent()
 +        .context("current executable has no parent directory")?;
-+    Ok(parent.join(STAGING_DIR_NAME))
++    if let Some(staging_root) = staging_root(bin_dir) {
++        return Ok(staging_root);
++    }
++    let candidate = bin_dir
++        .parent()
++        .filter(|root| root.join(PACKAGE_MANIFEST_NAME).is_file());
++    Ok(candidate.unwrap_or(bin_dir).to_path_buf())
++}
++
++/// The directory that owns the staging directory the given path sits in.
++///
++/// Returns `Some` only for `<package>/codex-update-staging/bin`, which is where
++/// an extracted release runs its entrypoint from.
++#[cfg(not(target_os = "windows"))]
++fn staging_root(bin_dir: &Path) -> Option<PathBuf> {
++    if bin_dir.file_name()? != OsStr::new("bin") {
++        return None;
++    }
++    let staging_dir = bin_dir.parent()?;
++    if staging_dir.file_name()? != OsStr::new(STAGING_DIR_NAME) {
++        return None;
++    }
++    staging_dir.parent().map(Path::to_path_buf)
 +}
 +
 +/// Windows cannot replace a running executable. The update is handed to a
@@ -7071,10 +7370,8 @@ index 0000000..49ef6b9
 +    use std::os::windows::process::CommandExt;
 +    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 +
-+    let new_codex = staging_dir.join(CODEX_BINARY_NAME_WINDOWS);
-+    if !new_codex.is_file() {
-+        anyhow::bail!("release archive is missing {CODEX_BINARY_NAME_WINDOWS}");
-+    }
++    let staged = StagedPackage::read(staging_dir)?;
++    let new_codex = staged.entrypoint_in(staging_dir);
 +
 +    let parent_pid = std::process::id();
 +    let mut command = std::process::Command::new(&new_codex);
@@ -7115,13 +7412,11 @@ index 0000000..49ef6b9
 +        .parent()
 +        .context("update staging directory has no parent")?
 +        .to_path_buf();
-+    let new_codex = staging_dir.join(CODEX_BINARY_NAME_WINDOWS);
-+    if !new_codex.is_file() {
-+        anyhow::bail!(
-+            "staged update is missing {}; rerun `codex update`",
-+            new_codex.display()
-+        );
-+    }
++    // The staged tree is a canonical package, so the install keeps the same
++    // layout: `bin/codex.exe` with `codex-resources/` beside it.
++    let staged = StagedPackage::read(&staging_dir)?;
++    let new_codex = staged.entrypoint_in(&staging_dir);
++    let target = staged.entrypoint_in(&target_dir);
 +
 +    // Wait on the process handle rather than polling so a slow shutdown cannot
 +    // race the swap; the handle closes on exit even when the process fails.
@@ -7134,13 +7429,11 @@ index 0000000..49ef6b9
 +        }
 +    }
 +
-+    let target = target_dir.join(CODEX_BINARY_NAME_WINDOWS);
-+    // Bundled helper binaries ship under `codex-resources/` in the archive and
-+    // must live beside the install's resources directory, which the install
-+    // context only reports when it already exists.
-+    let staged_resources = staging_dir.join(RESOURCES_DIR_NAME);
++    // Bundled helper binaries ship under the package's resources directory and
++    // must keep living beside the swapped entrypoint.
++    let staged_resources = staged.resources_in(&staging_dir);
 +    if staged_resources.is_dir() {
-+        let target_resources = target_dir.join(RESOURCES_DIR_NAME);
++        let target_resources = staged.resources_in(&target_dir);
 +        std::fs::create_dir_all(&target_resources)
 +            .with_context(|| format!("failed to create {}", target_resources.display()))?;
 +        for entry in std::fs::read_dir(&staged_resources)
@@ -7312,6 +7605,31 @@ index 0000000..49ef6b9
 +    }
 +
 +    #[test]
++    fn staging_directory_sits_in_the_package_root() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let package = temp.path().join("0.160.0-x86_64-unknown-linux-musl");
++        std::fs::create_dir_all(package.join("bin")).expect("create bin");
++        std::fs::write(package.join(PACKAGE_MANIFEST_NAME), package_manifest())
++            .expect("write manifest");
++        let exe = package.join("bin").join(CODEX_BINARY_NAME);
++
++        assert_eq!(
++            staging_dir(&exe).expect("staging dir"),
++            package.join(STAGING_DIR_NAME)
++        );
++        // The staged copy runs from `bin/` inside the staging directory, so the
++        // deferred swap has to resolve the same package root from there.
++        let staged_exe = package
++            .join(STAGING_DIR_NAME)
++            .join("bin")
++            .join(CODEX_BINARY_NAME);
++        assert_eq!(
++            staging_dir(&staged_exe).expect("staging dir"),
++            package.join(STAGING_DIR_NAME)
++        );
++    }
++
++    #[test]
 +    fn asset_names_and_urls_point_at_fork_releases() {
 +        assert_eq!(
 +            checksum_asset_name("x86_64-unknown-linux-musl"),
@@ -7358,9 +7676,12 @@ index 0000000..49ef6b9
 +    fn extracts_gzip_tar_archive() {
 +        let temp = tempfile::tempdir().expect("temp dir");
 +        let source_dir = temp.path().join("src");
-+        std::fs::create_dir_all(&source_dir).expect("create src");
-+        std::fs::write(source_dir.join("codex"), b"codex").expect("write codex");
-+        std::fs::write(source_dir.join("bwrap"), b"bwrap").expect("write bwrap");
++        std::fs::create_dir_all(source_dir.join("bin")).expect("create src");
++        std::fs::create_dir_all(source_dir.join("codex-resources")).expect("create src");
++        std::fs::write(source_dir.join("bin/codex"), b"codex").expect("write codex");
++        std::fs::write(source_dir.join("codex-resources/bwrap"), b"bwrap").expect("write bwrap");
++        std::fs::write(source_dir.join(PACKAGE_MANIFEST_NAME), package_manifest())
++            .expect("write manifest");
 +
 +        let encoder = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
 +        let mut tar_builder = tar::Builder::new(encoder);
@@ -7375,8 +7696,38 @@ index 0000000..49ef6b9
 +
 +        let dest = temp.path().join("dest");
 +        extract_archive(&compressed, &dest).expect("extract");
-+        assert!(dest.join("codex").is_file());
-+        assert!(dest.join("bwrap").is_file());
++        assert!(dest.join("bin/codex").is_file());
++        assert!(dest.join("codex-resources/bwrap").is_file());
++
++        let staged = StagedPackage::read(&dest).expect("read package");
++        assert_eq!(
++            staged.entrypoint_in(&dest),
++            dest.join("bin").join(CODEX_BINARY_NAME)
++        );
++        assert_eq!(staged.resources_in(&dest), dest.join("codex-resources"));
++    }
++
++    #[test]
++    fn rejects_archives_that_are_not_packages() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        std::fs::write(temp.path().join(CODEX_BINARY_NAME), b"codex").expect("write codex");
++        let error = StagedPackage::read(temp.path()).expect_err("flat archive must be rejected");
++        assert!(
++            error.to_string().contains("not a Codex package"),
++            "{error:#}"
++        );
++    }
++
++    fn package_manifest() -> &'static [u8] {
++        br#"{
++  "layoutVersion": 1,
++  "version": "0.160.0",
++  "target": "x86_64-unknown-linux-musl",
++  "variant": "codex",
++  "entrypoint": "bin/codex",
++  "resourcesDir": "codex-resources",
++  "pathDir": "codex-path"
++}"#
 +    }
 +}
 diff --git a/codex-rs/cli/src/wsl_paths.rs b/codex-rs/cli/src/wsl_paths.rs
@@ -7722,7 +8073,7 @@ index 0928bf3..137444e 100644
      app.daemon_cli_executable = None;
      app.open_daemon_menu();
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
-index 4de9db0..3f3e8a6 100644
+index 4de9db0..99f11fe 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 @@ -1,10 +1,10 @@
@@ -7734,7 +8085,7 @@ index 4de9db0..3f3e8a6 100644
    Update daemon and exit Codex?
 -  Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the complete package and pin it
 -  against automatic updates.
-+  Update the daemon to this CLI package v0.160.0 from /x/cli-build/bin/codex. Copy the complete
++  Update the daemon to this CLI package v0.160.1 from /x/cli-build/bin/codex. Copy the complete
 +  package and pin it against automatic updates.
    This may restart the daemon and interrupt active or queued work.
    Codex exits to update in this terminal. Relaunch it afterward.
@@ -7943,7 +8294,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0..4e03460 100644
+index e5cc9a0..83c906c 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -7956,7 +8307,7 @@ index e5cc9a0..4e03460 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭─────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                 │
++│ >_ codEx (v0.160.1)                 │
 +│                                     │
 +│ model:     gpt-5   /model to change │
 +│ directory: /tmp/project             │
@@ -7964,7 +8315,7 @@ index e5cc9a0..4e03460 100644
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..d154929 100644
+index c8f352d..9137016 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -7979,7 +8330,7 @@ index c8f352d..d154929 100644
 -│ https://github.com/openai/codex/releases/latest                                                     │
 -╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.160.0 -> 9.9.9            │
++│ ✨ Update available! 0.160.1 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -8044,7 +8395,7 @@ index 9b0dc60..1300c41 100644
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053..6263326 100644
+index 53c8053..cc9feb8 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
@@ -8054,7 +8405,7 @@ index 53c8053..6263326 100644
 -  Update available · 0.0.0
 -  → 9.9.9
 +  Update available ·
-+  0.160.0 → 9.9.9
++  0.160.1 → 9.9.9
    Release notes:
 -  https://github.com/opena
 -  i/codex/releases/latest
@@ -8064,7 +8415,7 @@ index 53c8053..6263326 100644
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642..ecbe5c5 100644
+index b547642..33ce487 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
@@ -8073,7 +8424,7 @@ index b547642..ecbe5c5 100644
  
 -  Update available · 0.0.0 → 9.9.9
 -  Release notes: https://github.com/openai/codex/releases/latest
-+  Update available · 0.160.0 → 9.9.9
++  Update available · 0.160.1 → 9.9.9
 +  Release notes: https://github.com/NIyueeE/codEx/releases/latest
  
 -› 1. Update now (runs `npm install -g @openai/codex`)                           

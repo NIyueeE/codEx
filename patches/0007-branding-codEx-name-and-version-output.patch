@@ -1,4 +1,4 @@
-From cda7eab0fd9dbfe8d6aca65fdc37bf9e555c68fb Mon Sep 17 00:00:00 2001
+From e70f400bd217f757a36a25e447dd2bdfad131457 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:34 +0000
 Subject: branding: codEx name and version output
@@ -105,7 +105,7 @@ index ba6071b..5ee6210 100644
      ));
  }
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
-index 1261499..959c29f 100644
+index 1261499..abb8222 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 @@ -3,9 +3,12 @@ source: tui/src/app/empty_state_animation_tests.rs
@@ -116,7 +116,7 @@ index 1261499..959c29f 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭───────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                       │
++│ >_ codEx (v0.160.1)                       │
 +│                                           │
 +│ model:     GPT-5.6-Sol   /model to change │
 +│ directory: /tmp/project                   │
@@ -142,7 +142,7 @@ index 1261499..959c29f 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭───────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                       │
++│ >_ codEx (v0.160.1)                       │
 +│                                           │
 +│ model:     GPT-5.6-Sol   /model to change │
 +│ directory: /tmp/project                   │
@@ -161,7 +161,7 @@ index 1261499..959c29f 100644
  
  
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
-index 8aa1bca..70da744 100644
+index 8aa1bca..d1e96ad 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 @@ -1,11 +1,13 @@
@@ -174,7 +174,7 @@ index 8aa1bca..70da744 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     <thread cwd>
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/next                   │
@@ -273,7 +273,7 @@ index 9ccef21..9e20f2a 100644
 -  Service v2.0.0 ≠ Codex CLI v0.0.0 · /daemon
 +  ? help  esc back  ↑/↓ move  enter open  n new
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
-index ab3a8c8..a2d41fb 100644
+index ab3a8c8..eee9846 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 @@ -1,11 +1,13 @@
@@ -286,7 +286,7 @@ index ab3a8c8..a2d41fb 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -295,7 +295,7 @@ index ab3a8c8..a2d41fb 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
-index 2ecde20..6bb45d5 100644
+index 2ecde20..f595d7e 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 @@ -1,11 +1,13 @@
@@ -308,7 +308,7 @@ index 2ecde20..6bb45d5 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -317,7 +317,7 @@ index 2ecde20..6bb45d5 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
-index 5c3a9d2..71fad83 100644
+index 5c3a9d2..e417640 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 @@ -1,6 +1,5 @@
@@ -335,7 +335,7 @@ index 5c3a9d2..71fad83 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -344,7 +344,7 @@ index 5c3a9d2..71fad83 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
-index 0dfd733..4028c4d 100644
+index 0dfd733..9e049d6 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 @@ -1,11 +1,13 @@
@@ -357,7 +357,7 @@ index 0dfd733..4028c4d 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -366,7 +366,7 @@ index 0dfd733..4028c4d 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
-index 8ed7c18..1f769ae 100644
+index 8ed7c18..c9dacc4 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 @@ -1,12 +1,14 @@
@@ -380,7 +380,7 @@ index 8ed7c18..1f769ae 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.160.0)                    │
++│ >_ codEx (v0.160.1)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -405,7 +405,7 @@ index 8ed7c18..1f769ae 100644
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭──────────────────────────────╮
-+│ >_ codEx (v0.160.0)          │
++│ >_ codEx (v0.160.1)          │
 +│                              │
 +│ model:     gpt-test   /mode… │
 +│ directory: /tmp/project      │
