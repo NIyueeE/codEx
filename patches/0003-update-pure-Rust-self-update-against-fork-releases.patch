@@ -1,4 +1,4 @@
-From b518f5dc34cd1d826a7b32ea55ed72ab0f701d63 Mon Sep 17 00:00:00 2001
+From bfcfbe0860278433751d20ccbd7def5c4bb58334 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -29,7 +29,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/doctor/output.rs             |   54 -
  ..._doctor_human_report_environment_rows.snap |   12 +-
  codex-rs/cli/src/doctor/updates.rs            |  469 +-------
- codex-rs/cli/src/main.rs                      |  431 +++----
+ codex-rs/cli/src/main.rs                      |  477 +++-----
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  780 ------------
@@ -64,7 +64,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 60 files changed, 1441 insertions(+), 6122 deletions(-)
+ 60 files changed, 1441 insertions(+), 6168 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -5364,7 +5364,7 @@ index fbad7d9..1e1fd1d 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index bdd7771..3bcb7be 100644
+index bdd7771..8507ecf 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -5941,7 +5941,60 @@ index bdd7771..3bcb7be 100644
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -3499,7 +3382,24 @@ mod tests {
+@@ -2720,52 +2603,6 @@ mod tests {
+         assert!(size < 64 * 1024, "interactive TUI future is {size} bytes");
+     }
+ 
+-    #[cfg(windows)]
+-    #[test]
+-    fn windows_update_command_resolution_ignores_relative_path_entries() {
+-        let cwd = std::env::current_dir().expect("current directory");
+-        let decoy_dir = tempfile::tempdir_in(&cwd).expect("relative decoy directory");
+-        let trusted_dir = tempfile::tempdir().expect("trusted PATH directory");
+-        let relative_decoy_dir = decoy_dir
+-            .path()
+-            .strip_prefix(&cwd)
+-            .expect("decoy directory should be relative to cwd");
+-
+-        for command in ["npm.cmd", "pnpm.cmd", "bun.exe"] {
+-            std::fs::write(decoy_dir.path().join(command), "decoy")
+-                .expect("write cwd-relative decoy");
+-            std::fs::write(trusted_dir.path().join(command), "trusted")
+-                .expect("write trusted PATH command");
+-            let path_env = std::env::join_paths([relative_decoy_dir, trusted_dir.path()])
+-                .expect("join synthetic PATH");
+-
+-            let resolved = resolve_windows_update_command_from_path(command, &path_env)
+-                .expect("resolve update command");
+-
+-            assert_eq!(resolved, trusted_dir.path().join(command));
+-        }
+-
+-        let cwd_decoy = tempfile::Builder::new()
+-            .suffix(".cmd")
+-            .tempfile_in(&cwd)
+-            .expect("cwd-local decoy");
+-        let command = cwd_decoy
+-            .path()
+-            .file_name()
+-            .and_then(|name| name.to_str())
+-            .expect("decoy filename");
+-        let relative_only_path_env = std::env::join_paths(["."]).expect("join relative-only PATH");
+-        let err = resolve_windows_update_command_from_path(command, &relative_only_path_env)
+-            .expect_err("relative-only PATH should not resolve a cwd command");
+-
+-        assert_eq!(
+-            err.to_string(),
+-            format!(
+-                "Could not find an absolute update command `{command}` on PATH. Please update manually: https://developers.openai.com/codex/cli/"
+-            )
+-        );
+-    }
+-
+     #[tokio::test]
+     async fn updater_http_client_factory_honors_respect_system_proxy() {
+         let codex_home = tempfile::tempdir().expect("temporary Codex home");
+@@ -3499,7 +3336,24 @@ mod tests {
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -5967,7 +6020,7 @@ index bdd7771..3bcb7be 100644
      }
  
      #[test]
-@@ -4260,17 +4160,17 @@ mod tests {
+@@ -4260,17 +4114,17 @@ mod tests {
              "`--strict-config` is not supported for `codex mcp`"
          );
  
@@ -5988,7 +6041,7 @@ index bdd7771..3bcb7be 100644
          );
      }
  
-@@ -4291,31 +4191,31 @@ mod tests {
+@@ -4291,31 +4145,31 @@ mod tests {
      }
  
      #[test]
@@ -6043,7 +6096,7 @@ index bdd7771..3bcb7be 100644
      }
  
      #[test]
-@@ -4630,24 +4530,17 @@ mod tests {
+@@ -4630,24 +4484,17 @@ mod tests {
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -7045,7 +7098,7 @@ index 9c0d5e2..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..792e68e
+index 0000000..8435291
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
 @@ -0,0 +1,681 @@
@@ -7059,6 +7112,7 @@ index 0000000..792e68e
 +//! `codex-package.json` rather than a fixed set of files at the archive root;
 +//! the new binary's embedded `CODEX_BWRAP_SHA256` matches the new bwrap.
 +
++#[cfg(not(target_os = "windows"))]
 +use std::ffi::OsStr;
 +use std::path::Path;
 +use std::path::PathBuf;
@@ -7332,7 +7386,6 @@ index 0000000..792e68e
 +/// running from inside the staging directory belongs to the package the
 +/// staging directory was created in, so the deferred swap resolves the install
 +/// it has to replace.
-+#[cfg(not(target_os = "windows"))]
 +fn package_root(current_exe: &Path) -> anyhow::Result<PathBuf> {
 +    let bin_dir = current_exe
 +        .parent()
@@ -7350,7 +7403,6 @@ index 0000000..792e68e
 +///
 +/// Returns `Some` only for `<package>/codex-update-staging/bin`, which is where
 +/// an extracted release runs its entrypoint from.
-+#[cfg(not(target_os = "windows"))]
 +fn staging_root(bin_dir: &Path) -> Option<PathBuf> {
 +    if bin_dir.file_name()? != OsStr::new("bin") {
 +        return None;
@@ -7604,6 +7656,7 @@ index 0000000..792e68e
 +        );
 +    }
 +
++    #[cfg(not(target_os = "windows"))]
 +    #[test]
 +    fn staging_directory_sits_in_the_package_root() {
 +        let temp = tempfile::tempdir().expect("temp dir");

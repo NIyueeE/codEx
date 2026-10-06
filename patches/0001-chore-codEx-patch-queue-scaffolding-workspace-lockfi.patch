@@ -1,4 +1,4 @@
-From 9d6fb87ff5b824c29ff1c837eed0cad9da08a8e2 Mon Sep 17 00:00:00 2001
+From 85f393045c6fd8806d90c5d3c95f18a3c13bb21d Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
