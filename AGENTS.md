@@ -11,7 +11,7 @@ here; `bootstrap.sh` rebuilds a full codex tree from `BASE_TAG` and applies
 - `patches/` — one `git format-patch` per feature module, applied in order:
   `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
   `identity` (see `scripts/patch-modules.conf`)
-- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.154.0`)
+- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.160.0`)
 - `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
   `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
@@ -84,6 +84,50 @@ and the conflict surface narrow while still denying the behaviour. Verify with
 sprite pack is the one intentional leftover, default-disabled) and by checking
 `codex --help` for the removed subcommands.
 
+## Diagnosing a Reported Breakage
+
+A user report is triaged before it is patched. Establish which of three causes
+it has, because each has a different correct fix:
+
+- **Upstream changed behaviour.** Compare against the previous `BASE_TAG`. The
+  fork inherits every upstream default, so a new default can break a fork
+  install without any fork patch being wrong. Signature to look for: the
+  failing code path is upstream-owned and the fork never touched it.
+- **A fork patch is wrong or incomplete.** Check the module manifest for the
+  file, then read the module's commit.
+- **The fork's distribution or CI diverges from what the code assumes.** This
+  is the fork's own defect even when no patch is at fault.
+
+Then resolve with upstream as the authority, not with a fork-local exception:
+
+- **Upstream's model wins.** Before inventing fork-specific behaviour, check
+  whether upstream already has a mechanism for the situation. The daemon's
+  startup path is the example: it already falls back to embedded mode through
+  `AppServerTarget::Embedded` and `daemon_exclusion` when it prints "Running
+  without the shared background server: <reason> requires embedded mode", so a
+  second fallback would have been fork-only surface upstream does not have.
+- **Remove the divergence; do not patch the assumption.** When the fork's
+  distribution contradicts a printed contract, fix the distribution. The
+  worked example: upstream promoted `features.daemon_auto_start` to Stable and
+  on by default, and the daemon installs that shared server by copying the CLI
+  from its own canonical package. The fork shipped a flat archive (a bare
+  `codex` plus `bwrap`), so the install had no package to copy and every
+  launch failed with "this CLI has no complete local package". The fix was to
+  publish the canonical package upstream's packaging scripts already produce,
+  not to disable the feature or add a fallback.
+- **Fork-local exceptions need the same proof the conflict bullets demand.**
+  A deviation is justified only where the fork's core features make it
+  unavoidable (`/rewind` snapshots, the Esc semantics, the update-source
+  redirection, the Linux+Windows release replacement) - not as a way to paper
+  over the fork's own distribution choices.
+- **Keep the queue coherent.** One fix, one home: land it in the module commit
+  that owns the affected file (see *Coding Style & Naming Conventions*), then
+  re-export the queue exactly as *Build, Test & Development Commands*
+  describes. The dual-copy rule under *Upgrading the Patch Queue* applies
+  unchanged, including to `README.md` and `README.zh.md` when both document
+  the behaviour. This guide itself is slim-only: editing it needs no module
+  commit.
+
 ## Upgrading the Patch Queue
 
 Upgrades (`rust-vX.Y.Z`) routinely conflict: upstream refactors the same code
@@ -92,7 +136,9 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
 - **Upstream wins by default.** Take the upstream implementation verbatim
   whenever the conflict region is not part of a fork feature. Cosmetic fork
   deltas (assertion messages, lockfile version sync) are re-applied only
-  when they are load-bearing (e.g. `--locked` reproducibility).
+  when they are load-bearing (e.g. `--locked` reproducibility). This is the
+  conflict-time form of the authority rule in *Diagnosing a Reported
+  Breakage*.
 - **Only fork core features are re-implemented.** Keep the fork's side when
   the conflict touches behavior the fork exists to change: `/rewind`
   snapshot/restore logic, single-Esc/double-Esc semantics, update-source
@@ -129,8 +175,8 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
   upstream workflows and bazel patch files) are irrelevant to the fork;
   resolve with `git rm` and move on.
 
-Operational experience from the rust-v0.149.1, rust-v0.151.0, and
-rust-v0.154.0 upgrades:
+Operational experience from the rust-v0.149.1, rust-v0.151.0, rust-v0.154.0,
+rust-v0.155.1, and rust-v0.160.0 upgrades:
 
 - `git am --3way` needs the previous base tag's blobs to build its fake
   ancestor; a shallow clone of the new tag alone fails with "sha1

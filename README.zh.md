@@ -7,7 +7,7 @@ codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向
 本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
 `git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
 真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.154.0`)。
+`rust-v0.160.0`)。
 
 ## 从 Release 安装
 
@@ -19,17 +19,22 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 安装脚本会解析最新的分支 release,下载 `codex-<target>.tar.gz` 及其发布的
 sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
-`~/.codex/packages/standalone/releases/<version>-<target>/` 下的独立布局
-(捆绑的 `bwrap` 位于 `codex-resources/`),这样之后 `codex update` 仍能正常
-工作。随后将 `codex` 链接到 `~/.local/bin`(或 `CODEX_INSTALL_DIR`)。
+`~/.codex/packages/standalone/releases/<version>-<target>/` 下的独立布局,
+这样之后 `codex update` 仍能正常工作。随后将 `codex` 链接到
+`~/.local/bin`(或 `CODEX_INSTALL_DIR`)。
+
+归档就是上游发布的那种规范 Codex 包:`codex-package.json` 清单与
+`bin/codex`、`codex-path/rg`、`codex-resources/`(bwrap,Unix 上还有打过补丁
+的 zsh)并列。`InstallContext` 识别的正是这个布局,`codex app-server daemon`
+安装共享后台服务时复制的也是它。
 
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
-对照随附的 `.sha256` 校验后,将 `codex.exe` 与 `codex-resources/` 解压到
+对照随附的 `.sha256` 校验后,将该包解压到
 [`codex update`](#codex-update-pure-rust-self-update)一节所述的独立安装目录。
 
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.154.0`(默认:`latest`)
+- `CODEX_RELEASE` - 要安装的版本,如 `0.160.0`(默认:`latest`)
 - `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
 
@@ -46,8 +51,8 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
 - **纯无头**:彻底移除了指向闭源桌面应用的所有入口 —— 启动器 `codex app`、
   `codex://` 深链、Codex Cloud 浏览器、远程控制中继,以及远程插件市场。
   codEx 只提供 TUI/CLI,没有图形界面,也不连厂商中继服务。
-- **发行**:提供 Linux(`codex` + `bwrap`)与 Windows(`codex.exe` +
-  `codex-resources/`)独立归档,没有 macOS/app-server 包。
+- **发行**:为 Linux 与 Windows 提供规范 Codex 包(与上游发布的
+  `codex-package.json` 布局一致),没有 macOS/app-server 包。
 - **身份**:CLI 和 TUI 以 codEx 自居,`codex --version` 指向本分支的仓库。
 
 详见下文。
@@ -160,8 +165,10 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
   2. 从本分支最新的 GitHub release 下载 `codex-<target>.tar.gz` 及其
      `.sha256` 资产。
   3. 在改动任何内容**之前**校验 sha256 校验和。
-  4. 解压后替换正在运行的 `codex` 二进制及其捆绑资源(`bwrap`,Windows 上
-     还有 `codex-resources/*`),替换期间保留 `.old` 备份。
+  4. 从归档的 `codex-package.json` 读取入口与资源目录,然后替换正在运行的
+     `codex` 二进制及其捆绑资源(`bwrap`,Windows 上还有
+     `codex-resources/*`),替换期间保留 `.old` 备份。没有清单的归档会被拒绝,
+     并提示重新运行 `install.sh` —— 那是一次性迁移到包布局的方式。
 - 由于归档由分支的 release 工作流构建,新二进制内嵌的 bwrap 摘要始终与
   随附的新 bwrap 匹配。
 - Windows 无法替换正在运行的可执行文件,因此更新会先暂存到安装目录旁,再交给
@@ -207,10 +214,10 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.154.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.160.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.154.0`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.160.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
 ### 发布与 CI(Linux CI + Windows 检查)
@@ -218,10 +225,11 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 - **发布矩阵**:`x86_64-unknown-linux-musl` 与 `x86_64-pc-windows-msvc`
   (上游发布 macOS/ARM64/app-server 包;本分支不发布)。每个目标各发布两个
   资产:
-  - `codex-x86_64-unknown-linux-musl.tar.gz`(包含 `codex` + `bwrap`)
+  - `codex-x86_64-unknown-linux-musl.tar.gz`(规范 Codex 包:
+    `codex-package.json`、`bin/`、`codex-path/rg`、`codex-resources/`)
   - `codex-x86_64-unknown-linux-musl.tar.gz.sha256`
-  - `codex-x86_64-pc-windows-msvc.tar.gz`(包含 `codex.exe` 与
-    `codex-resources/` 下的 Windows 沙箱辅助程序)
+  - `codex-x86_64-pc-windows-msvc.tar.gz`(同样的布局,入口带 `.exe`
+    后缀,Windows 沙箱辅助程序位于 `codex-resources/` 下)
   - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
 - **CI**(`blocking-ci.yml`)在托管 runner 上使用纯 Cargo:
   `cargo build --release --bin codex`、`cargo fmt --check`、`codex-tui`
@@ -239,7 +247,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.154.0`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.160.0`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -284,17 +292,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.154.0
+bash scripts/update.sh rust-v0.160.0
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.154.0` 或 `0.154.0`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.160.0` 或 `0.160.0`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.154.0` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.160.0` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.154.0`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.160.0`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证
