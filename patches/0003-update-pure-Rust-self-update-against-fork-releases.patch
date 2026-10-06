@@ -1,4 +1,4 @@
-From bfcfbe0860278433751d20ccbd7def5c4bb58334 Mon Sep 17 00:00:00 2001
+From f6776d84e7f242e72e77d2a0e65e838630b702ae Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -33,7 +33,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  780 ------------
- codex-rs/cli/src/self_update.rs               |  681 +++++++++++
+ codex-rs/cli/src/self_update.rs               |  680 +++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
@@ -64,7 +64,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 60 files changed, 1441 insertions(+), 6168 deletions(-)
+ 60 files changed, 1440 insertions(+), 6168 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -7098,10 +7098,10 @@ index 9c0d5e2..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..8435291
+index 0000000..100e350
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,681 @@
+@@ -0,0 +1,680 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -7112,7 +7112,6 @@ index 0000000..8435291
 +//! `codex-package.json` rather than a fixed set of files at the archive root;
 +//! the new binary's embedded `CODEX_BWRAP_SHA256` matches the new bwrap.
 +
-+#[cfg(not(target_os = "windows"))]
 +use std::ffi::OsStr;
 +use std::path::Path;
 +use std::path::PathBuf;
