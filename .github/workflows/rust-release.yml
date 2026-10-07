@@ -284,24 +284,23 @@ jobs:
           fi
           cargo build --target "$target" --release "${helpers[@]}"
 
-      # Cargo keeps release binaries symbolicateable until packaging has
-      # archived their symbols; see the `[profile.release]` comment in
-      # codex-rs/Cargo.toml. Strip before assembling the package so the
-      # published payload is the stripped one.
-      # Mirrors upstream's step: run the script from the workspace root with an
-      # explicit artifact name. The script resolves its own paths, so it needs
-      # neither CODE_DIR nor a tree-relative invocation.
+      # The symbols script only exists in the bootstrapped tree (the slim repo
+      # carries just check_ci_results.py), so resolve it through TREE_DIR - as
+      # an absolute path, because this step runs from CODE_DIR.
       - name: Build symbols archive and strip binaries
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
+          # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
+          tree_dir="${GITHUB_WORKSPACE}"
+          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           binaries="codex codex-code-mode-host"
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             binaries+=" codex-windows-sandbox-setup codex-command-runner"
           fi
-          bash "${GITHUB_WORKSPACE}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+          bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
             --release-dir "target/${TARGET}/release" \
@@ -315,7 +314,9 @@ jobs:
         run: |
           set -euo pipefail
           cd "${CODE_DIR}"
-          tree_dir="$(cd "${TREE_DIR}" && pwd)"
+          # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
+          tree_dir="${GITHUB_WORKSPACE}"
+          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           release_dir="target/${TARGET}/release"
           [[ -f "${release_dir}/codex" || -f "${release_dir}/codex.exe" ]] || {
             echo "codex binary not found in ${release_dir}"
