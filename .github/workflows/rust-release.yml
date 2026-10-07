@@ -300,10 +300,13 @@ jobs:
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             binaries+=" codex-windows-sandbox-setup codex-command-runner"
           fi
+          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
+          # workspace rather than the repo root; the script runs from the repo
+          # root and therefore needs the absolute release directory.
           bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
-            --release-dir "target/${TARGET}/release" \
+            --release-dir "${tree_dir}/codex-rs/target/${TARGET}/release" \
             --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
             --binaries "$binaries"
       - name: Assemble package archive

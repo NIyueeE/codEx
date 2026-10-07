@@ -1,4 +1,4 @@
-From 58eb1ab4b6c94bd33af18b8cc2c3baa48bc0e22f Mon Sep 17 00:00:00 2001
+From c5606ab14b41ffecd56c45546e2aa1e144f40111 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2235 +++--------------
+ .github/workflows/rust-release.yml            | 2238 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 785 insertions(+), 8744 deletions(-)
+ 46 files changed, 788 insertions(+), 8744 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,7 +4359,7 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..c9f25a7 100644
+index 26d4985..a6a938b 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,249 @@
@@ -4765,7 +4765,7 @@ index 26d4985..c9f25a7 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +259,200 @@ jobs:
+@@ -237,1827 +259,203 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4969,6 +4969,9 @@ index 26d4985..c9f25a7 100644
 +            binaries+=" codex-windows-sandbox-setup codex-command-runner"
            fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
++          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
++          # workspace rather than the repo root; the script runs from the repo
++          # root and therefore needs the absolute release directory.
 +          bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
              --target "$TARGET" \
 -            --bundle "$BUNDLE" \
@@ -5226,7 +5229,7 @@ index 26d4985..c9f25a7 100644
 -
 -      - name: Sign and notarize macOS binaries
 +            --artifact-name "$TARGET" \
-+            --release-dir "target/${TARGET}/release" \
++            --release-dir "${tree_dir}/codex-rs/target/${TARGET}/release" \
 +            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
 +            --binaries "$binaries"
 +      - name: Assemble package archive
