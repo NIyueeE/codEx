@@ -1,4 +1,4 @@
-From dd4d4b99207e3292a8877befdf4a6e53713315f4 Mon Sep 17 00:00:00 2001
+From c56c88626f13a5bd2499ec0fa95592b951c7bf7e Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2237 +++--------------
+ .github/workflows/rust-release.yml            | 2251 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 787 insertions(+), 8744 deletions(-)
+ 46 files changed, 801 insertions(+), 8744 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,10 +4359,10 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..3631765 100644
+index 26d4985..b6b3564 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,227 +1,248 @@
+@@ -1,227 +1,262 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4424,7 +4424,14 @@ index 26d4985..3631765 100644
 +          if [[ ! -d codex-rs ]]; then
 +            bash scripts/bootstrap.sh
 +          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
++          # Absolute: several steps `cd` into CODE_DIR first, and a relative
++          # TREE_DIR would then re-resolve from there (it silently worked on
++          # Linux only because CODE_DIR sits one level below the tree root).
++          if [[ -d codex-rs ]]; then
++            echo "TREE_DIR=${PWD}" >> "$GITHUB_ENV"
++          else
++            echo "TREE_DIR=${PWD}/tree" >> "$GITHUB_ENV"
++          fi
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
        - name: Validate tag matches Cargo.toml version
          shell: bash
@@ -4592,7 +4599,14 @@ index 26d4985..3631765 100644
 +          if [[ ! -d codex-rs ]]; then
 +            bash scripts/bootstrap.sh
 +          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
++          # Absolute: several steps `cd` into CODE_DIR first, and a relative
++          # TREE_DIR would then re-resolve from there (it silently worked on
++          # Linux only because CODE_DIR is one level below the tree root).
++          if [[ -d codex-rs ]]; then
++            echo "TREE_DIR=${PWD}" >> "$GITHUB_ENV"
++          else
++            echo "TREE_DIR=${PWD}/tree" >> "$GITHUB_ENV"
++          fi
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 +
        - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -4764,7 +4778,7 @@ index 26d4985..3631765 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +258,203 @@ jobs:
+@@ -237,1827 +272,203 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
