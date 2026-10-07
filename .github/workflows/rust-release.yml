@@ -70,10 +70,12 @@ jobs:
   build:
     needs: tag-check
     name: Build - ${{ matrix.target }}
-    # Windows release builds can exceed an hour, so the timeout matches the
-    # Linux budget rather than dropping back to the default.
     runs-on: ${{ matrix.runs_on }}
-    timeout-minutes: 120
+    # Upstream builds releases on self-hosted runners; these are GitHub-hosted,
+    # where the Windows compile plus package assembly runs past two hours (the
+    # first green attempt was cancelled mid-assembly at exactly 120m). Budget
+    # for a slow compile, assembly, compression, and the artifact upload.
+    timeout-minutes: 300
     permissions:
       contents: read
     env:

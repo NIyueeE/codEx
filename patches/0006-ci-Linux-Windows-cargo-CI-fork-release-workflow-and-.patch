@@ -1,4 +1,4 @@
-From b0d41e1ef507d536ba4fad2cd6b76cbc3189f6dc Mon Sep 17 00:00:00 2001
+From d3d3d7659cd2b4a27449e78148128dc60a2bbfbf Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2235 +++--------------
+ .github/workflows/rust-release.yml            | 2239 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 783 insertions(+), 8746 deletions(-)
+ 46 files changed, 786 insertions(+), 8747 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,10 +4359,10 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..271b39b 100644
+index 26d4985..90a2fee 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,227 +1,249 @@
+@@ -1,227 +1,251 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4464,11 +4464,14 @@ index 26d4985..271b39b 100644
 -    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
 -    runs-on: ${{ matrix.runs_on || matrix.runner }}
 -    # Linux releases also build the native voice runtime in this job.
+-    timeout-minutes: 120
 +    name: Build - ${{ matrix.target }}
-+    # Windows release builds can exceed an hour, so the timeout matches the
-+    # Linux budget rather than dropping back to the default.
 +    runs-on: ${{ matrix.runs_on }}
-     timeout-minutes: 120
++    # Upstream builds releases on self-hosted runners; these are GitHub-hosted,
++    # where the Windows compile plus package assembly runs past two hours (the
++    # first green attempt was cancelled mid-assembly at exactly 120m). Budget
++    # for a slow compile, assembly, compression, and the artifact upload.
++    timeout-minutes: 300
      permissions:
        contents: read
 -      id-token: write
@@ -4765,7 +4768,7 @@ index 26d4985..271b39b 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +259,196 @@ jobs:
+@@ -237,1827 +261,196 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -6335,7 +6338,10 @@ index 26d4985..271b39b 100644
            else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+           fi
 -
 -      - name: Stage installer scripts
 -        run: |
@@ -6673,10 +6679,7 @@ index 26d4985..271b39b 100644
 -          if [[ ${#urls[@]} -ne 2 ]]; then
 -            echo "::error::Expected x86_64 and aarch64 Windows archives for $RELEASE_TAG"
 -            exit 1
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-           fi
+-          fi
 -          komac sync-fork
 -          komac update OpenAI.Codex --version "$RELEASE_VERSION" --submit --urls "${urls[@]}"
 -          komac cleanup --only-merged
