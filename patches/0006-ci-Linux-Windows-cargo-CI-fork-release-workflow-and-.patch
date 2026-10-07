@@ -1,4 +1,4 @@
-From d3d3d7659cd2b4a27449e78148128dc60a2bbfbf Mon Sep 17 00:00:00 2001
+From dcf00b3b8833249c1657a7ce855c95996db5bed3 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2239 +++--------------
+ .github/workflows/rust-release.yml            | 2245 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 786 insertions(+), 8747 deletions(-)
+ 46 files changed, 792 insertions(+), 8747 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,7 +4359,7 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..90a2fee 100644
+index 26d4985..7eacbd0 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,251 @@
@@ -4768,7 +4768,7 @@ index 26d4985..90a2fee 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +261,196 @@ jobs:
+@@ -237,1827 +261,202 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5291,11 +5291,21 @@ index 26d4985..90a2fee 100644
 -            mkdir -p "${report_dir}/${binary}"
 -            rcodesign print-signature-info "$signed_path" \
 -              >"${report_dir}/${binary}/signature-info.yaml"
++          exe=""
++          [[ "$PLATFORM" == "windows" ]] && exe=".exe"
++
++          # Hand the builder the binaries this job already built: with
++          # --entrypoint-bin it packages that file instead of building its own,
++          # so the stripped entrypoint (and the symbols archive that pairs with
++          # it) is what ships. Upstream's packaging action passes the same
++          # inputs; omitting them silently produced a 1.3 GB unstripped binary.
 +          package_args=(
 +            --target "$TARGET"
 +            --variant codex
 +            --package-version "$version"
 +            --cargo-profile release
++            --entrypoint-bin "${release_dir}/codex${exe}"
++            --code-mode-host-bin "${release_dir}/codex-code-mode-host${exe}"
 +            --package-dir "${RUNNER_TEMP}/codex-package-${TARGET}"
 +            --archive-output "${dest}/codex-${TARGET}.tar.gz"
 +            --force
@@ -5307,13 +5317,9 @@ index 26d4985..90a2fee 100644
 -          done
 +          if [[ "$PLATFORM" == "linux" ]]; then
 +            [[ -f "${release_dir}/bwrap" ]] || { echo "bwrap binary not found"; exit 1; }
-+            package_args+=(
-+              --code-mode-host-bin "${release_dir}/codex-code-mode-host"
-+              --bwrap-bin "${release_dir}/bwrap"
-+            )
++            package_args+=(--bwrap-bin "${release_dir}/bwrap")
 +          else
 +            package_args+=(
-+              --code-mode-host-bin "${release_dir}/codex-code-mode-host.exe"
 +              --codex-command-runner-bin "${release_dir}/codex-command-runner.exe"
 +              --codex-windows-sandbox-setup-bin "${release_dir}/codex-windows-sandbox-setup.exe"
 +            )
