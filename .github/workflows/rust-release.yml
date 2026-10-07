@@ -284,6 +284,28 @@ jobs:
           fi
           cargo build --target "$target" --release "${helpers[@]}"
 
+      # MSVC names some PDBs with underscores where the crate uses dashes; the
+      # symbols script looks for `<binary>.pdb`. Upstream normalises them in
+      # its packaging action before archiving symbols, so do the same here.
+      - name: Normalize Windows PDB filenames
+        if: matrix.platform == 'windows'
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          release_dir="target/${TARGET}/release"
+          for binary in codex codex-code-mode-host codex-windows-sandbox-setup codex-command-runner; do
+            expected="${release_dir}/${binary}.pdb"
+            [[ -f "$expected" ]] && continue
+            underscored="${release_dir}/${binary//-/_}.pdb"
+            if [[ ! -f "$underscored" ]]; then
+              echo "PDB for ${binary} not found at ${expected} or ${underscored}" >&2
+              exit 1
+            fi
+            cp "$underscored" "$expected"
+          done
+
       # The symbols script only exists in the bootstrapped tree (the slim repo
       # carries just check_ci_results.py), so resolve it through TREE_DIR - as
       # an absolute path, because this step runs from CODE_DIR.
