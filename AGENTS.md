@@ -120,6 +120,20 @@ Then resolve with upstream as the authority, not with a fork-local exception:
   unavoidable (`/rewind` snapshots, the Esc semantics, the update-source
   redirection, the Linux+Windows release replacement) - not as a way to paper
   over the fork's own distribution choices.
+- **Mirror upstream before you invent.** For any surface upstream also ships -
+  a release workflow step, a build or CI script, a packaging contract, a test
+  harness - read upstream's implementation at `BASE_TAG` first and copy its
+  structure, commands, step order, and prerequisites. The fork's job is to
+  narrow that surface to Linux + Windows, not to re-derive it. Symptoms that
+  the rule was skipped: a fork-only step that "almost" replicates an upstream
+  one, a failure debugged by local trial instead of by diffing against
+  upstream, or a step whose prerequisites (installed packages, working
+  directory, working-directory-relative paths) upstream establishes elsewhere.
+  Worked example: the release job's symbols step needs `binutils`, must run
+  from the workspace root, and passes `--artifact-name`; upstream's
+  `rust-release.yml` does all three, and a fork version that dropped them
+  failed twice on CI. If upstream has no equivalent, say so explicitly when
+  deviating.
 - **Keep the queue coherent.** One fix, one home: land it in the module commit
   that owns the affected file (see *Coding Style & Naming Conventions*), then
   re-export the queue exactly as *Build, Test & Development Commands*

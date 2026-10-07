@@ -1,4 +1,4 @@
-From c56c88626f13a5bd2499ec0fa95592b951c7bf7e Mon Sep 17 00:00:00 2001
+From 2253881c03ddf1f31882901d6b942f86eb6c7146 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2251 +++--------------
+ .github/workflows/rust-release.yml            | 2249 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 801 insertions(+), 8744 deletions(-)
+ 46 files changed, 798 insertions(+), 8745 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,7 +4359,7 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..b6b3564 100644
+index 26d4985..3b27314 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,262 @@
@@ -4778,7 +4778,7 @@ index 26d4985..b6b3564 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +272,203 @@ jobs:
+@@ -237,1827 +272,199 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4945,8 +4945,7 @@ index 26d4985..b6b3564 100644
 +          if [[ "${{ matrix.platform }}" == "windows" ]]; then
 +            helpers+=(--bin codex-windows-sandbox-setup --bin codex-command-runner)
            fi
-+          cargo build --target "$target" --release "${helpers[@]}"
- 
+-
 -      - name: Download packaged zsh manifest
 -        if: ${{ runner.os != 'macOS' }}
 -        shell: bash
@@ -4960,10 +4959,15 @@ index 26d4985..b6b3564 100644
 -
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
++          cargo build --target "$target" --release "${helpers[@]}"
++
 +      # Cargo keeps release binaries symbolicateable until packaging has
 +      # archived their symbols; see the `[profile.release]` comment in
 +      # codex-rs/Cargo.toml. Strip before assembling the package so the
 +      # published payload is the stripped one.
++      # Mirrors upstream's step: run the script from the workspace root with an
++      # explicit artifact name. The script resolves its own paths, so it needs
++      # neither CODE_DIR nor a tree-relative invocation.
 +      - name: Build symbols archive and strip binaries
          shell: bash
          env:
@@ -4975,13 +4979,12 @@ index 26d4985..b6b3564 100644
 -          if [[ "$BUNDLE" == "primary" && "$TARGET" == *-unknown-linux-musl ]]; then
 -            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
 -            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
-+          cd "${CODE_DIR}"
 +          binaries="codex codex-code-mode-host"
 +          if [[ "${{ matrix.platform }}" == "windows" ]]; then
 +            binaries+=" codex-windows-sandbox-setup codex-command-runner"
            fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
-+          bash "${TREE_DIR}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
++          bash "${GITHUB_WORKSPACE}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
              --target "$TARGET" \
 -            --bundle "$BUNDLE" \
 -            --entrypoint-dir "target/${TARGET}/release" \
@@ -5241,12 +5244,6 @@ index 26d4985..b6b3564 100644
 +            --release-dir "target/${TARGET}/release" \
 +            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
 +            --binaries "$binaries"
-+
-+      # ---- Package ---------------------------------------------------------
-+      # Upstream's canonical layout: `codex-package.json` plus `bin/`,
-+      # `codex-resources/`, and `codex-path/` at the archive root. `install.sh`
-+      # expands it into a standalone release, `codex update` swaps its members,
-+      # and app-server-daemon copies it whole when it installs the daemon.
 +      - name: Assemble package archive
          shell: bash
          env:
@@ -5563,16 +5560,16 @@ index 26d4985..b6b3564 100644
 -          path: codex-rs/target/${{ matrix.target }}/release
 -
 -      - name: Download signed macOS helpers
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
++      - name: Download archives
+         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         with:
 -          name: ${{ matrix.target }}-signed-resources
 -          path: codex-rs/signed-resources/${{ matrix.target }}
 -
 -      - name: Download signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
-+      - name: Download archives
-         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-         with:
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
 -          name: voice-${{ matrix.target }}-signed
 -          path: ${{ runner.temp }}/signed-voice
 -
@@ -6326,10 +6323,18 @@ index 26d4985..b6b3564 100644
 -          if [[ "${version}" == *-* ]]; then
 -            echo "make_latest=false" >> $GITHUB_OUTPUT
 -            echo "prerelease=true" >> $GITHUB_OUTPUT
--          else
++          # Tag re-pushes supersede earlier builds; replace the previous
++          # release's assets instead of deleting the release, so a failed or
++          # cancelled run can never leave the tag without a release.
++          if gh release view "${tag}" >/dev/null 2>&1; then
++            echo "Release ${tag} already exists; replacing its assets with the new build."
+           else
 -            echo "make_latest=true" >> $GITHUB_OUTPUT
 -            echo "prerelease=false" >> $GITHUB_OUTPUT
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+           fi
 -
 -      - name: Determine npm publish settings
 -        id: npm_publish_settings
@@ -6345,18 +6350,10 @@ index 26d4985..b6b3564 100644
 -          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(\.[0-9]+)?$ ]]; then
 -            echo "should_publish=true" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
-+          # Tag re-pushes supersede earlier builds; replace the previous
-+          # release's assets instead of deleting the release, so a failed or
-+          # cancelled run can never leave the tag without a release.
-+          if gh release view "${tag}" >/dev/null 2>&1; then
-+            echo "Release ${tag} already exists; replacing its assets with the new build."
-           else
+-          else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-           fi
+-          fi
 -
 -      - name: Stage installer scripts
 -        run: |
