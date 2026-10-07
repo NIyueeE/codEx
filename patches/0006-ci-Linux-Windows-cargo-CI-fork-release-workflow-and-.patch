@@ -1,4 +1,4 @@
-From f5d9557b9f1db1a128d4d6194b64d0ef09bebeb7 Mon Sep 17 00:00:00 2001
+From b0d41e1ef507d536ba4fad2cd6b76cbc3189f6dc Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -25,7 +25,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
  .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2248 +++--------------
+ .github/workflows/rust-release.yml            | 2235 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
@@ -50,7 +50,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 804 insertions(+), 8738 deletions(-)
+ 46 files changed, 783 insertions(+), 8746 deletions(-)
  delete mode 100644 .github/workflows/bazel.yml
  delete mode 100644 .github/workflows/blob-size-policy.yml
  delete mode 100644 .github/workflows/cargo-deny.yml
@@ -4359,7 +4359,7 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..5bec0ba 100644
+index 26d4985..271b39b 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,249 @@
@@ -4765,7 +4765,7 @@ index 26d4985..5bec0ba 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +259,225 @@ jobs:
+@@ -237,1827 +259,196 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4947,24 +4947,32 @@ index 26d4985..5bec0ba 100644
 -
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
-+      # MSVC names some PDBs with underscores where the crate uses dashes; the
-+      # symbols script looks for `<binary>.pdb`. Upstream normalises them in
-+      # its packaging action before archiving symbols, so do the same here.
-+      - name: Normalize Windows PDB filenames
-+        if: matrix.platform == 'windows'
++      # The symbols script only exists in the bootstrapped tree (the slim repo
++      # carries just check_ci_results.py), so resolve it through TREE_DIR - as
++      # an absolute path, because this step runs from CODE_DIR.
++      - name: Build symbols archive and strip binaries
++        if: matrix.platform == 'linux'
          shell: bash
          env:
            TARGET: ${{ matrix.target }}
 -          BUNDLE: ${{ matrix.bundle }}
--        run: |
--          set -euo pipefail
+         run: |
+           set -euo pipefail
 -          voice_args=()
 -          if [[ "$BUNDLE" == "primary" && "$TARGET" == *-unknown-linux-musl ]]; then
 -            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
 -            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
 -          fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
--            --target "$TARGET" \
++          # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
++          tree_dir="${GITHUB_WORKSPACE}"
++          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
++          binaries="codex codex-code-mode-host"
++          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
++          # workspace rather than the repo root; the script runs from the repo
++          # root and therefore needs the absolute release directory.
++          bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+             --target "$TARGET" \
 -            --bundle "$BUNDLE" \
 -            --entrypoint-dir "target/${TARGET}/release" \
 -            --archive-dir "dist/${TARGET}" \
@@ -4982,8 +4990,8 @@ index 26d4985..5bec0ba 100644
 -      - name: Build Python runtime wheel
 -        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
 -        shell: bash
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -
 -          case "${{ matrix.target }}" in
 -            aarch64-apple-darwin)
@@ -5000,14 +5008,7 @@ index 26d4985..5bec0ba 100644
 -              ;;
 -            *)
 -              echo "No Python runtime wheel platform tag for ${{ matrix.target }}"
-+          release_dir="target/${TARGET}/release"
-+          for binary in codex codex-code-mode-host codex-windows-sandbox-setup codex-command-runner; do
-+            expected="${release_dir}/${binary}.pdb"
-+            [[ -f "$expected" ]] && continue
-+            underscored="${release_dir}/${binary//-/_}.pdb"
-+            if [[ ! -f "$underscored" ]]; then
-+              echo "PDB for ${binary} not found at ${expected} or ${underscored}" >&2
-               exit 1
+-              exit 1
 -              ;;
 -          esac
 -
@@ -5082,7 +5083,7 @@ index 26d4985..5bec0ba 100644
 -            # Don't try to compress signature bundles.
 -            if [[ "$base" == *.sigstore ]]; then
 -              continue
-             fi
+-            fi
 -
 -            # Create per-binary tar.gz
 -            tar -C "$dest" -czf "$dest/${base}.tar.gz" "$base"
@@ -5090,9 +5091,8 @@ index 26d4985..5bec0ba 100644
 -            # Also create .zst and remove the uncompressed binaries to keep
 -            # non-Windows artifact directories small.
 -            zstd -T0 -19 --rm "$dest/$base"
-+            cp "$underscored" "$expected"
-           done
- 
+-          done
+-
 -      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        if: ${{ runner.os != 'macOS' }}
 -        with:
@@ -5130,16 +5130,12 @@ index 26d4985..5bec0ba 100644
 -        with:
 -          bazelisk-version: 1.28.1
 -      - name: Build matching helper and native runtime
-+      # The symbols script only exists in the bootstrapped tree (the slim repo
-+      # carries just check_ci_results.py), so resolve it through TREE_DIR - as
-+      # an absolute path, because this step runs from CODE_DIR.
-+      - name: Build symbols archive and strip binaries
-         shell: bash
-         env:
-           TARGET: ${{ matrix.target }}
+-        shell: bash
+-        env:
+-          TARGET: ${{ matrix.target }}
 -          PREFIX: ${{ matrix.prefix }}
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -          # Release tags bump Cargo.toml without rewriting the workspace lockfile.
 -          # Refresh workspace versions before Bazel reads the Cargo dependency graph.
 -          (cd codex-rs && cargo update --workspace)
@@ -5231,18 +5227,6 @@ index 26d4985..5bec0ba 100644
 -          certificate-sha256: ${{ secrets.AKV_CODESIGN_CERTIFICATE_SHA256 || '' }}
 -
 -      - name: Sign and notarize macOS binaries
-+          # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
-+          tree_dir="${GITHUB_WORKSPACE}"
-+          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
-+          binaries="codex codex-code-mode-host"
-+          if [[ "${{ matrix.platform }}" == "windows" ]]; then
-+            binaries+=" codex-windows-sandbox-setup codex-command-runner"
-+          fi
-+          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
-+          # workspace rather than the repo root; the script runs from the repo
-+          # root and therefore needs the absolute release directory.
-+          bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
-+            --target "$TARGET" \
 +            --artifact-name "$TARGET" \
 +            --release-dir "${tree_dir}/codex-rs/target/${TARGET}/release" \
 +            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
@@ -5288,12 +5272,7 @@ index 26d4985..5bec0ba 100644
 -              echo "Entitlements file $entitlements not found"
 -              exit 1
 -            fi
-+          archive_stem="${GITHUB_WORKSPACE}/symbols-dist/${TARGET}/codex-symbols-${TARGET}.tar.gz"
-+          symbols_args=()
-+          if [[ -f "$archive_stem" ]]; then
-+            symbols_args=(--symbols-archive "$archive_stem")
-+          fi
- 
+-
 -            .github/scripts/macos-signing/sign_macos_code.sh \
 -              --target "$signed_path" \
 -              --identity unused \
@@ -5497,6 +5476,7 @@ index 26d4985..5bec0ba 100644
 +      # released binary stays symbolicateable. bwrap is hashed after stripping,
 +      # so its symbols are not part of this archive.
 +      - name: Upload symbols archive
++        if: matrix.platform == 'linux'
          uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
          with:
 -          name: ${{ matrix.target }}-signed-resources
@@ -5565,27 +5545,23 @@ index 26d4985..5bec0ba 100644
 -          path: codex-rs/target/${{ matrix.target }}/release
 -
 -      - name: Download signed macOS helpers
-+      - name: Download archives
-         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-         with:
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
 -          name: ${{ matrix.target }}-signed-resources
 -          path: codex-rs/signed-resources/${{ matrix.target }}
 -
 -      - name: Download signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
++      - name: Download archives
+         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         with:
 -          name: voice-${{ matrix.target }}-signed
 -          path: ${{ runner.temp }}/signed-voice
-+          pattern: dist-*
-+          merge-multiple: true
-+          path: dist
- 
+-
 -      - name: Verify signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
 -        shell: bash
-+      - name: Create or update GitHub release
-         env:
+-        env:
 -          TARGET: ${{ matrix.target }}
 -        run: |
 -          set -euo pipefail
@@ -5641,26 +5617,23 @@ index 26d4985..5bec0ba 100644
 -            fi
 -            cp "target/${{ matrix.target }}/release/${binary}" "$dest/${binary}-${{ matrix.target }}"
 -          done
--
++          pattern: dist-*
++          merge-multiple: true
++          path: dist
+ 
 -      - name: Build Codex package archive
-+          GH_TOKEN: ${{ github.token }}
-         shell: bash
--        env:
+-        shell: bash
++      - name: Create or update GitHub release
+         env:
 -          TARGET: ${{ matrix.target }}
 -          BUNDLE: ${{ matrix.bundle }}
-         run: |
-           set -euo pipefail
+-        run: |
+-          set -euo pipefail
 -          voice_args=()
 -          if [[ "$BUNDLE" == "primary" ]]; then
 -            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
 -            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
-+          tag="${GITHUB_REF_NAME}"
-+          shopt -s nullglob
-+          assets=(dist/*.tar.gz dist/*.sha256)
-+          if [[ ${#assets[@]} -eq 0 ]]; then
-+            echo "no release assets found under dist/" >&2
-+            exit 1
-           fi
+-          fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
 -            --target "$TARGET" \
 -            --bundle "$BUNDLE" \
@@ -5672,9 +5645,10 @@ index 26d4985..5bec0ba 100644
 -
 -      - name: Build unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
--        shell: bash
--        run: |
--          set -euo pipefail
++          GH_TOKEN: ${{ github.token }}
+         shell: bash
+         run: |
+           set -euo pipefail
 -
 -          target="${{ matrix.target }}"
 -          release_dir="target/${target}/release"
@@ -5713,8 +5687,13 @@ index 26d4985..5bec0ba 100644
 -
 -          if [[ ! -f "$dmg_path" ]]; then
 -            echo "DMG $dmg_path not found after build"
--            exit 1
--          fi
++          tag="${GITHUB_REF_NAME}"
++          shopt -s nullglob
++          assets=(dist/*.tar.gz dist/*.sha256)
++          if [[ ${#assets[@]} -eq 0 ]]; then
++            echo "no release assets found under dist/" >&2
+             exit 1
+           fi
 -
 -      - name: Upload unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
@@ -6329,18 +6308,10 @@ index 26d4985..5bec0ba 100644
 -          if [[ "${version}" == *-* ]]; then
 -            echo "make_latest=false" >> $GITHUB_OUTPUT
 -            echo "prerelease=true" >> $GITHUB_OUTPUT
-+          # Tag re-pushes supersede earlier builds; replace the previous
-+          # release's assets instead of deleting the release, so a failed or
-+          # cancelled run can never leave the tag without a release.
-+          if gh release view "${tag}" >/dev/null 2>&1; then
-+            echo "Release ${tag} already exists; replacing its assets with the new build."
-           else
+-          else
 -            echo "make_latest=true" >> $GITHUB_OUTPUT
 -            echo "prerelease=false" >> $GITHUB_OUTPUT
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-           fi
+-          fi
 -
 -      - name: Determine npm publish settings
 -        id: npm_publish_settings
@@ -6356,7 +6327,12 @@ index 26d4985..5bec0ba 100644
 -          elif [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+-alpha\.[0-9]+(\.[0-9]+)?$ ]]; then
 -            echo "should_publish=true" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=alpha" >> "$GITHUB_OUTPUT"
--          else
++          # Tag re-pushes supersede earlier builds; replace the previous
++          # release's assets instead of deleting the release, so a failed or
++          # cancelled run can never leave the tag without a release.
++          if gh release view "${tag}" >/dev/null 2>&1; then
++            echo "Release ${tag} already exists; replacing its assets with the new build."
+           else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
 -          fi
@@ -6697,7 +6673,10 @@ index 26d4985..5bec0ba 100644
 -          if [[ ${#urls[@]} -ne 2 ]]; then
 -            echo "::error::Expected x86_64 and aarch64 Windows archives for $RELEASE_TAG"
 -            exit 1
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+           fi
 -          komac sync-fork
 -          komac update OpenAI.Codex --version "$RELEASE_VERSION" --submit --urls "${urls[@]}"
 -          komac cleanup --only-merged

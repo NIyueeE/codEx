@@ -284,32 +284,11 @@ jobs:
           fi
           cargo build --target "$target" --release "${helpers[@]}"
 
-      # MSVC names some PDBs with underscores where the crate uses dashes; the
-      # symbols script looks for `<binary>.pdb`. Upstream normalises them in
-      # its packaging action before archiving symbols, so do the same here.
-      - name: Normalize Windows PDB filenames
-        if: matrix.platform == 'windows'
-        shell: bash
-        env:
-          TARGET: ${{ matrix.target }}
-        run: |
-          set -euo pipefail
-          release_dir="target/${TARGET}/release"
-          for binary in codex codex-code-mode-host codex-windows-sandbox-setup codex-command-runner; do
-            expected="${release_dir}/${binary}.pdb"
-            [[ -f "$expected" ]] && continue
-            underscored="${release_dir}/${binary//-/_}.pdb"
-            if [[ ! -f "$underscored" ]]; then
-              echo "PDB for ${binary} not found at ${expected} or ${underscored}" >&2
-              exit 1
-            fi
-            cp "$underscored" "$expected"
-          done
-
       # The symbols script only exists in the bootstrapped tree (the slim repo
       # carries just check_ci_results.py), so resolve it through TREE_DIR - as
       # an absolute path, because this step runs from CODE_DIR.
       - name: Build symbols archive and strip binaries
+        if: matrix.platform == 'linux'
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
@@ -319,9 +298,6 @@ jobs:
           tree_dir="${GITHUB_WORKSPACE}"
           [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           binaries="codex codex-code-mode-host"
-          if [[ "${{ matrix.platform }}" == "windows" ]]; then
-            binaries+=" codex-windows-sandbox-setup codex-command-runner"
-          fi
           # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
           # workspace rather than the repo root; the script runs from the repo
           # root and therefore needs the absolute release directory.
@@ -347,12 +323,6 @@ jobs:
             echo "codex binary not found in ${release_dir}"
             exit 1
           }
-
-          archive_stem="${GITHUB_WORKSPACE}/symbols-dist/${TARGET}/codex-symbols-${TARGET}.tar.gz"
-          symbols_args=()
-          if [[ -f "$archive_stem" ]]; then
-            symbols_args=(--symbols-archive "$archive_stem")
-          fi
 
           version="$(grep -m1 '^version' "${tree_dir}/codex-rs/Cargo.toml" | sed -E 's/.*"(.*)".*/\1/')"
           dest="${GITHUB_WORKSPACE}/dist/${TARGET}"
@@ -434,6 +404,7 @@ jobs:
       # released binary stays symbolicateable. bwrap is hashed after stripping,
       # so its symbols are not part of this archive.
       - name: Upload symbols archive
+        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: ${{ matrix.target }}-symbols
