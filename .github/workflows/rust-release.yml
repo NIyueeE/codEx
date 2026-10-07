@@ -41,7 +41,14 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
+          # Absolute: several steps `cd` into CODE_DIR first, and a relative
+          # TREE_DIR would then re-resolve from there (it silently worked on
+          # Linux only because CODE_DIR sits one level below the tree root).
+          if [[ -d codex-rs ]]; then
+            echo "TREE_DIR=${PWD}" >> "$GITHUB_ENV"
+          else
+            echo "TREE_DIR=${PWD}/tree" >> "$GITHUB_ENV"
+          fi
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
       - name: Validate tag matches Cargo.toml version
         shell: bash
@@ -105,7 +112,14 @@ jobs:
           if [[ ! -d codex-rs ]]; then
             bash scripts/bootstrap.sh
           fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
+          # Absolute: several steps `cd` into CODE_DIR first, and a relative
+          # TREE_DIR would then re-resolve from there (it silently worked on
+          # Linux only because CODE_DIR is one level below the tree root).
+          if [[ -d codex-rs ]]; then
+            echo "TREE_DIR=${PWD}" >> "$GITHUB_ENV"
+          else
+            echo "TREE_DIR=${PWD}/tree" >> "$GITHUB_ENV"
+          fi
           echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -125,6 +139,15 @@ jobs:
         env:
           TARGET: ${{ matrix.target }}
         run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
+
+      # The symbols/strip script shells out to objcopy, which the musl
+      # dependency list does not pull in. Upstream installs binutils for the
+      # same reason; without it that step dies with "command not found".
+      - name: Install binutils for the symbols archive
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update -y
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils
 
       # ---- Windows MSVC toolchain -----------------------------------------
       # Reuse upstream's MSVC helper, which resolves the Visual Studio
@@ -278,29 +301,25 @@ jobs:
       # archived their symbols; see the `[profile.release]` comment in
       # codex-rs/Cargo.toml. Strip before assembling the package so the
       # published payload is the stripped one.
+      # Mirrors upstream's step: run the script from the workspace root with an
+      # explicit artifact name. The script resolves its own paths, so it needs
+      # neither CODE_DIR nor a tree-relative invocation.
       - name: Build symbols archive and strip binaries
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
         run: |
           set -euo pipefail
-          cd "${CODE_DIR}"
           binaries="codex codex-code-mode-host"
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             binaries+=" codex-windows-sandbox-setup codex-command-runner"
           fi
-          bash "${TREE_DIR}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
+          bash "${GITHUB_WORKSPACE}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
             --release-dir "target/${TARGET}/release" \
             --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
             --binaries "$binaries"
-
-      # ---- Package ---------------------------------------------------------
-      # Upstream's canonical layout: `codex-package.json` plus `bin/`,
-      # `codex-resources/`, and `codex-path/` at the archive root. `install.sh`
-      # expands it into a standalone release, `codex update` swaps its members,
-      # and app-server-daemon copies it whole when it installs the daemon.
       - name: Assemble package archive
         shell: bash
         env:
