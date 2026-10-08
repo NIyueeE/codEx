@@ -32,6 +32,19 @@ Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msv
 对照随附的 `.sha256` 校验后,将该包解压到
 [`codex update`](#codex-update-pure-rust-self-update)一节所述的独立安装目录。
 
+### 从 0.155.1 或更早版本升级
+
+截至 `0.155.1`(含)的发布使用的是扁平归档(裸 `codex` 加 `bwrap`)。这类安装
+无法用 `codex update` 迁移到包布局:旧二进制会在归档根查找 `codex`,并以
+`release archive is missing codex or bwrap` 拒绝新包。
+
+请改为重新运行一次安装脚本 —— 它会把扁平发布目录替换为包发布目录并重新指向
+`current`,此后 `codex update` 即可正常工作:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+```
+
 环境变量:
 
 - `CODEX_RELEASE` - 要安装的版本,如 `0.160.0`(默认:`latest`)

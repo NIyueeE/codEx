@@ -37,6 +37,21 @@ Windows users install from the release archive directly: download
 `.sha256`, and unpack the package into the standalone release directory
 described under [`codex update`](#codex-update-pure-rust-self-update).
 
+### Upgrading from 0.155.1 or older
+
+Releases up to and including `0.155.1` shipped a flat archive (a bare `codex`
+plus `bwrap`). Such an install cannot move to the package layout with
+`codex update`: the old binary looks for `codex` at the archive root and
+rejects the new package with `release archive is missing codex or bwrap`.
+
+Re-run the installer once instead - it replaces the flat release directory
+with a package release directory and repoints `current`, after which
+`codex update` works normally:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+```
+
 Environment overrides:
 
 - `CODEX_RELEASE` - version to install, e.g. `0.160.0` (default: `latest`)
