@@ -1,4 +1,4 @@
-From 6a60c682b5eed49315b148b9b50107583d761d12 Mon Sep 17 00:00:00 2001
+From 18cd7692b68e3592e247c746728d1d45119595cf Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -988,6 +988,3 @@ index 5f3b318..47041ca 100644
 +        assert_eq!(seen, expected);
      }
  }
--- 
-2.47.3
-

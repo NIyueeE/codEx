@@ -1,4 +1,4 @@
-From 9b16b7751c3b643705ba5948e935bdaf8db5145e Mon Sep 17 00:00:00 2001
+From 596a33e5b80cc82d993784f8c493c4d675f1a6ac Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -10381,6 +10381,3 @@ index c45a360..0000000
 -+    }
 -     config.define("XXH_PRIVATE_API", Some(""));
 -     config.define("ZSTDLIB_VISIBILITY", Some(""));
--- 
-2.47.3
-

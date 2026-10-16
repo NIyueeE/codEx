@@ -89,7 +89,11 @@ fi
 
 rm -rf "${output_dir}"
 mkdir -p "${output_dir}"
-git -C "${worktree}" format-patch "${base_tag}"..HEAD --output-directory "${output_dir}" --keep-subject
+# --no-signature keeps the patches free of the local git version, so the
+# export is byte-identical whatever git produced it (CI bootstraps with a
+# newer git than a developer workstation).
+git -C "${worktree}" format-patch "${base_tag}"..HEAD \
+  --output-directory "${output_dir}" --keep-subject --no-signature
 
 patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
 if [[ "${patch_count}" -ne "${commit_count}" ]]; then

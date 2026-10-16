@@ -1,4 +1,4 @@
-From 49332387f12fd33997bf90913498d36f13d1b3a3 Mon Sep 17 00:00:00 2001
+From 1f2885ca13d6c80c232ec9779d61352c2b24338b Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -14,10 +14,10 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/bootstrap.sh                          |  55 ++
  scripts/check-patch-modules.sh                | 244 ++++++++
  scripts/gates.sh                              | 527 ++++++++++++++++++
- scripts/gen-patches.sh                        | 107 ++++
+ scripts/gen-patches.sh                        | 111 ++++
  scripts/patch-modules.conf                    | 256 +++++++++
  scripts/update.sh                             | 128 +++++
- 13 files changed, 1906 insertions(+), 316 deletions(-)
+ 13 files changed, 1910 insertions(+), 316 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -3030,10 +3030,10 @@ index 0000000..d596c0f
 +printf '\nAll %s checks passed.\n' "${mode}"
 diff --git a/scripts/gen-patches.sh b/scripts/gen-patches.sh
 new file mode 100644
-index 0000000..f49b884
+index 0000000..07be847
 --- /dev/null
 +++ b/scripts/gen-patches.sh
-@@ -0,0 +1,107 @@
+@@ -0,0 +1,111 @@
 +#!/usr/bin/env bash
 +# Regenerates patches/ as a modular series (one patch per feature module)
 +# from a bootstrapped tree's commit history.
@@ -3125,7 +3125,11 @@ index 0000000..f49b884
 +
 +rm -rf "${output_dir}"
 +mkdir -p "${output_dir}"
-+git -C "${worktree}" format-patch "${base_tag}"..HEAD --output-directory "${output_dir}" --keep-subject
++# --no-signature keeps the patches free of the local git version, so the
++# export is byte-identical whatever git produced it (CI bootstraps with a
++# newer git than a developer workstation).
++git -C "${worktree}" format-patch "${base_tag}"..HEAD \
++  --output-directory "${output_dir}" --keep-subject --no-signature
 +
 +patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
 +if [[ "${patch_count}" -ne "${commit_count}" ]]; then
@@ -3537,6 +3541,3 @@ index 0000000..57984f0
 +echo "  2. Tag the fork release: git tag ${upstream_tag}"
 +echo "     (the rust-v prefix is required; the release workflow triggers on rust-v* / v*)"
 +echo "  3. Push the tag; the release workflow publishes codex-<target>.tar.gz + checksums."
--- 
-2.47.3
-

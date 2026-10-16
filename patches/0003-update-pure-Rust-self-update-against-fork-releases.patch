@@ -1,4 +1,4 @@
-From 274d043de37e58be62a6e6689a22de1764e18061 Mon Sep 17 00:00:00 2001
+From c5113e0cd9c4b02ad3a25d6907f23d42e0086bc6 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -9550,6 +9550,3 @@ index 633638e..b989481 100644
  pub use format_env_display::format_env_display;
  pub use resume_command::resume_command;
  pub use resume_command::resume_hint;
--- 
-2.47.3
-

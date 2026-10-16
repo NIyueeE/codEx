@@ -1,4 +1,4 @@
-From 1aa6e5892e4de0a4790e0337f07c312d0e8539ee Mon Sep 17 00:00:00 2001
+From acd1bcecb6953ff830d3bb2888f463857fe0ba37 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:28 +0000
 Subject: input: single Esc is a no-op, double Esc interrupts
@@ -3890,6 +3890,3 @@ index 3cb54b2..aac09d2 100644
          } else {
              spans.push(format!("({pretty_elapsed})").dim());
          }
--- 
-2.47.3
-

@@ -1,4 +1,4 @@
-From beba76e22edb751fd50f33f0b8c8747e496d53f1 Mon Sep 17 00:00:00 2001
+From f1dcdd9690eeea2df73d0f19f492df1494881442 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:34 +0000
 Subject: branding: codEx name and version output
@@ -1326,6 +1326,3 @@ index 0d40a84..f3566b4 100644
 +
 +Then rerun the command you just tried.
  To work without the background server, rerun the same command with --no-daemon (including resume or fork and its arguments).
--- 
-2.47.3
-
