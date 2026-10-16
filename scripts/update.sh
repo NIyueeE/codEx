@@ -11,8 +11,8 @@
 #      (`git am --continue` / `git am --abort`), then run
 #      `bash scripts/gen-patches.sh <new-upstream-tag>` to regenerate.
 #   4. Verify the applied queue still matches the patch-module manifest,
-#      then build + run the same checks as CI (build, fmt, nextest) from
-#      the codex-rs workspace root.
+#      then run the same heavy gate the local pre-push hook and post-merge CI
+#      run (`scripts/gates.sh heavy`) against the in-flight tree.
 #   5. Regenerate patches/, update BASE_TAG, and print release instructions.
 set -euo pipefail
 
@@ -96,27 +96,24 @@ fi
 cd "${code_dir}"
 # Linking codex-cli with thin LTO holds 10+ GB in one process and nextest spawns
 # one process per CPU, so an uncapped run on a many-core host exhausts memory on
-# its own. Cap both; raise CARGO_BUILD_JOBS explicitly if the host can take it.
-export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
-echo "Building ..."
-cargo build --release --bin codex
-
-echo "Checking formatting ..."
-cargo fmt --check
-
+# its own. scripts/gates.sh applies the same caps CI does; raise CARGO_BUILD_JOBS
+# explicitly if the host can take it.
 if ! command -v cargo-nextest >/dev/null 2>&1; then
   echo "cargo-nextest not found; installing it (same as CI) ..."
   cargo install --locked cargo-nextest
 fi
 
-echo "Running codex-tui tests ..."
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast -p codex-tui
-
-echo "Running codex-core tests ..."
-# The full core integration suite (sandbox/approvals scenarios) needs
-# sandbox-capable runners; CI excludes suite::* tests, so do the same here.
-RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast \
-  -p codex-core -E 'not test(suite)'
+# The upgrade is verified with the same heavy gate the local pre-push hook and
+# post-merge CI run, against the in-flight tree, so a resolved conflict cannot
+# slip past a check that the everyday gate would have caught.
+#
+# The export drift check is skipped: patches/ still holds the previous queue
+# until it is regenerated below, and gen-patches.sh verifies the new export
+# itself. The queue/layout check runs without --patches/--slim for the same
+# reason (scripts/gates.sh detects that the tree and the slim repo disagree on
+# BASE_TAG, which is exactly the in-flight-upgrade state).
+echo "Running the heavy gate against ${work_dir} ..."
+bash "${script_dir}/gates.sh" heavy --tree "${work_dir}" --skip export
 
 cd "${work_dir}"
 echo "Regenerating patches ..."

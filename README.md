@@ -297,14 +297,57 @@ authorize sandbox IPC on the same machine.
   - `codex-x86_64-pc-windows-msvc.tar.gz` (the same layout with `.exe`
     entrypoints and the Windows sandbox helpers under `codex-resources/`)
   - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
-- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners:
-  `cargo build --release --bin codex`, `cargo fmt --check`,
-  `codex-tui` full test suite, `codex-core` unit tests, codespell, repo-checks.
-  The sandbox-dependent core integration suite (`suite::*`) needs
-  sandbox-capable runners and is excluded from hosted CI, mirroring upstream's
-  own self-hosted-runner setup.
+- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners, tiered the way
+  upstream tiers it: a light gate that blocks a pull request, and a heavy gate
+  that does not. The fork is a patch-queue repository, so the tiers split on
+  whether a check needs the queue applied (`scripts/bootstrap.sh`), which is
+  the expensive part of CI.
+
+  | Gate | Workflow | Runs | Contains |
+  | --- | --- | --- | --- |
+  | Light | `repo-checks.yml` | every PR, every push to `main` | patch-queue layout, README ASCII, README.zh typography, shellcheck |
+  | Light | `blob-size-policy.yml` | every PR | changed-blob budget (upstream's policy) |
+  | Light | `codespell.yml` | every PR | spelling |
+  | Heavy | `rust-ci.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | queue integrity + export-drift check, package/installer suites, TUI/core boundary, `cargo check` on the CLI/TUI/core compile surface, config-schema fixture, `cargo fmt --check`, cargo-deny |
+  | Heavy | `rust-ci-full.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | `cargo build --release --bin codex`, `codex-tui` full suite, `codex-core` unit tests, Windows check |
+  | Heavy | `cargo-deny.yml` | post-merge, on dispatch | licence, ban, and advisory drift |
+
+  `blocking-ci.yml` aggregates the light gate and reports the single required
+  status; `postmerge-ci.yml` aggregates the heavy gate. The sandbox-dependent
+  core integration suite (`suite::*`) needs sandbox-capable runners and is
+  excluded from hosted CI, mirroring upstream's own self-hosted-runner setup.
 - The workflows are bootstrap-aware: they work both in a full checkout and in
   this slim repo (bootstrap first, then build/test/release inside `tree/`).
+
+### Local gates (the same commands, before the remote sees them)
+
+`scripts/gates.sh` is the single gate runner. Both the local git hooks and CI
+call it, so a local pass is a CI pass rather than a parallel reimplementation:
+
+```sh
+bash scripts/gates.sh light # no patch list, no bootstrap: seconds
+bash scripts/bootstrap.sh   # once; the tree gates need the sources applied
+bash scripts/gates.sh tree  # queue integrity + compile surface
+bash scripts/gates.sh full  # release build + TUI/core suites
+bash scripts/gates.sh heavy # tree + full: what CI runs post-merge
+bash scripts/gates.sh all   # light + heavy
+```
+
+Install the hooks so `git commit` runs the light gate and `git push` adds the
+heavy one, so the local tier runs first and most problems never reach remote
+CI:
+
+```sh
+pip install pre-commit
+pre-commit install                        # commit hook: the light gate
+pre-commit install --hook-type pre-push   # push hook: the heavy gate
+```
+
+`scripts/gates.sh` also auto-detects the tree, so it works from the slim repo,
+from `update-work/` during an upgrade, and from a full checkout without a flag.
+Both tiers can be sliced when a specific check matters (`--only`/`--skip`, with
+the ids listed in the script header), which is how the CI workflows select
+their jobs.
 
 ### Patch-queue model
 
@@ -322,6 +365,8 @@ per commit):
 | `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
 | `scripts/update.sh` | upgrade to a new upstream tag (apply, CI-equivalent checks, regen) |
 | `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
+| `scripts/gates.sh` | the single gate runner (`light` / `tree` / `full` / `heavy` / `all`) that the git hooks and CI both call |
+| `scripts/asciicheck.py`, `scripts/check_blob_size.py` | upstream's README and blob-budget checkers, carried byte-identically so the light gate needs no bootstrapped tree |
 
 The seven modules are `infra` (patch-queue tooling, lockfile, README),
 `rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
@@ -329,8 +374,7 @@ interrupt), `privacy` (no startup network chatter), `distribution` (Linux CI +
 Windows check, Linux + Windows releases), and `identity` (branding). Every
 file changed by the fork is owned by exactly one module;
 `check-patch-modules.sh` enforces the partition at export time (gen-patches),
-during upgrades (update.sh), in CI
-(repo-checks), and locally (pre-commit).
+during upgrades (update.sh), in CI (rust-ci), and locally (`gates.sh tree`).
 
 Workflow: a **new feature** adds a section to `patch-modules.conf` and a
 matching commit in the bootstrapped tree; a **change to an existing feature**

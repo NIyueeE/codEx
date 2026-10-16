@@ -4,3 +4,9 @@ update-work/
 
 # Insta pending snapshots from CI test runs.
 *.snap.new
+
+# Gate-runner lock (scripts/gates.sh keeps one run per tree at a time).
+.gates-*.lock
+
+# Bytecode from the Python suites and helper scripts the gates run.
+__pycache__/

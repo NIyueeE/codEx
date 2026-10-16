@@ -1,136 +1,53 @@
 # Pre-commit hooks for the codEx slim patch-queue repository.
 #
-# These are lightweight local checks; the blocking CI remains the enforced
-# gate and still runs the same checks. Install with:
+# These are the local tiers of the CI gates, not a reimplementation of them:
+# every hook routes through scripts/gates.sh, the same runner CI calls, so a
+# local pass is a CI pass. The tiers mirror the remote ones exactly:
+#
+#   commit   -> scripts/gates.sh light   (no patch list, no bootstrap: seconds)
+#   pre-push -> scripts/gates.sh heavy   (the bootstrapped tree: queue
+#                                         integrity, compile surface, rustfmt,
+#                                         release build, TUI and core suites)
+#
+# Install with:
 #
 #   pip install pre-commit
-#   pre-commit install
+#   pre-commit install                       # commit hook: the light gate
+#   pre-commit install --hook-type pre-push  # push hook: the heavy gate
 #
-# The cargo-fmt and config-schema hooks only run when a bootstrapped tree
-# exists (tree/, or update-work/ during an upgrade), which is where the
-# actual Rust sources live. The patch-export hook re-exports the queue from
-# that tree and fails when patches/ drifted from it.
+# Requirements:
+#   - python3 (the light gate runs upstream's asciicheck.py, carried in
+#     scripts/)
+#   - codespell, or uv (the light gate falls back to uvx codespell==2.4.3)
+#   - a bootstrapped tree for the push hook: bash scripts/bootstrap.sh
+#   - cargo-nextest for the push hook: cargo install --locked cargo-nextest
+#
+# The heavy hook is deliberately slow (tens of minutes). That is the point:
+# the local tier runs first, so a broken push never reaches remote CI. Use
+# `git push --no-verify` when you knowingly want to skip it.
 
 repos:
-  - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.3
-    hooks:
-      - id: codespell
-        args: [-I, .codespellignore]
-
   - repo: local
     hooks:
-      - id: readme-asciicheck
-        name: README ASCII check
-        description: Mirrors the CI asciicheck rule (ASCII plus U+2728)
-        entry: python3
-        language: system
-        files: ^README\.md$
-        args:
-          - -c
-          - |
-            import sys
-            path = "README.md"
-            allowed = {0x2728}
-            data = open(path, encoding="utf-8").read()
-            bad = sorted({c for c in data if ord(c) > 127 and ord(c) not in allowed})
-            if bad:
-                print(f"{path}: non-ASCII characters: {[hex(ord(c)) for c in bad]}")
-                sys.exit(1)
-
-      - id: patch-module-check
-        name: Patch module layout check
-        description: Validates the module patch queue against scripts/patch-modules.conf
-        entry: bash
-        language: system
-        files: ^(patches/.*\.patch|BASE_TAG|scripts/patch-modules\.conf|scripts/check-patch-modules\.sh|scripts/gen-patches\.sh|scripts/update\.sh)$
-        pass_filenames: false
-        args:
-          - -c
-          - |
-            tree_args=()
-            if [[ -d tree ]]; then
-              tree_args=(--tree tree --slim .)
-            fi
-            bash scripts/check-patch-modules.sh "${tree_args[@]}" --patches patches
-
-      - id: cargo-fmt
-        name: cargo fmt --check (bootstrapped tree)
-        description: Runs rustfmt when a bootstrapped tree exists under tree/
+      - id: gates-light
+        name: Local light gate (scripts/gates.sh light)
+        description: The checks CI blocks a pull request on, run before the commit lands
         entry: bash
         language: system
         pass_filenames: false
         always_run: true
         args:
-          - -c
-          - |
-            if [ -d tree/codex-rs ]; then
-              cd tree/codex-rs && cargo fmt --check
-            fi
+          - scripts/gates.sh
+          - light
 
-      - id: config-schema-check
-        name: Config schema fixture check
-        description: Mirrors CI config_schema_matches_fixture; regenerates core/config.schema.json and fails on drift
+      - id: gates-heavy
+        name: Local heavy gate (scripts/gates.sh heavy)
+        description: The checks CI runs post-merge, run before the push leaves the machine
         entry: bash
         language: system
+        stages: [pre-push]
         pass_filenames: false
         always_run: true
         args:
-          - -c
-          - |
-            code_dir=""
-            if [[ -d tree/codex-rs ]]; then
-              code_dir=tree/codex-rs
-            elif [[ -d update-work/codex-rs ]]; then
-              code_dir=update-work/codex-rs
-            fi
-            if [[ -z "$code_dir" ]]; then
-              echo "config-schema-check: no bootstrapped tree (tree/ or update-work/); skipping"
-              exit 0
-            fi
-            fixture="$code_dir/core/config.schema.json"
-            tmp="$(mktemp)"
-            trap 'rm -f "$tmp"' EXIT
-            if ! (cd "$code_dir" && cargo run -q -p codex-core --bin codex-write-config-schema -- --out "$tmp"); then
-              echo "config-schema-check: failed to generate the config schema" >&2
-              exit 1
-            fi
-            if ! diff -u "$fixture" "$tmp"; then
-              echo "config-schema-check: $fixture is out of date." >&2
-              echo "Fix: (cd $code_dir && cargo run -p codex-core --bin codex-write-config-schema)" >&2
-              echo "then re-export the queue: (cd $code_dir && bash ../scripts/gen-patches.sh \"$(cat BASE_TAG)\")" >&2
-              exit 1
-            fi
-
-      - id: patch-export-check
-        name: Patch export matches tree
-        description: Re-exports the queue from the bootstrapped tree and fails if patches/ drifted
-        entry: bash
-        language: system
-        pass_filenames: false
-        always_run: true
-        args:
-          - -c
-          - |
-            workdir=""
-            if [[ -d tree/codex-rs ]]; then
-              workdir=tree
-            elif [[ -d update-work/codex-rs ]]; then
-              workdir=update-work
-            fi
-            if [[ -z "$workdir" ]]; then
-              echo "patch-export-check: no bootstrapped tree (tree/ or update-work/); skipping"
-              exit 0
-            fi
-            base_tag="$(cat BASE_TAG)"
-            tmp="$(mktemp -d)"
-            trap 'rm -rf "$tmp"' EXIT
-            if ! (cd "$workdir" && bash ../scripts/gen-patches.sh "$base_tag" "$tmp" >/dev/null 2>&1); then
-              echo "patch-export-check: gen-patches.sh failed; fix the tree/queue first" >&2
-              exit 1
-            fi
-            if ! diff -rq patches "$tmp" >/dev/null; then
-              echo "patch-export-check: patches/ drifted from the bootstrapped tree." >&2
-              echo "Re-export: (cd $workdir && bash ../scripts/gen-patches.sh \"$base_tag\")" >&2
-              exit 1
-            fi
+          - scripts/gates.sh
+          - heavy

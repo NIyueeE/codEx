@@ -15,7 +15,12 @@ here; `bootstrap.sh` rebuilds a full codex tree from `BASE_TAG` and applies
 - `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
   `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
 - `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
-  `codespell.yml`, `rust-release.yml`)
+  `blob-size-policy.yml`, `codespell.yml` for the light gate;
+  `postmerge-ci.yml`, `rust-ci.yml`, `rust-ci-full.yml`, `cargo-deny.yml` for
+  the heavy gate; `rust-release.yml` for releases), plus the composite actions
+  they share. The fork keeps upstream's workflow names and narrows their
+  content to Linux + Windows, so upgrades see a modify rather than a
+  delete-plus-add.
 - `README.md` / `README.zh.md` — English/Chinese docs
 
 Rust sources exist only after bootstrapping, under `tree/` (or
@@ -32,8 +37,10 @@ cargo fmt --check                   # rustfmt check
 
 - `bash scripts/update.sh <tag>` — upgrade to a new upstream tag (`rust-v0.149.1`
   or `0.149.1` both work): clones into `update-work/`, applies the queue with
-  `git am --3way`, runs the CI-equivalent checks (build, fmt, nextest) from
-  `codex-rs/`, then regenerates `patches/` and `BASE_TAG`
+  `git am --3way`, runs `scripts/gates.sh heavy` against the in-flight tree
+  (the same gate the local pre-push hook and post-merge CI run, minus the
+  export-drift check that only makes sense after regeneration), then
+  regenerates `patches/` and `BASE_TAG`
 - `bash scripts/gen-patches.sh <base-tag> [output-dir]` — regenerate `patches/`
   as one patch per feature module; run it from inside a bootstrapped tree
   (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
@@ -45,9 +52,36 @@ cargo fmt --check                   # rustfmt check
   fork-owned file that exists in both the slim repo and the tree, so the slim
   copy cannot drift from the queue it publishes; only `.gitignore` is exempt
   (the tree keeps upstream's version plus the generated `/patches/`)
-- `pre-commit install` — local hooks (codespell, README ASCII check,
-  patch-module layout check, `cargo fmt --check`, config schema fixture
-  check, patch export drift check)
+- `scripts/gates.sh [light|tree|full|heavy|all] [--only ID] [--skip ID]` — the
+  single gate runner. Both the local git hooks and CI call it, so a local pass
+  is a CI pass. The tiers split on whether a check needs the patch queue
+  applied, because bootstrapping is what makes CI slow:
+  - `light` — no patch list, no bootstrap, seconds: the exported queue's shape
+    (patch-queue layout against `patches/` alone), README ASCII (upstream's
+    `scripts/asciicheck.py`, carried at the slim root byte-identically),
+    README.zh typography, codespell (2.4.3, the version CI pins), shellcheck,
+    and the changed-blob budget (upstream's policy; `patches/*.patch` is
+    expanded into the allowlist at run time, and the check is skipped when no
+    `GATES_BASE_SHA`/`GATES_HEAD_SHA` range is given)
+  - `tree` — needs the bootstrapped tree: the queue's layout in the tree (plus
+    `--patches`/`--slim` when the slim repo and the tree agree on `BASE_TAG`),
+    the export drift check, the `codex_package` and `install` Python suites,
+    the codex-tui/core boundary rule, `cargo check` on the CLI/TUI/core compile
+    surface, the config-schema fixture, `cargo fmt --check`, and cargo-deny
+    when the binary is installed
+  - `full` — needs the bootstrapped tree: release CLI build, the full
+    `codex-tui` and `codex-core` suites (the Windows type-check is CI-only,
+    on a Windows runner)
+  - `heavy` — `tree` + `full`: what `git push` runs and what CI runs after a
+    merge
+  - `all` — `light` + `heavy`, serially
+  - `--only`/`--skip` take the check ids listed in the script header; the CI
+    jobs use them to select their slice. Never run two cargo-backed tiers
+    against the same tree at once; the runner takes a per-tree `flock` and
+    refuses rather than letting the suites time each other out (the light tier
+    runs no cargo and takes no lock)
+- `pre-commit install` and `pre-commit install --hook-type pre-push` — the
+  local tiers: commit runs `gates.sh light`, push adds `gates.sh heavy`
 - Reproduce the Codespell job locally with the same version the hook pins,
   without touching the system Python (which is externally managed here and
   has no working `ensurepip`, so `pip install` and `python3 -m venv` both
@@ -235,7 +269,7 @@ rust-v0.155.1, and rust-v0.160.0 upgrades:
   queue applies cleanly.
 - Upstream files the fork does not need (e.g. CLA/issue-bot workflows that
   only make sense on openai/codex) stay inert inside the bootstrapped tree;
-  the slim repo only runs its own four workflows, so they need no cleanup.
+  the slim repo only runs its own workflows, so they need no cleanup.
 - Release builds of this workspace are memory-heavy: linking `codex-cli`
   with thin LTO holds 10+ GB in a single process. Never run multiple
   cargo builds concurrently on one host (even in separate target dirs) --
@@ -254,6 +288,17 @@ rust-v0.155.1, and rust-v0.160.0 upgrades:
   a long run's output). `codex-cli`'s own test suite is not a CI gate; build
   it (`--bin codex`) instead of running its full suite unless the change is
   CLI-specific.
+- "Never alongside another cargo invocation" is a correctness rule, not only a
+  memory rule. `scripts/gates.sh` therefore holds a per-tree `flock`, so a
+  second concurrent gate run is refused instead of silently starving the first.
+  The failure mode it prevents: `codex-core`'s
+  `tools::handlers::multi_agents::tests::send_input_*` tests wait five seconds
+  for an event (`multi_agents_tests.rs`'s `wait_for_recorded_user_input`), which
+  is enough on an idle host and not enough while the box is also compiling.
+  They pass 6/6 in isolation, fail 2/2672 under load, and nextest itself
+  reports them as flaky. Upstream owns that file and the fork never touches
+  it, so treat a `send_input_*` failure as load, re-run it alone, and do not
+  patch upstream's timeout to make a loaded box green.
 - A deterministic single-test failure is not automatically an upgrade
   regression. Before treating it as one, check in order: which assert
   actually fired (read the panic, not just the test name), whether the
@@ -295,7 +340,7 @@ rust-v0.155.1, and rust-v0.160.0 upgrades:
   files surface as `patch does not apply` / "modify/delete" rather than
   content conflicts. Take the upstream side for `rust-release.yml` and
   `git rm` the workflows the fork's CI replacement deletes, then confirm
-  the fork's own four workflows still exist.
+  the fork's own workflows still exist.
 - `scripts/patch-modules.conf` exists in two places and both must agree:
   the bootstrapped tree's copy is what `gen-patches.sh` reads, while
   `check-patch-modules.sh` in the slim repo reads its own sibling. A
@@ -391,9 +436,9 @@ CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
   -p codex-core -E 'not test(suite)'   # sandbox-dependent suite::* tests need self-hosted runners
 ```
 
-Add regression tests with bug fixes (e.g. `/rewind` tests). `repo-checks.yml`
-also runs the `codex_package` Python unit tests and the `codex-tui`/
-`codex-core` boundary check.
+Add regression tests with bug fixes (e.g. `/rewind` tests). `rust-ci.yml`
+(through `scripts/gates.sh tree`) also runs the `codex_package` and `install`
+Python unit tests and the `codex-tui`/`codex-core` boundary check.
 
 TUI snapshot tests are environment-independent: the footer shortcuts pin a
 test-only WSL flag, so the full suite passes on WSL hosts and Linux CI alike.
@@ -426,7 +471,15 @@ Commits use conventional-style prefixes from the project history — `docs:`,
 `fix:`, `ci:`, `release:`, `patches:`, `rewind:` — with a bulleted body
 explaining what and why. Keep messages ASCII-only.
 
-PRs must pass every `blocking-ci` job (build, fmt, TUI and core tests,
-codespell, repo-checks) and leave the worktree clean. Describe the change and
-motivation; link related issues when they exist. Upgrades commit the new
-`BASE_TAG` and regenerated `patches/` together, tagged `rust-v<semver>`.
+PRs must pass every `blocking-ci` job -- the light gate (`repo-checks`,
+`blob-size-policy`, `codespell`) -- and leave the worktree clean. That gate
+deliberately carries no Cargo check: every Cargo check needs the patch queue
+applied, which is the expensive part of CI, so the whole compile surface lives
+in the heavy gate with the release build and the suites. The heavy gate runs
+post-merge through `postmerge-ci.yml` (`rust-ci`, `rust-ci-full`,
+`cargo-deny`), from a `**full-ci**` branch or a workflow dispatch when you want
+it before merging, and locally as `scripts/gates.sh heavy` from the `pre-push`
+hook -- install it (`pre-commit install --hook-type pre-push`) so the compile
+check happens before the push rather than after the merge. Describe the change
+and motivation; link related issues when they exist. Upgrades commit the new `BASE_TAG` and
+regenerated `patches/` together, tagged `rust-v<semver>`.

@@ -1,0 +1,47 @@
+name: bootstrap-tree
+description: >-
+  Resolve the bootstrapped tree root and export TREE_DIR/CODE_DIR so every
+  check job runs in the same place. Works both in the full fork checkout
+  (codex-rs/ present) and in the slim patch-queue repo, where the tree is
+  rebuilt from BASE_TAG plus patches/.
+
+outputs:
+  tree-dir:
+    description: Path to the tree root, relative to the workspace (. or tree).
+    value: ${{ steps.resolve.outputs.tree-dir }}
+  code-dir:
+    description: Path to the Cargo workspace (codex-rs or tree/codex-rs).
+    value: ${{ steps.resolve.outputs.code-dir }}
+  bootstrapped:
+    description: Whether this step cloned the tree from the queue.
+    value: ${{ steps.resolve.outputs.bootstrapped }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve or bootstrap the tree
+      id: resolve
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        tree_dir="."
+        code_dir="codex-rs"
+        bootstrapped=false
+        if [[ ! -d "${code_dir}" ]]; then
+          # Slim patch-queue repo: rebuild the full tree from BASE_TAG + patches/.
+          tree_dir="tree"
+          code_dir="tree/codex-rs"
+          bash scripts/bootstrap.sh "${tree_dir}"
+          bootstrapped=true
+        fi
+
+        {
+          echo "tree-dir=${tree_dir}"
+          echo "code-dir=${code_dir}"
+          echo "bootstrapped=${bootstrapped}"
+        } >> "$GITHUB_OUTPUT"
+        {
+          echo "TREE_DIR=${tree_dir}"
+          echo "CODE_DIR=${code_dir}"
+        } >> "$GITHUB_ENV"

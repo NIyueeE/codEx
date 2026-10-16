@@ -1,26 +1,29 @@
-From dcf00b3b8833249c1657a7ce855c95996db5bed3 Mon Sep 17 00:00:00 2001
+From 1cce2e1fa740482e7639bc5ef5ab5bf5095586f8 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
+ .github/actions/bootstrap-tree/action.yml     |   47 +
+ .github/actions/cargo-cache/action.yml        |   43 +
+ .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
  .github/workflows/bazel.yml                   |  549 ----
- .github/workflows/blob-size-policy.yml        |   53 -
- .github/workflows/blocking-ci.yml             |  249 +-
- .github/workflows/cargo-deny.yml              |   31 -
- .github/workflows/codespell.yml               |    3 +-
- .github/workflows/postmerge-ci.yml            |   40 -
+ .github/workflows/blob-size-policy.yml        |   49 +-
+ .github/workflows/blocking-ci.yml             |   54 +-
+ .github/workflows/cargo-deny.yml              |   32 +-
+ .github/workflows/codespell.yml               |   31 +-
+ .github/workflows/postmerge-ci.yml            |   36 +-
  .github/workflows/python-runtime-build.yml    |  114 -
  .github/workflows/python-runtime-release.yml  |   63 -
  .github/workflows/python-sdk-build.yml        |   65 -
  .github/workflows/python-sdk-cli-release.yml  |  156 --
  .github/workflows/python-sdk-release.yml      |  172 --
  .github/workflows/r2-release.yml              |   59 -
- .github/workflows/repo-checks.yml             |   89 +-
+ .github/workflows/repo-checks.yml             |  104 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ----
- .github/workflows/rust-ci-full.yml            |  574 -----
- .github/workflows/rust-ci.yml                 |  263 --
+ .github/workflows/rust-ci-full.yml            |  663 +----
+ .github/workflows/rust-ci.yml                 |  290 +--
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  624 -----
@@ -29,7 +32,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  444 ----
- install.sh                                    |  209 ++
+ install.sh                                    |  215 ++
  patches/BUILD.bazel                           |   35 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
@@ -50,11 +53,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 46 files changed, 792 insertions(+), 8747 deletions(-)
+ 49 files changed, 1004 insertions(+), 8606 deletions(-)
+ create mode 100644 .github/actions/bootstrap-tree/action.yml
+ create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
- delete mode 100644 .github/workflows/blob-size-policy.yml
- delete mode 100644 .github/workflows/cargo-deny.yml
- delete mode 100644 .github/workflows/postmerge-ci.yml
  delete mode 100644 .github/workflows/python-runtime-build.yml
  delete mode 100644 .github/workflows/python-runtime-release.yml
  delete mode 100644 .github/workflows/python-sdk-build.yml
@@ -62,8 +64,6 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  delete mode 100644 .github/workflows/python-sdk-release.yml
  delete mode 100644 .github/workflows/r2-release.yml
  delete mode 100644 .github/workflows/rust-ci-full-nextest-platform.yml
- delete mode 100644 .github/workflows/rust-ci-full.yml
- delete mode 100644 .github/workflows/rust-ci.yml
  delete mode 100644 .github/workflows/rust-release-argument-comment-lint.yml
  delete mode 100644 .github/workflows/rust-release-provisioned-macos.yml
  delete mode 100644 .github/workflows/rust-release-windows.yml
@@ -93,8 +93,140 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  delete mode 100644 patches/xz_windows_stack_args.patch
  delete mode 100644 patches/zstd-sys_windows_msvc_include_dirs.patch
 
+diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
+new file mode 100644
+index 00000000..83d9a73f
+--- /dev/null
++++ b/.github/actions/bootstrap-tree/action.yml
+@@ -0,0 +1,47 @@
++name: bootstrap-tree
++description: >-
++  Resolve the bootstrapped tree root and export TREE_DIR/CODE_DIR so every
++  check job runs in the same place. Works both in the full fork checkout
++  (codex-rs/ present) and in the slim patch-queue repo, where the tree is
++  rebuilt from BASE_TAG plus patches/.
++
++outputs:
++  tree-dir:
++    description: Path to the tree root, relative to the workspace (. or tree).
++    value: ${{ steps.resolve.outputs.tree-dir }}
++  code-dir:
++    description: Path to the Cargo workspace (codex-rs or tree/codex-rs).
++    value: ${{ steps.resolve.outputs.code-dir }}
++  bootstrapped:
++    description: Whether this step cloned the tree from the queue.
++    value: ${{ steps.resolve.outputs.bootstrapped }}
++
++runs:
++  using: composite
++  steps:
++    - name: Resolve or bootstrap the tree
++      id: resolve
++      shell: bash
++      run: |
++        set -euo pipefail
++
++        tree_dir="."
++        code_dir="codex-rs"
++        bootstrapped=false
++        if [[ ! -d "${code_dir}" ]]; then
++          # Slim patch-queue repo: rebuild the full tree from BASE_TAG + patches/.
++          tree_dir="tree"
++          code_dir="tree/codex-rs"
++          bash scripts/bootstrap.sh "${tree_dir}"
++          bootstrapped=true
++        fi
++
++        {
++          echo "tree-dir=${tree_dir}"
++          echo "code-dir=${code_dir}"
++          echo "bootstrapped=${bootstrapped}"
++        } >> "$GITHUB_OUTPUT"
++        {
++          echo "TREE_DIR=${tree_dir}"
++          echo "CODE_DIR=${code_dir}"
++        } >> "$GITHUB_ENV"
+diff --git a/.github/actions/cargo-cache/action.yml b/.github/actions/cargo-cache/action.yml
+new file mode 100644
+index 00000000..3088aec2
+--- /dev/null
++++ b/.github/actions/cargo-cache/action.yml
+@@ -0,0 +1,43 @@
++name: cargo-cache
++description: >-
++  Restore the shared Cargo home cache for a checkout. Mirrors upstream's split
++  cargo-home restore pattern: the registry index, the downloaded crates, the
++  git checkouts, and the installed cargo binaries are what a cold run spends
++  the most time on, so key them on Cargo.lock plus the Rust toolchain.
++
++inputs:
++  key:
++    description: Extra cache-key discriminator, e.g. the runner and target.
++    required: false
++    default: ""
++
++runs:
++  using: composite
++  steps:
++    - name: Compute lockfile hashes
++      id: hash
++      shell: bash
++      run: |
++        set -euo pipefail
++        cd "${CODE_DIR}"
++        lock_hash="$(sha256sum Cargo.lock | cut -d' ' -f1)"
++        toolchain_hash="$(sha256sum rust-toolchain.toml 2>/dev/null | cut -d' ' -f1 || echo none)"
++        {
++          echo "lock=${lock_hash}"
++          echo "toolchain=${toolchain_hash}"
++        } >> "$GITHUB_OUTPUT"
++
++    # actions/cache saves the path back under the primary key at the end of the
++    # job when the key missed, so there is no separate save step to write (the
++    # previous version of this action had a no-op one).
++    - name: Restore cargo home cache
++      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
++      with:
++        path: |
++          ~/.cargo/bin/
++          ~/.cargo/registry/index/
++          ~/.cargo/registry/cache/
++          ~/.cargo/git/db/
++        key: cargo-home-${{ inputs.key }}-${{ steps.hash.outputs.lock }}-${{ steps.hash.outputs.toolchain }}
++        restore-keys: |
++          cargo-home-${{ inputs.key }}-
+diff --git a/.github/blob-size-allowlist.txt b/.github/blob-size-allowlist.txt
+index 27d1c59e..cd2ee5d8 100644
+--- a/.github/blob-size-allowlist.txt
++++ b/.github/blob-size-allowlist.txt
+@@ -1,6 +1,15 @@
+-# Paths are matched exactly, relative to the repository root.
+-# Keep this list short and limited to intentional large checked-in assets.
+-
++# Blob-size allowlist for the codEx fork (scripts/check_blob_size.py).
++#
++# Paths are matched exactly, relative to the repository root. Keep this list
++# short and limited to intentional large checked-in assets.
++#
++# The fork's own product is the patch queue in patches/, and a single module
++# patch is larger than the budget. Those files are deliberately not listed
++# here, because their names change whenever the queue is regenerated:
++# scripts/gates.sh expands patches/*.patch into the effective allowlist at run
++# time instead, so the policy cannot silently stop matching after an upgrade.
++#
++# Inherited from upstream, which ships the same large assets.
+ .github/codex-cli-splash.png
+ MODULE.bazel.lock
+ codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
+@@ -9,3 +18,6 @@ codex-rs/models-manager/models.json
+ codex-rs/tui/tests/fixtures/oss-story.jsonl
+ codex-rs/tui_app_server/tests/fixtures/oss-story.jsonl
+ codex-rs/tui/src/app.rs
++# Fork-owned and patched, and just over upstream's 512000-byte budget on its
++# own, so any change to it would otherwise trip the policy.
++codex-rs/tui/src/bottom_pane/chat_composer.rs
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index a7d37b7..90af719 100644
+index a7d37b7f..90af7193 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -131,7 +263,7 @@ index a7d37b7..90af719 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index ede5a7f..0000000
+index ede5a7f0..00000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
 @@ -1,549 +0,0 @@
@@ -685,52 +817,81 @@ index ede5a7f..0000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
-deleted file mode 100644
-index f80fb0e..0000000
+index f80fb0e4..0fa93def 100644
 --- a/.github/workflows/blob-size-policy.yml
-+++ /dev/null
-@@ -1,53 +0,0 @@
--name: blob-size-policy
--
--on:
--  workflow_call:
--
--jobs:
--  check:
--    name: Blob size policy
--    runs-on: ubuntu-24.04
--    permissions:
--      contents: read
--    steps:
++++ b/.github/workflows/blob-size-policy.yml
+@@ -1,31 +1,48 @@
+ name: blob-size-policy
+ 
++# Upstream's changed-blob budget, narrowed to the fork and kept in the merge
++# gate: a stray binary or generated artifact must be caught before it lands on
++# main, not after.
++#
++# Upstream's version of this workflow also runs openai/fence in audit mode.
++# The fork does not carry vendor-run actions, so this file keeps only the
++# portable half: the git range plus scripts/check_blob_size.py (upstream's own
++# checker, carried at the slim root byte-identically).
++#
++# The queue is the fork's product, and a single module patch is one of the
++# largest files it ships, so scripts/gates.sh expands patches/*.patch into the
++# effective allowlist at run time; .github/blob-size-allowlist.txt holds the
++# explicit paths (upstream's large checked-in assets, which the fork inherits).
+ on:
+   workflow_call:
+ 
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
+ jobs:
+   check:
+     name: Blob size policy
+     runs-on: ubuntu-24.04
++    timeout-minutes: 15
+     permissions:
+       contents: read
+     steps:
 -      - uses: openai/fence@e6b39c80c51cb2b2a39448ddeff74b3b886c0a63 # pin@v0.10.0
 -        with:
 -          mode: audit
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          fetch-depth: 0
--          persist-credentials: false
--
--      - name: Determine comparison range
--        id: range
--        shell: bash
--        run: |
--          set -euo pipefail
--
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
++          # The policy diffs two revisions, so both have to be present locally.
+           fetch-depth: 0
+           persist-credentials: false
+ 
++      # PRs inspect the proposed diff; main pushes inspect only the commit
++      # range that just landed. A force-push or the first push of a branch can
++      # leave the base unset, in which case there is no range to police.
+       - name: Determine comparison range
+         id: range
+         shell: bash
+         run: |
+           set -euo pipefail
+ 
 -          # PRs inspect the proposed diff; main pushes inspect only the commit
 -          # range that just landed. Both paths feed the same blob-size checker.
--          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
--            base='${{ github.event.pull_request.base.sha }}'
--            head='${{ github.event.pull_request.head.sha }}'
--          else
--            base='${{ github.event.before }}'
--            head='${{ github.sha }}'
--          fi
--
+           if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+             base='${{ github.event.pull_request.base.sha }}'
+             head='${{ github.event.pull_request.head.sha }}'
+@@ -34,19 +51,21 @@ jobs:
+             head='${{ github.sha }}'
+           fi
+ 
 -          echo "base=$base" >> "$GITHUB_OUTPUT"
 -          echo "head=$head" >> "$GITHUB_OUTPUT"
--
--      - name: Check changed blob sizes
--        env:
++          if [[ -z "${base}" || "${base}" == 0000000000000000000000000000000000000000 ]]; then
++            echo "No comparable base revision; the check will be skipped."
++            echo "comparable=false" >> "$GITHUB_OUTPUT"
++          else
++            echo "comparable=true" >> "$GITHUB_OUTPUT"
++          fi
++          echo "base=${base}" >> "$GITHUB_OUTPUT"
++          echo "head=${head}" >> "$GITHUB_OUTPUT"
+ 
+       - name: Check changed blob sizes
++        if: steps.range.outputs.comparable == 'true'
+         env:
 -          BASE_SHA: ${{ steps.range.outputs.base }}
 -          HEAD_SHA: ${{ steps.range.outputs.head }}
 -        run: |
@@ -739,257 +900,75 @@ index f80fb0e..0000000
 -            --head "$HEAD_SHA" \
 -            --max-bytes 512000 \
 -            --allowlist .github/blob-size-allowlist.txt
--
--      - name: Check for a clean worktree
--        if: always() && !cancelled()
--        uses: ./.github/actions/check-clean-worktree
++          GATES_BASE_SHA: ${{ steps.range.outputs.base }}
++          GATES_HEAD_SHA: ${{ steps.range.outputs.head }}
++        run: bash scripts/gates.sh light --only blob-size --fast-fail
+ 
+       - name: Check for a clean worktree
+         if: always() && !cancelled()
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index c6f0055..3ba2fbd 100644
+index c6f00555..a40475a5 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
-@@ -1,29 +1,227 @@
+@@ -1,30 +1,45 @@
  name: blocking-ci
  
 -# This is the single entrypoint for checks that block a PR merge. It also runs
 -# after pushes to main so the same check family stays grouped in the Actions UI.
-+# Single entrypoint for checks that block a PR merge. The codEx fork uses a
-+# Cargo-only CI: build the CLI, check formatting, and run the TUI/core tests.
-+# Works both in the full fork checkout and in the slim patch-queue repo (the
-+# tree is bootstrapped from upstream when codex-rs/ is absent).
++# The single entrypoint for the checks that block a pull-request merge.
++#
++# The fork is a patch-queue repository: its product is the queue in patches/,
++# and applying that queue (scripts/bootstrap.sh) is the expensive part of CI.
++# The gates are therefore tiered by whether they need the queue applied:
++#
++#   light  (this workflow, blocking)   no patch list, no bootstrap: the queue's
++#                                      exported shape, the docs, spelling,
++#                                      shell linting, the changed-blob budget.
++#                                      Seconds, and it runs on every PR.
++#   heavy  (postmerge-ci.yml)          the bootstrapped tree: queue integrity,
++#                                      the export drift check, the Python
++#                                      suites, the compile surface, rustfmt,
++#                                      cargo-deny, the release build, and the
++#                                      codex-tui / codex-core suites.
++#
++# That is upstream's shape (a light rust-ci on a PR, a full rust-ci-full after
++# the merge) narrowed to Linux + Windows: the fork carries no bootstrap-free
++# Cargo check, so its Cargo work all lives in the heavy tier, and the local
++# pre-push hook runs the same heavy tier before a push leaves the machine.
++#
++# Every check is implemented once, in scripts/gates.sh, and the jobs below only
++# select a tier of it.
  on:
    pull_request: {}
    push:
      branches: [main]
  
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
  jobs:
--  # Keep reusable workflow calls alphabetized. The `required` job below is the
--  # version-controlled list that the main-branch ruleset should require.
+   # Keep reusable workflow calls alphabetized. The `required` job below is the
+   # version-controlled list that the main-branch ruleset should require.
 -  bazel:
 -    name: Bazel
 -    uses: ./.github/workflows/bazel.yml
 -    secrets: inherit
-+  build:
-+    name: Build
-+    runs-on: ubuntu-24.04
-+    timeout-minutes: 120
-+    steps:
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+        with:
-+          persist-credentials: false
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+      - name: Enable unprivileged user namespaces (Linux)
-+        run: |
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
-+            sudo sysctl -w kernel.unprivileged_userns_clone=1
-+          fi
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
-+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-+          fi
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        with:
-+          components: rustfmt
-+      - name: Build release CLI
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo build --release --bin codex
-+      - name: Check formatting
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo fmt --check
+-
+   blob-size-policy:
+     name: Blob size policy
+     uses: ./.github/workflows/blob-size-policy.yml
+     secrets: inherit
  
--  blob-size-policy:
--    name: Blob size policy
--    uses: ./.github/workflows/blob-size-policy.yml
--    secrets: inherit
-+  test-tui:
-+    name: TUI tests
-+    runs-on: ubuntu-24.04
-+    timeout-minutes: 120
-+    steps:
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+        with:
-+          persist-credentials: false
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+      - name: Enable unprivileged user namespaces (Linux)
-+        run: |
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
-+            sudo sysctl -w kernel.unprivileged_userns_clone=1
-+          fi
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
-+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-+          fi
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - name: Run codex-tui tests
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo install --locked cargo-nextest
-+          # A few TUI tests spawn the CLI binary, which `nextest -p codex-tui`
-+          # does not build; build it first so they can locate target/debug/codex.
-+          cargo build --bin codex
-+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast -p codex-tui
-+
-+  test-core:
-+    name: Core tests
-+    runs-on: ubuntu-24.04
-+    timeout-minutes: 120
-+    steps:
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+        with:
-+          persist-credentials: false
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+      - name: Enable unprivileged user namespaces (Linux)
-+        run: |
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.unprivileged_userns_clone'; then
-+            sudo sysctl -w kernel.unprivileged_userns_clone=1
-+          fi
-+          if sudo sysctl -a 2>/dev/null | grep -q '^kernel.apparmor_restrict_unprivileged_userns'; then
-+            sudo sysctl -w kernel.apparmor_restrict_unprivileged_userns=0
-+          fi
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - name: Run codex-core tests
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo install --locked cargo-nextest
-+          # The full core integration suite (sandbox/approvals scenarios) needs
-+          # sandbox-capable runners, exactly like upstream, which runs it on
-+          # self-hosted runners only. Hosted CI covers core unit tests; the
-+          # sandbox-dependent `suite::*` tests are excluded here.
-+          RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run --no-fail-fast \
-+            -p codex-core -E 'not test(suite)'
- 
-+  check-windows:
-+    name: Windows check
-+    runs-on: windows-2022
-+    timeout-minutes: 90
-+    steps:
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+        with:
-+          persist-credentials: false
-+      - name: Bootstrap tree if needed
-+        shell: bash
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        with:
-+          targets: x86_64-pc-windows-msvc
-+      - name: Expose MSVC SDK environment
-+        shell: pwsh
-+        env:
-+          TARGET: x86_64-pc-windows-msvc
-+        run: |
-+          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
-+      - name: Configure rusty_v8 artifact overrides (Windows)
-+        shell: bash
-+        env:
-+          TARGET: x86_64-pc-windows-msvc
-+        run: |
-+          set -euo pipefail
-+          cd "${TREE_DIR}"
-+          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
-+          release_tag="rusty-v8-v${version}"
-+          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
-+          binding_dir="${RUNNER_TEMP}/rusty_v8"
-+          profile="ptrcomp_sandbox_release"
-+          archive_name="rusty_v8_${profile}_${TARGET}.lib.gz"
-+          binding_name="src_binding_${profile}_${TARGET}.rs"
-+          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
-+          archive_path="${binding_dir}/${archive_name}"
-+          binding_path="${binding_dir}/${binding_name}"
-+          checksums_path="${binding_dir}/${checksums_name}"
-+          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
-+          mkdir -p "${binding_dir}"
-+          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
-+          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
-+          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
-+          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
-+            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
-+            exit 1
-+          fi
-+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
-+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
-+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
-+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
-+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
-+      # Type-check the Windows-only code paths (self-update swap, sandbox
-+      # helpers) on a native runner. Cross-checking from Linux is impossible
-+      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
-+      # `--tests` keeps the Windows test code and every
-+      # `cfg(not(target_os = "windows"))` item compiled, so the Unix updater
-+      # path cannot rot unseen.
-+      - name: Type-check the CLI for Windows
-+        shell: bash
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
-+      - name: Type-check the TUI for Windows
-+        shell: bash
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-tui
-+
-+  # Upstream runs cargo-deny and clippy as their own reusable workflows
-+  # (cargo-deny.yml and rust-ci-full.yml), which the fork does not carry.
-+  # cargo-deny is portable as-is: plain cargo plus a javascript-free action.
-+  #
-+  # clippy is deliberately absent. `cargo clippy -- -D warnings` also lints
-+  # workspace path dependencies, and rust-v0.160.0's own codex-core carries an
-+  # unused import (`core/src/tools/registry.rs:16`), which upstream has since
-+  # removed on main. Adding the gate before the base tag carries that fix would
-+  # fail every run; silencing it would mean shipping a fork-local lint
-+  # exception. Neither is this fork's call to make, so add the gate with the
-+  # upgrade that picks the fix up.
-   cargo-deny:
-     name: cargo-deny
+-  cargo-deny:
+-    name: cargo-deny
 -    uses: ./.github/workflows/cargo-deny.yml
 -    secrets: inherit
-+    runs-on: ubuntu-24.04
-+    timeout-minutes: 30
-+    steps:
-+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-+        with:
-+          persist-credentials: false
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      # The fork's own patches rewrite Cargo.lock at every upgrade and add
-+      # dependencies (self-update, /rewind), so licence, ban, and advisory
-+      # drift has to stay visible.
-+      - name: Run cargo-deny
-+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
-+        with:
-+          rust-version: 1.95.0
-+          manifest-path: ${{ hashFiles('codex-rs/Cargo.toml') != '' && 'codex-rs/Cargo.toml' || 'tree/codex-rs/Cargo.toml' }}
- 
+-
    codespell:
      name: Codespell
-@@ -35,35 +233,22 @@ jobs:
+     uses: ./.github/workflows/codespell.yml
+@@ -35,35 +50,22 @@ jobs:
      uses: ./.github/workflows/repo-checks.yml
      secrets: inherit
  
@@ -1005,25 +984,21 @@ index c6f0055..3ba2fbd 100644
 -
    required:
      name: CI required
--    # Without `always()`, GitHub skips this job after a failed dependency and a
--    # required check can appear successful instead of reporting the failure.
+     # Without `always()`, GitHub skips this job after a failed dependency and a
+     # required check can appear successful instead of reporting the failure.
      if: ${{ always() }}
      needs:
 -      - bazel
--      - blob-size-policy
-+      - build
-+      - test-tui
-+      - test-core
-+      - check-windows
-       - cargo-deny
+       - blob-size-policy
+-      - cargo-deny
        - codespell
        - repo-checks
 -      - rust-ci
 -      - sdk
      runs-on: ubuntu-24.04
      steps:
--      # Keep the helper on the same combined revision as the child workflows so
--      # the merge gate evaluates the exact candidate they validated.
+       # Keep the helper on the same combined revision as the child workflows so
+       # the merge gate evaluates the exact candidate they validated.
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
 +          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
@@ -1031,107 +1006,177 @@ index c6f0055..3ba2fbd 100644
  
        - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-deleted file mode 100644
-index 0f8ebae..0000000
+index 0f8ebae9..6415e5e1 100644
 --- a/.github/workflows/cargo-deny.yml
-+++ /dev/null
-@@ -1,31 +0,0 @@
--name: cargo-deny
--
--on:
--  workflow_call:
--
--jobs:
--  cargo-deny:
++++ b/.github/workflows/cargo-deny.yml
+@@ -1,30 +1,36 @@
+ name: cargo-deny
+ 
++# Licence, ban, and advisory drift. The fork's patches rewrite Cargo.lock at
++# every upgrade and add dependencies (self-update, /rewind), so this has to stay
++# visible -- including for the payload the queue delivers.
++#
++# Upstream runs this as a reusable workflow from its merge-blocking entrypoint.
++# The fork keeps the file and the action, but the check needs the bootstrapped
++# tree, so postmerge-ci.yml calls it in the heavy tier instead. Locally the
++# same check runs from `scripts/gates.sh tree` whenever cargo-deny is installed.
+ on:
+   workflow_call:
+ 
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
+ jobs:
+   cargo-deny:
 -    runs-on: ubuntu-latest
 -    defaults:
 -      run:
 -        working-directory: ./codex-rs
--    steps:
++    name: cargo-deny
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
+     steps:
 -      - name: Checkout
 -        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -
 -      - uses: ./.github/actions/setup-ci
 -
 -      - name: Install Rust toolchain
 -        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -
--      - name: Run cargo-deny
--        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
--        with:
--          rust-version: 1.95.0
++      - uses: ./.github/actions/bootstrap-tree
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+       - name: Run cargo-deny
+         uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+         with:
+           rust-version: 1.95.0
 -          manifest-path: ./codex-rs/Cargo.toml
--
--      - name: Check for a clean worktree
--        if: always() && !cancelled()
--        uses: ./.github/actions/check-clean-worktree
++          manifest-path: ${{ env.CODE_DIR }}/Cargo.toml
+ 
+       - name: Check for a clean worktree
+         if: always() && !cancelled()
 diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
-index 996b3de..1c46902 100644
+index 996b3ded..5bdd5583 100644
 --- a/.github/workflows/codespell.yml
 +++ b/.github/workflows/codespell.yml
-@@ -17,9 +17,10 @@ jobs:
-       - name: Checkout
-         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
-           persist-credentials: false
-       - name: Annotate locations with typos
--        uses: codespell-project/codespell-problem-matcher@b80729f885d32f78a716c2f107b4db1025001c42 # v1.1.0
-+        uses: codespell-project/codespell-problem-matcher@9ba2c57125d4908eade4308f32c4ff814c184633 # v1.2.0
-       - name: Codespell
-         uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
-         with:
-diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
-deleted file mode 100644
-index ac2b46d..0000000
---- a/.github/workflows/postmerge-ci.yml
-+++ /dev/null
-@@ -1,40 +0,0 @@
--name: postmerge-ci
+@@ -1,29 +1,40 @@
+-# Codespell configuration is within .codespellrc
++# Codespell configuration is within .codespellignore / .codespellrc.
+ ---
+ name: Codespell
+ 
++# Upstream carries codespell as its own reusable workflow, and the fork keeps
++# that shape: the check runs as its own merge-blocking job so a typo reports
++# its own cause. The implementation is not upstream's action-based one -- it is
++# `scripts/gates.sh light --only codespell`, the same pinned codespell (2.4.3)
++# the local commit hook runs, so the two cannot drift.
+ on:
+   workflow_call:
+ 
+ permissions:
+   contents: read
+ 
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
+ jobs:
+   codespell:
+     name: Check for spelling errors
+-    runs-on: ubuntu-latest
 -
++    runs-on: ubuntu-24.04
++    timeout-minutes: 15
+     steps:
+-      - name: Checkout
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
++      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
+-      - name: Annotate locations with typos
+-        uses: codespell-project/codespell-problem-matcher@b80729f885d32f78a716c2f107b4db1025001c42 # v1.1.0
+-      - name: Codespell
+-        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
++
++      # gates.sh runs codespell through uvx when no system codespell exists, so
++      # both sides pin 2.4.3.
++      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+         with:
+-          ignore_words_file: .codespellignore
++          version: "0.11.3"
++
++      - name: Codespell
++        run: bash scripts/gates.sh light --only codespell --fast-fail
+ 
+       - name: Check for a clean worktree
+         if: always() && !cancelled()
+diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
+index ac2b46d1..fa2cb354 100644
+--- a/.github/workflows/postmerge-ci.yml
++++ b/.github/workflows/postmerge-ci.yml
+@@ -1,29 +1,45 @@
+ name: postmerge-ci
+ 
 -# This is the single entrypoint for main-only CI that is intentionally outside
 -# the merge-blocking suite. It keeps the broader postmerge signal in one run.
--on:
--  push:
--    branches: [main]
--
--jobs:
++# The single entrypoint for main-only CI that is intentionally outside the
++# merge-blocking suite, exactly as upstream splits it: blocking-ci.yml runs the
++# light gate on a pull request, this runs the whole heavy gate after the merge.
++#
++# Children keep their own workflow_dispatch and `**full-ci**` branch triggers,
++# so a maintainer can ask for the full signal before merging.
+ on:
+   push:
+     branches: [main]
++  workflow_dispatch:
++
++concurrency:
++  # A newer main push supersedes a stale post-merge run instead of queueing
++  # behind it: main CI is only ever about the newest commit.
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
+ 
+ jobs:
 -  # Keep reusable workflow calls alphabetized. Each child retains its own
 -  # workflow_dispatch trigger so maintainers can rerun flaky suites directly.
--  rust-ci-full:
--    name: rust-ci-full
--    uses: ./.github/workflows/rust-ci-full.yml
--    secrets: inherit
--
++  # Keep reusable workflow calls alphabetized.
++  cargo-deny:
++    name: cargo-deny
++    uses: ./.github/workflows/cargo-deny.yml
++    secrets: inherit
++
++  rust-ci:
++    name: rust-ci
++    uses: ./.github/workflows/rust-ci.yml
++    secrets: inherit
++
+   rust-ci-full:
+     name: rust-ci-full
+     uses: ./.github/workflows/rust-ci-full.yml
+     secrets: inherit
+ 
 -  v8-canary:
 -    name: v8-canary
 -    uses: ./.github/workflows/v8-canary.yml
 -    secrets: inherit
 -
--  results:
--    name: Postmerge CI results
--    needs:
--      - rust-ci-full
+   results:
+     name: Postmerge CI results
+     needs:
++      - cargo-deny
++      - rust-ci
+       - rust-ci-full
 -      - v8-canary
--    if: ${{ always() }}
--    runs-on: ubuntu-24.04
--    steps:
--      # Postmerge runs use the pushed main commit, so this helper always comes
--      # from the same revision that defined the parent workflow.
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          ref: ${{ github.sha }}
--          persist-credentials: false
--
--      - name: Require successful dependencies
--        env:
--          NEEDS: ${{ toJSON(needs) }}
--        run: python3 .github/scripts/check_ci_results.py
+     if: ${{ always() }}
+     runs-on: ubuntu-24.04
+     steps:
 diff --git a/.github/workflows/python-runtime-build.yml b/.github/workflows/python-runtime-build.yml
 deleted file mode 100644
-index 748ff2f..0000000
+index 748ff2f1..00000000
 --- a/.github/workflows/python-runtime-build.yml
 +++ /dev/null
 @@ -1,114 +0,0 @@
@@ -1251,7 +1296,7 @@ index 748ff2f..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index f7f0b4a..0000000
+index f7f0b4af..00000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
 @@ -1,63 +0,0 @@
@@ -1320,7 +1365,7 @@ index f7f0b4a..0000000
 -            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 diff --git a/.github/workflows/python-sdk-build.yml b/.github/workflows/python-sdk-build.yml
 deleted file mode 100644
-index 66d89bc..0000000
+index 66d89bc9..00000000
 --- a/.github/workflows/python-sdk-build.yml
 +++ /dev/null
 @@ -1,65 +0,0 @@
@@ -1391,7 +1436,7 @@ index 66d89bc..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-sdk-cli-release.yml b/.github/workflows/python-sdk-cli-release.yml
 deleted file mode 100644
-index 2f7f6a7..0000000
+index 2f7f6a7f..00000000
 --- a/.github/workflows/python-sdk-cli-release.yml
 +++ /dev/null
 @@ -1,156 +0,0 @@
@@ -1553,7 +1598,7 @@ index 2f7f6a7..0000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 0e01f23..0000000
+index 0e01f23a..00000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
 @@ -1,172 +0,0 @@
@@ -1731,7 +1776,7 @@ index 0e01f23..0000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
-index d1783bb..0000000
+index d1783bb2..00000000
 --- a/.github/workflows/r2-release.yml
 +++ /dev/null
 @@ -1,59 +0,0 @@
@@ -1795,22 +1840,53 @@ index d1783bb..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 4f05cd0..cd0a5d6 100644
+index 4f05cd06..4547e4f0 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -6,72 +6,55 @@ on:
+@@ -1,77 +1,59 @@
+ name: repo-checks
+ 
++# The fork's light gate: everything that can be checked without applying the
++# patch queue. It needs no bootstrapped tree and no Cargo, so it costs seconds
++# and is the only thing that blocks a pull request (`blocking-ci.yml`).
++#
++# It covers:
++#   - the exported queue's shape (one patch per module, in order, with the
++#     manifest's subjects and file ownership)
++#   - the docs (README ASCII, README.zh typography)
++#   - spelling and shell linting
++#
++# The blob-size policy runs as its own sibling job (blob-size-policy.yml), and
++# everything that needs the tree lives in the heavy tier: rust-ci.yml for the
++# queue's invariants and the compile surface, rust-ci-full.yml for the release
++# build and the suites.
++#
++# Upstream's own repo-checks.yml is the model for this file; the fork drops the
++# Node/Bazel/Bazel-lint steps it does not carry and routes every remaining check
++# through scripts/gates.sh so the local commit hook runs exactly the same
++# commands.
+ on:
+   workflow_call:
+ 
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
++
  jobs:
-   build-test:
-     runs-on: ubuntu-latest
+-  build-test:
+-    runs-on: ubuntu-latest
 -    timeout-minutes: 10
 -    env:
 -      NODE_OPTIONS: --max-old-space-size=4096
-+    timeout-minutes: 15
++  repo-checks:
++    name: Repo checks
++    runs-on: ubuntu-24.04
++    timeout-minutes: 30
      steps:
-       - name: Checkout repository
-         uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
++      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
-+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
            persist-credentials: false
  
 -      - uses: ./.github/actions/setup-ci
@@ -1826,42 +1902,23 @@ index 4f05cd0..cd0a5d6 100644
 -
 -      - name: Install uv
 -        uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      # gates.sh runs codespell through uvx when no system codespell exists, so
++      # CI and the local hook pin the same version (2.4.3). Upstream's
++      # repo-checks.yml installs uv the same way.
++      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
          with:
--          version: "0.11.3"
--
+           version: "0.11.3"
+ 
 -      - name: Test downstream Python release resolution
 -        run: python3 -m unittest discover -s .github/scripts -p 'test_resolve_python_cli_release.py'
-+          components: rustfmt
-+
-+      - name: Bootstrap tree if needed
-+        run: |
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+
-+      - name: Validate patch-module layout
-+        run: |
-+          bash scripts/check-patch-modules.sh --patches patches
-+          if [[ "${TREE_DIR}" == "tree" ]]; then
-+            # Slim repo: the tree carries a copy of every fork-owned file that
-+            # lives here, so the queue cannot drift from what we publish.
-+            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}" --slim .
-+          else
-+            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
-+          fi
- 
+-
 -      - name: Test release version comparison
 -        run: python3 -m unittest discover -s .github/scripts -p 'test_releases.py'
 -
 -      - name: Test PyPI release verification
 -        run: uv run --no-project --with packaging==26.2 python -m unittest discover -s .github/scripts -p 'test_verify_pypi_release.py'
-+      - name: Verify codex-tui does not import codex-core directly
-+        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
- 
-       - name: Test Codex package builder
+-
+-      - name: Test Codex package builder
 -        run: python3 -m unittest discover -s scripts/codex_package -p 'test_*.py'
 -
 -      - name: Test standalone installer
@@ -1882,34 +1939,34 @@ index 4f05cd0..cd0a5d6 100644
 -
 -      - name: Install dependencies
 -        run: pnpm install --frozen-lockfile
-+        env:
-+          # The package-builder tests require CODEX_REPO_ROOT (upstream sets it
-+          # in .github/actions/setup-ci, which the fork does not use).
-+          CODEX_REPO_ROOT: ${{ env.TREE_DIR }}
-+        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
- 
-       - name: Ensure root README.md contains only ASCII and certain Unicode code points
+-
+-      - name: Ensure root README.md contains only ASCII and certain Unicode code points
 -        run: ./scripts/asciicheck.py README.md
 -      - name: Check root README ToC
 -        run: python3 scripts/readme_toc.py README.md
 -
 -      - name: Check formatting (run `just fmt` to fix)
 -        run: just fmt-check
-+        if: hashFiles('README.md') != ''
-+        run: python3 "${TREE_DIR}/scripts/asciicheck.py" README.md
- 
+-
 -      - name: Prettier (run `pnpm run format:fix` to fix)
 -        run: pnpm run format
-+      - name: Check formatting (run `cargo fmt` to fix)
-+        run: |
-+          cd "${CODE_DIR}"
-+          cargo fmt --check
++      # shellcheck ships with the hosted image, but the gate skips it silently
++      # when it is missing, so install it explicitly rather than let a runner
++      # image change weaken the gate unnoticed.
++      - name: Install shellcheck
++        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
++
++      # The repo half of the light gate. `--skip blob-size,codespell` because
++      # blob-size-policy.yml and codespell.yml own those checks as their own
++      # jobs, all three running the same scripts/gates.sh implementation.
++      - name: Run the light gate
++        run: bash scripts/gates.sh light --skip blob-size,codespell --fast-fail
  
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index 4745352..0000000
+index 47453526..00000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
 @@ -1,439 +0,0 @@
@@ -2353,54 +2410,89 @@ index 4745352..0000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-deleted file mode 100644
-index 0ad68df..0000000
+index 0ad68df3..62c4e520 100644
 --- a/.github/workflows/rust-ci-full.yml
-+++ /dev/null
-@@ -1,574 +0,0 @@
--name: rust-ci-full
--on:
--  workflow_call:
--  push:
--    branches:
++++ b/.github/workflows/rust-ci-full.yml
+@@ -1,574 +1,189 @@
+ name: rust-ci-full
++
++# The second half of the fork's heavy gate: the release CLI build and the full
++# codex-tui / codex-core suites (plus the native Windows type-check, which only
++# a Windows runner can do). Tens of minutes, which is why it is deliberately
++# not part of the merge gate -- the light gate in blocking-ci.yml is.
++#
++# Upstream's rust-ci-full.yml is the model. The fork narrows it to Linux +
++# Windows and drives every check through scripts/gates.sh, so the local
++# `pre-push` hook runs the same commands, with the same memory ceilings and
++# nextest profile, before a push leaves the machine.
++#
++# Reachable the upstream way:
++#   - after a merge, through postmerge-ci.yml
++#   - on demand, through workflow_dispatch or a `**full-ci**` branch
++#   - locally, through `bash scripts/gates.sh full` (tree checks too: `heavy`)
+ on:
+   workflow_call:
++  workflow_dispatch:
+   push:
+     branches:
 -      # Main pushes enter through postmerge-ci. Keep this opt-in branch trigger
 -      # for developers who want the full suite before merging.
--      - "**full-ci**"
+       - "**full-ci**"
 -  workflow_dispatch:
--
--jobs:
++
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
+ 
+ jobs:
 -  # --- CI that doesn't need specific targets ---------------------------------
 -  general:
 -    name: Format / etc
--    runs-on: ubuntu-24.04
++  build:
++    name: Release build
+     runs-on: ubuntu-24.04
 -    defaults:
 -      run:
 -        working-directory: codex-rs
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++    # The release link with thin LTO is the single most expensive step here.
++    timeout-minutes: 300
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
--        with:
++      - uses: ./.github/actions/bootstrap-tree
+       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      - uses: ./.github/actions/cargo-cache
+         with:
 -          components: rustfmt
 -      - name: cargo fmt
 -        run: cargo fmt -- --config imports_granularity=Item --check
 -      - name: Rust benchmark smoke test
 -        run: just bench-smoke
--
++          key: rust-ci-full-build
++      - name: Build release CLI
++        run: bash scripts/gates.sh full --only release-build --tree "${TREE_DIR}" --fast-fail
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -  cargo_shear:
 -    name: cargo shear
--    runs-on: ubuntu-24.04
++  test-tui:
++    name: TUI tests
+     runs-on: ubuntu-24.04
 -    defaults:
 -      run:
 -        working-directory: codex-rs
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++    timeout-minutes: 180
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      - uses: ./.github/actions/bootstrap-tree
+       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
 -        with:
 -          tool: cargo-shear@1.11.2
@@ -2409,16 +2501,31 @@ index 0ad68df..0000000
 -
 -  argument_comment_lint_package:
 -    name: Argument comment lint package
--    runs-on: ubuntu-24.04
++      - uses: ./.github/actions/cargo-cache
++        with:
++          key: rust-ci-full-test-tui
++      - name: Install cargo-nextest
++        run: cargo install --locked cargo-nextest
++      - name: Run codex-tui tests
++        run: bash scripts/gates.sh full --only tui-tests --tree "${TREE_DIR}" --fast-fail
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
++
++  test-core:
++    name: Core tests
+     runs-on: ubuntu-24.04
 -    env:
 -      CARGO_DYLINT_VERSION: 5.0.0
 -      DYLINT_LINK_VERSION: 5.0.0
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++    timeout-minutes: 180
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      - uses: ./.github/actions/bootstrap-tree
+       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -        with:
 -          toolchain: nightly-2025-09-18
 -          components: llvm-tools-preview, rustc-dev, rust-src
@@ -2604,10 +2711,29 @@ index 0ad68df..0000000
 -              group: ${{ github.event.repository.name }}-runners
 -              labels: ${{ github.event.repository.name }}-windows-arm64
 -
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++      - uses: ./.github/actions/cargo-cache
++        with:
++          key: rust-ci-full-test-core
++      - name: Install cargo-nextest
++        run: cargo install --locked cargo-nextest
++      # The sandbox-dependent core integration suite (suite::*) needs
++      # sandbox-capable runners, exactly like upstream, which runs it on
++      # self-hosted runners only. Hosted CI covers core unit tests; gates.sh
++      # excludes the same tests.
++      - name: Run codex-core tests
++        run: bash scripts/gates.sh full --only core-tests --tree "${TREE_DIR}" --fast-fail
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
++
++  check-windows:
++    name: Windows check
++    runs-on: windows-2022
++    timeout-minutes: 90
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - name: Install Linux build dependencies
 -        if: ${{ runner.os == 'Linux' }}
@@ -2618,8 +2744,9 @@ index 0ad68df..0000000
 -            sudo apt-get update -y
 -            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev
 -          fi
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
--        with:
++      - uses: ./.github/actions/bootstrap-tree
+       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+         with:
 -          targets: ${{ matrix.target }}
 -          components: clippy
 -
@@ -2638,7 +2765,12 @@ index 0ad68df..0000000
 -        id: lockhash
 -        working-directory: codex-rs
 -        shell: bash
--        run: |
++          targets: x86_64-pc-windows-msvc
++      - name: Expose MSVC SDK environment
++        shell: pwsh
++        env:
++          TARGET: x86_64-pc-windows-msvc
+         run: |
 -          set -euo pipefail
 -          echo "hash=$(sha256sum Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 -          echo "toolchain_hash=$(sha256sum rust-toolchain.toml | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -2672,9 +2804,13 @@ index 0ad68df..0000000
 -
 -      - name: Configure sccache backend
 -        if: ${{ env.USE_SCCACHE == 'true' }}
--        shell: bash
--        run: |
--          set -euo pipefail
++          & "$env:TREE_DIR/.github/actions/setup-msvc-env/setup-msvc-env.ps1" -Target "$env:TARGET"
++      - name: Configure rusty_v8 artifact overrides (Windows)
+         shell: bash
++        env:
++          TARGET: x86_64-pc-windows-msvc
+         run: |
+           set -euo pipefail
 -          if [[ -n "${ACTIONS_CACHE_URL:-}" && -n "${ACTIONS_RUNTIME_TOKEN:-}" ]]; then
 -            echo "SCCACHE_GHA_ENABLED=true" >> "$GITHUB_ENV"
 -            echo "Using sccache GitHub backend"
@@ -2682,7 +2818,27 @@ index 0ad68df..0000000
 -            echo "SCCACHE_GHA_ENABLED=false" >> "$GITHUB_ENV"
 -            echo "SCCACHE_DIR=${{ github.workspace }}/.sccache" >> "$GITHUB_ENV"
 -            echo "Using sccache local disk + actions/cache fallback"
--          fi
++          cd "${TREE_DIR}"
++          version="$(python3 .github/scripts/rusty_v8_bazel.py resolved-v8-crate-version)"
++          release_tag="rusty-v8-v${version}"
++          base_url="https://github.com/openai/codex/releases/download/${release_tag}"
++          binding_dir="${RUNNER_TEMP}/rusty_v8"
++          profile="ptrcomp_sandbox_release"
++          archive_name="rusty_v8_${profile}_${TARGET}.lib.gz"
++          binding_name="src_binding_${profile}_${TARGET}.rs"
++          checksums_name="rusty_v8_${profile}_${TARGET}.sha256"
++          archive_path="${binding_dir}/${archive_name}"
++          binding_path="${binding_dir}/${binding_name}"
++          checksums_path="${binding_dir}/${checksums_name}"
++          trusted_checksums="third_party/v8/rusty_v8_${version//./_}_release_manifests.sha256"
++          mkdir -p "${binding_dir}"
++          curl -fsSL "${base_url}/${checksums_name}" -o "${checksums_path}"
++          expected_manifest_checksum="$(grep -F "  ${checksums_name}" "${trusted_checksums}" | cut -d ' ' -f 1)"
++          actual_manifest_checksum="$(python3 -c 'import hashlib, pathlib, sys; print(hashlib.sha256(pathlib.Path(sys.argv[1]).read_bytes()).hexdigest())' "${checksums_path}")"
++          if [[ "${actual_manifest_checksum}" != "${expected_manifest_checksum}" ]]; then
++            echo "Checksum mismatch for ${checksums_name}: expected ${expected_manifest_checksum}, got ${actual_manifest_checksum}" >&2
++            exit 1
+           fi
 -
 -      - name: Enable sccache wrapper
 -        if: ${{ env.USE_SCCACHE == 'true' }}
@@ -2702,8 +2858,26 @@ index 0ad68df..0000000
 -
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Prepare APT cache directories (musl)
--        shell: bash
--        run: |
++          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
++          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
++          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
++          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
++          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
++      # Type-check the Windows-only code paths (self-update swap, sandbox
++      # helpers) on a native runner. Cross-checking from Linux is impossible
++      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
++      # `--tests` keeps the Windows test code and every
++      # `cfg(not(target_os = "windows"))` item compiled, so the Unix updater
++      # path cannot rot unseen.
++      #
++      # These two calls are the only gate commands that cannot go through
++      # scripts/gates.sh: the local gate has no Windows runner, and a
++      # `cargo check --target` with the MSVC environment is not something a
++      # Linux host can reproduce. They are the Windows half of the compile
++      # surface that `gates.sh tree` checks on Linux.
++      - name: Type-check the CLI for Windows
+         shell: bash
+         run: |
 -          set -euo pipefail
 -          sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
 -          sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
@@ -2747,8 +2921,11 @@ index 0ad68df..0000000
 -
 -      - name: Pre-warm dependency cache (cargo-chef)
 -        if: ${{ matrix.profile == 'release' }}
--        shell: bash
--        run: |
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
++      - name: Type-check the TUI for Windows
+         shell: bash
+         run: |
 -          set -euo pipefail
 -          RECIPE="${RUNNER_TEMP}/chef-recipe.json"
 -          cargo chef prepare --recipe-path "$RECIPE"
@@ -2764,7 +2941,12 @@ index 0ad68df..0000000
 -          name: cargo-timings-rust-ci-clippy-${{ matrix.target }}-${{ matrix.profile }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
 -          if-no-files-found: warn
--
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-tui
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -      # Save caches explicitly; make non-fatal so cache packaging
 -      # never fails the overall job. Only save when key wasn't hit.
 -      - name: Save cargo home cache
@@ -2886,9 +3068,10 @@ index 0ad68df..0000000
 -    secrets: inherit
 -
 -  # --- Gatherer job for the full post-merge workflow --------------------------
--  results:
--    name: Full CI results
--    needs:
++  # The gatherer: only an explicit success from every above is safe to accept.
+   results:
+     name: Full CI results
+     needs:
 -      [
 -        general,
 -        cargo_shear,
@@ -2902,8 +3085,13 @@ index 0ad68df..0000000
 -        tests_windows_arm64,
 -      ]
 -    if: always()
--    runs-on: ubuntu-24.04
--    steps:
++      - build
++      - test-tui
++      - test-core
++      - check-windows
++    if: ${{ always() }}
+     runs-on: ubuntu-24.04
+     steps:
 -      - name: Summarize
 -        shell: bash
 -        run: |
@@ -2927,22 +3115,50 @@ index 0ad68df..0000000
 -          [[ '${{ needs.tests_linux_arm64.result }}' == 'success' ]] || { echo 'tests_linux_arm64 failed'; exit 1; }
 -          [[ '${{ needs.tests_windows_x64.result }}' == 'success' ]] || { echo 'tests_windows_x64 failed'; exit 1; }
 -          [[ '${{ needs.tests_windows_arm64.result }}' == 'success' ]] || { echo 'tests_windows_arm64 failed'; exit 1; }
--
++      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
++        with:
++          persist-credentials: false
+ 
 -      - name: sccache summary note
 -        if: always()
 -        run: |
 -          echo "Per-job sccache stats are attached to each matrix job's Step Summary."
++      - name: Require successful dependencies
++        env:
++          NEEDS: ${{ toJSON(needs) }}
++        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-deleted file mode 100644
-index 81d7d73..0000000
+index 81d7d731..4382c5d7 100644
 --- a/.github/workflows/rust-ci.yml
-+++ /dev/null
-@@ -1,263 +0,0 @@
--name: rust-ci
--on:
--  workflow_call:
--  workflow_dispatch:
--
++++ b/.github/workflows/rust-ci.yml
+@@ -1,263 +1,65 @@
+ name: rust-ci
++
++# The first half of the fork's heavy gate: every check that needs the patch
++# queue applied but not the release build -- the queue's own invariants, the
++# export drift check, the Python suites, the crate boundary, the Cargo compile
++# surface, the config-schema fixture, rustfmt, and cargo-deny.
++#
++# It is the fork's narrowing of upstream's rust-ci.yml: upstream checks
++# formatting, cargo-shear, and the argument-comment lint on a pull request; the
++# fork's equivalent checks run against a bootstrapped tree, so they can only
++# run once the queue is applied, which is why this workflow is in the heavy
++# tier with rust-ci-full.yml and not in blocking-ci.yml.
++#
++# Both heavy workflows are reachable the upstream way:
++#   - after a merge, through postmerge-ci.yml
++#   - on demand, through workflow_dispatch or a `**full-ci**` branch
++#   - locally, through `bash scripts/gates.sh tree` (or `heavy` for both halves)
+ on:
+   workflow_call:
+   workflow_dispatch:
++  push:
++    branches:
++      # Opt-in pre-merge lane, mirroring upstream's rust-ci-full.yml branch
++      # trigger. rust-ci-full.yml carries the same trigger, so pushing such a
++      # branch asks for the whole heavy tier before a merge.
++      - "**full-ci**"
+ 
 -jobs:
 -  # --- Detect changed paths so the fast PR workflow only runs relevant jobs ---
 -  changed:
@@ -2995,24 +3211,32 @@ index 81d7d73..0000000
 -      - name: Check for a clean worktree
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
--
++concurrency:
++  group: ${{ github.workflow }}-${{ github.ref }}
++  cancel-in-progress: true
+ 
 -  # --- Fast Cargo-native PR checks -------------------------------------------
 -  general:
 -    name: Format / etc
--    runs-on: ubuntu-24.04
++jobs:
++  tree:
++    name: Tree checks
+     runs-on: ubuntu-24.04
 -    needs: changed
 -    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' }}
 -    defaults:
 -      run:
 -        working-directory: codex-rs
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++    timeout-minutes: 90
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
--        with:
--          components: rustfmt
++      - uses: ./.github/actions/bootstrap-tree
+       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+         with:
+           components: rustfmt
 -      - name: cargo fmt
 -        run: cargo fmt -- --config imports_granularity=Item --check
 -      - name: Rust benchmark smoke test
@@ -3032,7 +3256,8 @@ index 81d7d73..0000000
 -        working-directory: codex-rs
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
++      - uses: ./.github/actions/cargo-cache
+         with:
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
@@ -3041,10 +3266,25 @@ index 81d7d73..0000000
 -          tool: cargo-shear@1.11.2
 -      - name: cargo shear
 -        run: cargo shear --deny-warnings
--
--      - name: Check for a clean worktree
--        if: always() && !cancelled()
--        uses: ./.github/actions/check-clean-worktree
++          key: rust-ci-tree
++
++      # The tree tier of scripts/gates.sh: the same commands the local
++      # `pre-push` hook runs, so a local pass is a CI pass.
++      #
++      # Not `cargo check --workspace`: upstream's workspace carries members
++      # that need system headers this fork never installs (voice-host pulls
++      # gstreamer/glib through pkg-config). The gate checks exactly the three
++      # crates that build, test, and release here.
++      #
++      # cargo-deny reports "skipped" here because the binary is not installed;
++      # cargo-deny.yml runs it as its own job, with upstream's action caching
++      # the advisory database.
++      - name: Run the tree gate
++        run: bash scripts/gates.sh tree --tree "${TREE_DIR}" --no-fail-fast
+ 
+       - name: Check for a clean worktree
+         if: always() && !cancelled()
+         uses: ./.github/actions/check-clean-worktree
 -
 -  argument_comment_lint_package:
 -    name: Argument comment lint package
@@ -3203,7 +3443,7 @@ index 81d7d73..0000000
 -          NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT_PACKAGE: ${{ needs.changed.outputs.argument_comment_lint_package }}
 diff --git a/.github/workflows/rust-release-argument-comment-lint.yml b/.github/workflows/rust-release-argument-comment-lint.yml
 deleted file mode 100644
-index 5bf1121..0000000
+index 5bf11219..00000000
 --- a/.github/workflows/rust-release-argument-comment-lint.yml
 +++ /dev/null
 @@ -1,113 +0,0 @@
@@ -3322,7 +3562,7 @@ index 5bf1121..0000000
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-provisioned-macos.yml b/.github/workflows/rust-release-provisioned-macos.yml
 deleted file mode 100644
-index 6d1b245..0000000
+index 6d1b2459..00000000
 --- a/.github/workflows/rust-release-provisioned-macos.yml
 +++ /dev/null
 @@ -1,214 +0,0 @@
@@ -3542,7 +3782,7 @@ index 6d1b245..0000000
 -          if-no-files-found: warn
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
 deleted file mode 100644
-index 20490c5..0000000
+index 20490c5e..00000000
 --- a/.github/workflows/rust-release-windows.yml
 +++ /dev/null
 @@ -1,624 +0,0 @@
@@ -4172,7 +4412,7 @@ index 20490c5..0000000
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-zsh.yml b/.github/workflows/rust-release-zsh.yml
 deleted file mode 100644
-index 030cc92..0000000
+index 030cc92a..00000000
 --- a/.github/workflows/rust-release-zsh.yml
 +++ /dev/null
 @@ -1,182 +0,0 @@
@@ -4359,7 +4599,7 @@ index 030cc92..0000000
 -          tag: ${{ needs.metadata.outputs.release_tag }}
 -          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985..7eacbd0 100644
+index 26d4985a..1343353e 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,227 +1,251 @@
@@ -5348,7 +5588,7 @@ index 26d4985..7eacbd0 100644
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/verify-zsh-manifest.sh" \
 -            "$zsh_manifest" "$CODEX_ZSH_MANIFEST_SHA256"
 +          sha256sum "${dest}/codex-${TARGET}.tar.gz" | \
-+            awk '{print $1 "  codex-'${TARGET}'.tar.gz"}' \
++            awk '{print $1 "  codex-'"${TARGET}"'.tar.gz"}' \
 +            > "${dest}/codex-${TARGET}.tar.gz.sha256"
  
 -          PYTHONPATH="${GITHUB_WORKSPACE}/scripts" python3 - "$TARGET" "$signed_root" "$zsh_manifest" <<'PY'
@@ -6742,7 +6982,7 @@ index 26d4985..7eacbd0 100644
 +          gh release upload "${tag}" "${assets[@]}" --clobber
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index 32ec3af..0000000
+index 32ec3af8..00000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
 @@ -1,479 +0,0 @@
@@ -7227,7 +7467,7 @@ index 32ec3af..0000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 3f91dd1..0000000
+index 3f91dd18..00000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
 @@ -1,161 +0,0 @@
@@ -7394,7 +7634,7 @@ index 3f91dd1..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index 94f1aa0..0000000
+index 94f1aa01..00000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
 @@ -1,444 +0,0 @@
@@ -7844,10 +8084,10 @@ index 94f1aa0..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 0000000..c0313cf
+index 00000000..02c85609
 --- /dev/null
 +++ b/install.sh
-@@ -0,0 +1,209 @@
+@@ -0,0 +1,215 @@
 +#!/bin/sh
 +#
 +# codEx standalone installer
@@ -8049,17 +8289,23 @@ index 0000000..c0313cf
 +    *":$CODEX_INSTALL_DIR:"*) ;;
 +    *)
 +      warn "$CODEX_INSTALL_DIR is not on your PATH; add it, for example:"
++      # The literal `$PATH` in the format string is text the user should copy
++      # into their own shell, not a shell expansion of this script's PATH.
++      # shellcheck disable=SC2016
 +      printf '  export PATH="%s:$PATH"\n' "$CODEX_INSTALL_DIR"
 +      ;;
 +  esac
 +
++  # The literal backticks name the command the user should run; the format
++  # string stays single-quoted so the shell cannot try to expand them.
++  # shellcheck disable=SC2016
 +  printf '\n🎉 codEx %s installed. Run `codex update` to upgrade in the future.\n' "$version"
 +}
 +
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 6fd6ade..0000000
+index 6fd6aded..00000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
 @@ -1,35 +0,0 @@
@@ -8100,7 +8346,7 @@ index 6fd6ade..0000000
 -])
 diff --git a/patches/abseil_windows_gnullvm_thread_identity.patch b/patches/abseil_windows_gnullvm_thread_identity.patch
 deleted file mode 100644
-index 27c4ecf..0000000
+index 27c4ecf7..00000000
 --- a/patches/abseil_windows_gnullvm_thread_identity.patch
 +++ /dev/null
 @@ -1,16 +0,0 @@
@@ -8122,7 +8368,7 @@ index 27c4ecf..0000000
 - #elif defined(__APPLE__) && defined(ABSL_HAVE_THREAD_LOCAL)
 diff --git a/patches/bzip2_windows_stack_args.patch b/patches/bzip2_windows_stack_args.patch
 deleted file mode 100644
-index 2786e90..0000000
+index 2786e908..00000000
 --- a/patches/bzip2_windows_stack_args.patch
 +++ /dev/null
 @@ -1,23 +0,0 @@
@@ -8151,7 +8397,7 @@ index 2786e90..0000000
 -+bazel_dep(name = "platforms", version = "1.0.0")
 diff --git a/patches/llvm_rusty_v8_custom_libcxx.patch b/patches/llvm_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index dc5f4e6..0000000
+index dc5f4e65..00000000
 --- a/patches/llvm_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,108 +0,0 @@
@@ -8265,7 +8511,7 @@ index dc5f4e6..0000000
 -             "@mingw//:mingw_w64_headers_crt_directory",
 diff --git a/patches/llvm_windows_arm64_powl.patch b/patches/llvm_windows_arm64_powl.patch
 deleted file mode 100644
-index 0fd33c9..0000000
+index 0fd33c97..00000000
 --- a/patches/llvm_windows_arm64_powl.patch
 +++ /dev/null
 @@ -1,25 +0,0 @@
@@ -8296,7 +8542,7 @@ index 0fd33c9..0000000
 -         # Clang will respect the user's chosen CRT variant.
 diff --git a/patches/llvm_windows_mingw_compat.patch b/patches/llvm_windows_mingw_compat.patch
 deleted file mode 100644
-index 66cf4e7..0000000
+index 66cf4e7b..00000000
 --- a/patches/llvm_windows_mingw_compat.patch
 +++ /dev/null
 @@ -1,50 +0,0 @@
@@ -8352,7 +8598,7 @@ index 66cf4e7..0000000
 -         ":winpthread",
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index 7bb49cb..0000000
+index 7bb49cbc..00000000
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,112 +0,0 @@
@@ -8470,7 +8716,7 @@ index 7bb49cb..0000000
 - 
 diff --git a/patches/rules_cc_rusty_v8_custom_libcxx.patch b/patches/rules_cc_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index 3efda03..0000000
+index 3efda035..00000000
 --- a/patches/rules_cc_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,44 +0,0 @@
@@ -8520,7 +8766,7 @@ index 3efda03..0000000
 -     _cc_library(**kwargs)
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 deleted file mode 100644
-index 2f38c2b..0000000
+index 2f38c2bf..00000000
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ /dev/null
 @@ -1,58 +0,0 @@
@@ -8584,7 +8830,7 @@ index 2f38c2b..0000000
 -     "build_script_data_select": _label_list_dict(),
 diff --git a/patches/rules_rust_build_script_tools_transition.patch b/patches/rules_rust_build_script_tools_transition.patch
 deleted file mode 100644
-index dcbc456..0000000
+index dcbc4569..00000000
 --- a/patches/rules_rust_build_script_tools_transition.patch
 +++ /dev/null
 @@ -1,19 +0,0 @@
@@ -8609,7 +8855,7 @@ index dcbc456..0000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index a8eba2b..0000000
+index a8eba2ba..00000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
 @@ -1,109 +0,0 @@
@@ -8724,7 +8970,7 @@ index a8eba2b..0000000
 -     """A helper function for `_add_native_link_flags`.
 diff --git a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch b/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 deleted file mode 100644
-index 52c5ae8..0000000
+index 52c5ae86..00000000
 --- a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 +++ /dev/null
 @@ -1,15 +0,0 @@
@@ -8745,7 +8991,7 @@ index 52c5ae8..0000000
 -             }
 diff --git a/patches/rusty_v8_prebuilt_out_dir.patch b/patches/rusty_v8_prebuilt_out_dir.patch
 deleted file mode 100644
-index 4242a29..0000000
+index 4242a29b..00000000
 --- a/patches/rusty_v8_prebuilt_out_dir.patch
 +++ /dev/null
 @@ -1,74 +0,0 @@
@@ -8825,7 +9071,7 @@ index 4242a29..0000000
 -       } else if target.contains("apple")
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 deleted file mode 100644
-index dde0efd..0000000
+index dde0efdf..00000000
 --- a/patches/v8_bazel_rules.patch
 +++ /dev/null
 @@ -1,509 +0,0 @@
@@ -9340,7 +9586,7 @@ index dde0efd..0000000
 - )
 diff --git a/patches/v8_module_deps.patch b/patches/v8_module_deps.patch
 deleted file mode 100644
-index d179617..0000000
+index d179617e..00000000
 --- a/patches/v8_module_deps.patch
 +++ /dev/null
 @@ -1,285 +0,0 @@
@@ -9631,7 +9877,7 @@ index d179617..0000000
 -+ # usages with an empty list.
 diff --git a/patches/v8_source_portability.patch b/patches/v8_source_portability.patch
 deleted file mode 100644
-index 6b6537c..0000000
+index 6b6537cb..00000000
 --- a/patches/v8_source_portability.patch
 +++ /dev/null
 @@ -1,316 +0,0 @@
@@ -9953,7 +10199,7 @@ index 6b6537c..0000000
 -   // A fix is also included in the 5.4.182 and 5.10.103 versions ("x86/fpu:
 diff --git a/patches/webrtc-sys_hermetic_darwin_sysroot.patch b/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 deleted file mode 100644
-index c90edbd..0000000
+index c90edbd0..00000000
 --- a/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 +++ /dev/null
 @@ -1,75 +0,0 @@
@@ -10034,7 +10280,7 @@ index c90edbd..0000000
 -+        .unwrap();
 diff --git a/patches/windows-link.patch b/patches/windows-link.patch
 deleted file mode 100644
-index 92423d1..0000000
+index 92423d1f..00000000
 --- a/patches/windows-link.patch
 +++ /dev/null
 @@ -1,10 +0,0 @@
@@ -10050,7 +10296,7 @@ index 92423d1..0000000
 - /// Defines an external function to import.
 diff --git a/patches/xz_windows_stack_args.patch b/patches/xz_windows_stack_args.patch
 deleted file mode 100644
-index 926fb0a..0000000
+index 926fb0a6..00000000
 --- a/patches/xz_windows_stack_args.patch
 +++ /dev/null
 @@ -1,14 +0,0 @@
@@ -10070,7 +10316,7 @@ index 926fb0a..0000000
 -     defines = select({
 diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index c45a360..0000000
+index c45a360a..00000000
 --- a/patches/zstd-sys_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,41 +0,0 @@

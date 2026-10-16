@@ -1,60 +1,59 @@
 name: repo-checks
 
+# The fork's light gate: everything that can be checked without applying the
+# patch queue. It needs no bootstrapped tree and no Cargo, so it costs seconds
+# and is the only thing that blocks a pull request (`blocking-ci.yml`).
+#
+# It covers:
+#   - the exported queue's shape (one patch per module, in order, with the
+#     manifest's subjects and file ownership)
+#   - the docs (README ASCII, README.zh typography)
+#   - spelling and shell linting
+#
+# The blob-size policy runs as its own sibling job (blob-size-policy.yml), and
+# everything that needs the tree lives in the heavy tier: rust-ci.yml for the
+# queue's invariants and the compile surface, rust-ci-full.yml for the release
+# build and the suites.
+#
+# Upstream's own repo-checks.yml is the model for this file; the fork drops the
+# Node/Bazel/Bazel-lint steps it does not carry and routes every remaining check
+# through scripts/gates.sh so the local commit hook runs exactly the same
+# commands.
 on:
   workflow_call:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  build-test:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+  repo-checks:
+    name: Repo checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
 
-      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      # gates.sh runs codespell through uvx when no system codespell exists, so
+      # CI and the local hook pin the same version (2.4.3). Upstream's
+      # repo-checks.yml installs uv the same way.
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          components: rustfmt
+          version: "0.11.3"
 
-      - name: Bootstrap tree if needed
-        run: |
-          if [[ ! -d codex-rs ]]; then
-            bash scripts/bootstrap.sh
-          fi
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+      # shellcheck ships with the hosted image, but the gate skips it silently
+      # when it is missing, so install it explicitly rather than let a runner
+      # image change weaken the gate unnoticed.
+      - name: Install shellcheck
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
 
-      - name: Validate patch-module layout
-        run: |
-          bash scripts/check-patch-modules.sh --patches patches
-          if [[ "${TREE_DIR}" == "tree" ]]; then
-            # Slim repo: the tree carries a copy of every fork-owned file that
-            # lives here, so the queue cannot drift from what we publish.
-            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}" --slim .
-          else
-            bash scripts/check-patch-modules.sh --tree "${TREE_DIR}"
-          fi
-
-      - name: Verify codex-tui does not import codex-core directly
-        run: python3 "${TREE_DIR}/.github/scripts/verify_tui_core_boundary.py"
-
-      - name: Test Codex package builder
-        env:
-          # The package-builder tests require CODEX_REPO_ROOT (upstream sets it
-          # in .github/actions/setup-ci, which the fork does not use).
-          CODEX_REPO_ROOT: ${{ env.TREE_DIR }}
-        run: python3 -m unittest discover -s "${TREE_DIR}/scripts/codex_package" -p 'test_*.py'
-
-      - name: Ensure root README.md contains only ASCII and certain Unicode code points
-        if: hashFiles('README.md') != ''
-        run: python3 "${TREE_DIR}/scripts/asciicheck.py" README.md
-
-      - name: Check formatting (run `cargo fmt` to fix)
-        run: |
-          cd "${CODE_DIR}"
-          cargo fmt --check
+      # The repo half of the light gate. `--skip blob-size,codespell` because
+      # blob-size-policy.yml and codespell.yml own those checks as their own
+      # jobs, all three running the same scripts/gates.sh implementation.
+      - name: Run the light gate
+        run: bash scripts/gates.sh light --skip blob-size,codespell --fast-fail
 
       - name: Check for a clean worktree
         if: always() && !cancelled()

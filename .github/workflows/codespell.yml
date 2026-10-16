@@ -1,30 +1,40 @@
-# Codespell configuration is within .codespellrc
+# Codespell configuration is within .codespellignore / .codespellrc.
 ---
 name: Codespell
 
+# Upstream carries codespell as its own reusable workflow, and the fork keeps
+# that shape: the check runs as its own merge-blocking job so a typo reports
+# its own cause. The implementation is not upstream's action-based one -- it is
+# `scripts/gates.sh light --only codespell`, the same pinned codespell (2.4.3)
+# the local commit hook runs, so the two cannot drift.
 on:
   workflow_call:
 
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   codespell:
     name: Check for spelling errors
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
     steps:
-      - name: Checkout
-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
         with:
-          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
           persist-credentials: false
-      - name: Annotate locations with typos
-        uses: codespell-project/codespell-problem-matcher@9ba2c57125d4908eade4308f32c4ff814c184633 # v1.2.0
-      - name: Codespell
-        uses: codespell-project/actions-codespell@8f01853be192eb0f849a5c7d721450e7a467c579 # v2.2
+
+      # gates.sh runs codespell through uvx when no system codespell exists, so
+      # both sides pin 2.4.3.
+      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
         with:
-          ignore_words_file: .codespellignore
+          version: "0.11.3"
+
+      - name: Codespell
+        run: bash scripts/gates.sh light --only codespell --fast-fail
 
       - name: Check for a clean worktree
         if: always() && !cancelled()

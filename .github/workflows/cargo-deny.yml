@@ -1,0 +1,37 @@
+name: cargo-deny
+
+# Licence, ban, and advisory drift. The fork's patches rewrite Cargo.lock at
+# every upgrade and add dependencies (self-update, /rewind), so this has to stay
+# visible -- including for the payload the queue delivers.
+#
+# Upstream runs this as a reusable workflow from its merge-blocking entrypoint.
+# The fork keeps the file and the action, but the check needs the bootstrapped
+# tree, so postmerge-ci.yml calls it in the heavy tier instead. Locally the
+# same check runs from `scripts/gates.sh tree` whenever cargo-deny is installed.
+on:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  cargo-deny:
+    name: cargo-deny
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bootstrap-tree
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - name: Run cargo-deny
+        uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
+        with:
+          rust-version: 1.95.0
+          manifest-path: ${{ env.CODE_DIR }}/Cargo.toml
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree

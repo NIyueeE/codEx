@@ -1,0 +1,72 @@
+name: blob-size-policy
+
+# Upstream's changed-blob budget, narrowed to the fork and kept in the merge
+# gate: a stray binary or generated artifact must be caught before it lands on
+# main, not after.
+#
+# Upstream's version of this workflow also runs openai/fence in audit mode.
+# The fork does not carry vendor-run actions, so this file keeps only the
+# portable half: the git range plus scripts/check_blob_size.py (upstream's own
+# checker, carried at the slim root byte-identically).
+#
+# The queue is the fork's product, and a single module patch is one of the
+# largest files it ships, so scripts/gates.sh expands patches/*.patch into the
+# effective allowlist at run time; .github/blob-size-allowlist.txt holds the
+# explicit paths (upstream's large checked-in assets, which the fork inherits).
+on:
+  workflow_call:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Blob size policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          # The policy diffs two revisions, so both have to be present locally.
+          fetch-depth: 0
+          persist-credentials: false
+
+      # PRs inspect the proposed diff; main pushes inspect only the commit
+      # range that just landed. A force-push or the first push of a branch can
+      # leave the base unset, in which case there is no range to police.
+      - name: Determine comparison range
+        id: range
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [[ "${{ github.event_name }}" == "pull_request" ]]; then
+            base='${{ github.event.pull_request.base.sha }}'
+            head='${{ github.event.pull_request.head.sha }}'
+          else
+            base='${{ github.event.before }}'
+            head='${{ github.sha }}'
+          fi
+
+          if [[ -z "${base}" || "${base}" == 0000000000000000000000000000000000000000 ]]; then
+            echo "No comparable base revision; the check will be skipped."
+            echo "comparable=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "comparable=true" >> "$GITHUB_OUTPUT"
+          fi
+          echo "base=${base}" >> "$GITHUB_OUTPUT"
+          echo "head=${head}" >> "$GITHUB_OUTPUT"
+
+      - name: Check changed blob sizes
+        if: steps.range.outputs.comparable == 'true'
+        env:
+          GATES_BASE_SHA: ${{ steps.range.outputs.base }}
+          GATES_HEAD_SHA: ${{ steps.range.outputs.head }}
+        run: bash scripts/gates.sh light --only blob-size --fast-fail
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree

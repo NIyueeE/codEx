@@ -1,0 +1,23 @@
+# Blob-size allowlist for the codEx fork (scripts/check_blob_size.py).
+#
+# Paths are matched exactly, relative to the repository root. Keep this list
+# short and limited to intentional large checked-in assets.
+#
+# The fork's own product is the patch queue in patches/, and a single module
+# patch is larger than the budget. Those files are deliberately not listed
+# here, because their names change whenever the queue is regenerated:
+# scripts/gates.sh expands patches/*.patch into the effective allowlist at run
+# time instead, so the policy cannot silently stop matching after an upgrade.
+#
+# Inherited from upstream, which ships the same large assets.
+.github/codex-cli-splash.png
+MODULE.bazel.lock
+codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.schemas.json
+codex-rs/app-server-protocol/schema/json/codex_app_server_protocol.v2.schemas.json
+codex-rs/models-manager/models.json
+codex-rs/tui/tests/fixtures/oss-story.jsonl
+codex-rs/tui_app_server/tests/fixtures/oss-story.jsonl
+codex-rs/tui/src/app.rs
+# Fork-owned and patched, and just over upstream's 512000-byte budget on its
+# own, so any change to it would otherwise trip the policy.
+codex-rs/tui/src/bottom_pane/chat_composer.rs

@@ -1,0 +1,65 @@
+name: rust-ci
+
+# The first half of the fork's heavy gate: every check that needs the patch
+# queue applied but not the release build -- the queue's own invariants, the
+# export drift check, the Python suites, the crate boundary, the Cargo compile
+# surface, the config-schema fixture, rustfmt, and cargo-deny.
+#
+# It is the fork's narrowing of upstream's rust-ci.yml: upstream checks
+# formatting, cargo-shear, and the argument-comment lint on a pull request; the
+# fork's equivalent checks run against a bootstrapped tree, so they can only
+# run once the queue is applied, which is why this workflow is in the heavy
+# tier with rust-ci-full.yml and not in blocking-ci.yml.
+#
+# Both heavy workflows are reachable the upstream way:
+#   - after a merge, through postmerge-ci.yml
+#   - on demand, through workflow_dispatch or a `**full-ci**` branch
+#   - locally, through `bash scripts/gates.sh tree` (or `heavy` for both halves)
+on:
+  workflow_call:
+  workflow_dispatch:
+  push:
+    branches:
+      # Opt-in pre-merge lane, mirroring upstream's rust-ci-full.yml branch
+      # trigger. rust-ci-full.yml carries the same trigger, so pushing such a
+      # branch asks for the whole heavy tier before a merge.
+      - "**full-ci**"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tree:
+    name: Tree checks
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/bootstrap-tree
+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+        with:
+          components: rustfmt
+      - uses: ./.github/actions/cargo-cache
+        with:
+          key: rust-ci-tree
+
+      # The tree tier of scripts/gates.sh: the same commands the local
+      # `pre-push` hook runs, so a local pass is a CI pass.
+      #
+      # Not `cargo check --workspace`: upstream's workspace carries members
+      # that need system headers this fork never installs (voice-host pulls
+      # gstreamer/glib through pkg-config). The gate checks exactly the three
+      # crates that build, test, and release here.
+      #
+      # cargo-deny reports "skipped" here because the binary is not installed;
+      # cargo-deny.yml runs it as its own job, with upstream's action caching
+      # the advisory database.
+      - name: Run the tree gate
+        run: bash scripts/gates.sh tree --tree "${TREE_DIR}" --no-fail-fast
+
+      - name: Check for a clean worktree
+        if: always() && !cancelled()
+        uses: ./.github/actions/check-clean-worktree

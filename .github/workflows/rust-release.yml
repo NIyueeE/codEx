@@ -366,7 +366,7 @@ jobs:
           python3 "${tree_dir}/scripts/build_codex_package.py" "${package_args[@]}"
 
           sha256sum "${dest}/codex-${TARGET}.tar.gz" | \
-            awk '{print $1 "  codex-'${TARGET}'.tar.gz"}' \
+            awk '{print $1 "  codex-'"${TARGET}"'.tar.gz"}' \
             > "${dest}/codex-${TARGET}.tar.gz.sha256"
 
           # The package must be exactly what the running CLI accepts, or the

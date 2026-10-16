@@ -30,6 +30,9 @@ module_matches() {
     local file="$1" slug="$2" line
     while IFS= read -r line; do
         [[ -n "$line" ]] || continue
+        # $line is a manifest glob pattern, so it must stay unquoted for `case`
+        # to expand it as a pattern rather than match it literally.
+        # shellcheck disable=SC2254
         case "$file" in ($line) return 0 ;; esac
     done <<< "${patterns[$slug]}"
     return 1
@@ -98,6 +101,8 @@ sync_ignore=(".gitignore")
 sync_ignored() { # $1 file -> 0 when the file is excluded from the sync check
     local file="$1" pat
     for pat in "${sync_ignore[@]}"; do
+        # $pat is a glob pattern, so it must stay unquoted for `case`.
+        # shellcheck disable=SC2254
         case "$file" in ($pat) return 0 ;; esac
     done
     return 1

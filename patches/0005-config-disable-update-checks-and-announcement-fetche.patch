@@ -1,4 +1,4 @@
-From d9e4f3d6ee97dbe32742eafc6c28ae3fc95bc2fd Mon Sep 17 00:00:00 2001
+From 0886ef17abb2679574617545698016d2eb5c9e34 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -23,7 +23,7 @@ Subject: config: disable update checks and announcement fetches by default
 
 diff --git a/announcement_tip.toml b/announcement_tip.toml
 deleted file mode 100644
-index 79c0dae..0000000
+index 79c0daea..00000000
 --- a/announcement_tip.toml
 +++ /dev/null
 @@ -1,17 +0,0 @@
@@ -45,7 +45,7 @@ index 79c0dae..0000000
 -version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
 -to_date = "2026-05-08"
 diff --git a/codex-rs/app-server/src/request_processors/plugins.rs b/codex-rs/app-server/src/request_processors/plugins.rs
-index 713794c..16d8a8a 100644
+index 713794c2..16d8a8a1 100644
 --- a/codex-rs/app-server/src/request_processors/plugins.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins.rs
 @@ -46,6 +46,15 @@ mod local;
@@ -77,7 +77,7 @@ index 713794c..16d8a8a 100644
                  &remote_plugin_service_config,
                  auth.as_ref(),
 diff --git a/codex-rs/app-server/src/request_processors/plugins/search.rs b/codex-rs/app-server/src/request_processors/plugins/search.rs
-index 6cc25e4..0a49f5a 100644
+index 6cc25e4b..0a49f5ac 100644
 --- a/codex-rs/app-server/src/request_processors/plugins/search.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins/search.rs
 @@ -12,6 +12,14 @@ const MAX_PLUGIN_SEARCH_LIMIT: u32 = 1_000;
@@ -106,7 +106,7 @@ index 6cc25e4..0a49f5a 100644
              remote_plugin_enabled && auth_mode.is_some_and(DomainAuthMode::uses_codex_backend);
          let remote_scope = if remote_plugin_enabled {
 diff --git a/codex-rs/core-plugins/src/marketplace_context.rs b/codex-rs/core-plugins/src/marketplace_context.rs
-index bab5781..b43e551 100644
+index bab57817..b43e5511 100644
 --- a/codex-rs/core-plugins/src/marketplace_context.rs
 +++ b/codex-rs/core-plugins/src/marketplace_context.rs
 @@ -5,6 +5,15 @@
@@ -137,7 +137,7 @@ index bab5781..b43e551 100644
  
      pub(super) fn list_marketplaces(
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 8b29753..db754b7 100644
+index 8b29753b..db754b77 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;
@@ -166,7 +166,7 @@ index 8b29753..db754b7 100644
                  .await
 diff --git a/codex-rs/tui/src/npm_registry.rs b/codex-rs/tui/src/npm_registry.rs
 deleted file mode 100644
-index 61ff242..0000000
+index 61ff2425..00000000
 --- a/codex-rs/tui/src/npm_registry.rs
 +++ /dev/null
 @@ -1,130 +0,0 @@
@@ -302,7 +302,7 @@ index 61ff242..0000000
 -}
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
 deleted file mode 100644
-index 2a904cd..0000000
+index 2a904cd1..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
 +++ /dev/null
 @@ -1,8 +0,0 @@
@@ -316,7 +316,7 @@ index 2a904cd..0000000
 -Line::from_iter([Span::from("and run "), Span::from("chatgpt").fg(Color::Rgb(166, 227, 161)), Span::from(".")]) []
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap
 deleted file mode 100644
-index 2a5ac3c..0000000
+index 2a5ac3cf..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap
 +++ /dev/null
 @@ -1,7 +0,0 @@
@@ -329,7 +329,7 @@ index 2a5ac3c..0000000
 -Line::from("needed.") []
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 deleted file mode 100644
-index ed74940..0000000
+index ed749405..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 +++ /dev/null
 @@ -1,8 +0,0 @@
@@ -342,7 +342,7 @@ index ed74940..0000000
 -Line::from(Span::from("https://chatgpt.com/codex?app-landing-page=true").fg(Color::Reset).underlined()) [TerminalHyperlink { columns: 0..47, destination: "https://chatgpt.com/codex?app-landing-page=true", destination_kind: Web }]
 -Line::from_iter([Span::from("and run "), Span::from("codex app").fg(Color::Rgb(166, 227, 161)), Span::from(".")]) []
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 5f3b318..47041ca 100644
+index 5f3b3188..47041ca7 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
 @@ -15,16 +15,11 @@ use std::path::Path;

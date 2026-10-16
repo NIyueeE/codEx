@@ -244,13 +244,51 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
   - `codex-x86_64-pc-windows-msvc.tar.gz`(同样的布局,入口带 `.exe`
     后缀,Windows 沙箱辅助程序位于 `codex-resources/` 下)
   - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
-- **CI**(`blocking-ci.yml`)在托管 runner 上使用纯 Cargo:
-  `cargo build --release --bin codex`、`cargo fmt --check`、`codex-tui`
-  完整测试套件、`codex-core` 单元测试、codespell、repo-checks。依赖沙箱的
-  核心集成套件(`suite::*`)需要具备沙箱能力的 runner,已从托管 CI 排除,
-  与上游自己的自托管 runner 配置一致。
+- **CI**(`blocking-ci.yml`)在托管 runner 上使用纯 Cargo,并与上游一样分层:
+  轻门阻塞 PR,重门不阻塞。本仓库是补丁队列仓库,因此分层的界线是「该检查
+  是否需要先应用补丁队列」(`scripts/bootstrap.sh`,CI 中最贵的一步)。
+
+  | 门 | 工作流 | 触发时机 | 内容 |
+  | --- | --- | --- | --- |
+  | 轻门 | `repo-checks.yml` | 每个 PR、每次推送 `main` | 补丁队列布局、README ASCII、README.zh 排版、shellcheck |
+  | 轻门 | `blob-size-policy.yml` | 每个 PR | 新增 blob 体积预算(沿用上游策略) |
+  | 轻门 | `codespell.yml` | 每个 PR | 拼写检查 |
+  | 重门 | `rust-ci.yml` | 合并后、手动触发、`**full-ci**` 分支 | 队列完整性与导出漂移、package/installer 测试、TUI/core 边界、CLI/TUI/core 编译面的 `cargo check`、config schema 基线、`cargo fmt --check`、cargo-deny |
+  | 重门 | `rust-ci-full.yml` | 合并后、手动触发、`**full-ci**` 分支 | `cargo build --release --bin codex`、`codex-tui` 完整套件、`codex-core` 单元测试、Windows 检查 |
+  | 重门 | `cargo-deny.yml` | 合并后、手动触发 | 许可证、ban 与安全公告漂移 |
+
+  `blocking-ci.yml` 汇总轻门并报告唯一的必需状态,`postmerge-ci.yml` 汇总重门。
+  依赖沙箱的核心集成套件(`suite::*`)需要具备沙箱能力的 runner,已从托管
+  CI 排除,与上游自己的自托管 runner 配置一致。
 - 工作流是 bootstrap-aware 的:在完整检出和本精简仓库中都能工作(先
   bootstrap,再在 `tree/` 内构建/测试/发布)。
+
+### 本地门禁(同样的命令,先于远端执行)
+
+`scripts/gates.sh` 是唯一的门禁执行器。本地 git hook 和 CI 都调用它,所以
+本地通过就等于 CI 通过,而不是另写一套等价逻辑:
+
+```sh
+bash scripts/gates.sh light # 不涉及补丁列表、无需 bootstrap:数秒
+bash scripts/bootstrap.sh   # 一次性;树上的门禁需要先应用源码
+bash scripts/gates.sh tree  # 队列完整性 + 编译面
+bash scripts/gates.sh full  # release 构建 + TUI/core 套件
+bash scripts/gates.sh heavy # tree + full:CI 合并后跑的那一档
+bash scripts/gates.sh all   # light + heavy
+```
+
+装好 hook 后,`git commit` 跑轻门、`git push` 再加跑重门——本地这一档先
+跑,多数问题不会走到远端 CI:
+
+```sh
+pip install pre-commit
+pre-commit install                        # 提交 hook:轻门
+pre-commit install --hook-type pre-push   # 推送 hook:重门
+```
+
+`scripts/gates.sh` 会自动探测代码树,因此在精简仓库、升级期间的
+`update-work/` 以及完整检出中都无需加参数即可运行。两档都可以按需裁剪
+(`--only`/`--skip`,id 列表见脚本头部注释),CI 的各 job 正是这样选片的。
 
 ### Patch-queue 模型
 
@@ -267,13 +305,15 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 | `scripts/bootstrap.sh` | 浅克隆 `openai/codex@BASE_TAG` 并 `git am` 应用补丁 |
 | `scripts/update.sh` | 升级到新的上游 tag(应用补丁、与 CI 相同的检查、重新生成) |
 | `scripts/gen-patches.sh` | 从代码树历史重新生成 `patches/`;拒绝导出违反清单的布局 |
+| `scripts/gates.sh` | 唯一的门禁执行器(`light` / `tree` / `full` / `heavy` / `all`),git hook 与 CI 都调用它 |
+| `scripts/asciicheck.py`、`scripts/check_blob_size.py` | 上游的 README 与 blob 预算检查器,按字节原样携带,使轻门无需 bootstrap |
 
 七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
 `updates`(纯 Rust 自更新)、`input`(双击 Esc 中断)、`privacy`(启动无网络
 请求)、`distribution`(Linux CI + Windows 检查,release 含 Linux + Windows)与
 `identity`(品牌标识)。
 分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
-(gen-patches)、升级(update.sh)、CI(repo-checks)和本地提交(pre-commit)
+(gen-patches)、升级(update.sh)、CI(rust-ci)和本地门禁(`gates.sh tree`)
 四处强制校验这一划分。
 
 工作流:**新增特性** = 在 `patch-modules.conf` 中加一节并在 bootstrap 树里

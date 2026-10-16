@@ -199,10 +199,16 @@ install() {
     *":$CODEX_INSTALL_DIR:"*) ;;
     *)
       warn "$CODEX_INSTALL_DIR is not on your PATH; add it, for example:"
+      # The literal `$PATH` in the format string is text the user should copy
+      # into their own shell, not a shell expansion of this script's PATH.
+      # shellcheck disable=SC2016
       printf '  export PATH="%s:$PATH"\n' "$CODEX_INSTALL_DIR"
       ;;
   esac
 
+  # The literal backticks name the command the user should run; the format
+  # string stays single-quoted so the shell cannot try to expand them.
+  # shellcheck disable=SC2016
   printf '\n🎉 codEx %s installed. Run `codex update` to upgrade in the future.\n' "$version"
 }
 

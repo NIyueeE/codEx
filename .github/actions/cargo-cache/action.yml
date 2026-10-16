@@ -1,0 +1,43 @@
+name: cargo-cache
+description: >-
+  Restore the shared Cargo home cache for a checkout. Mirrors upstream's split
+  cargo-home restore pattern: the registry index, the downloaded crates, the
+  git checkouts, and the installed cargo binaries are what a cold run spends
+  the most time on, so key them on Cargo.lock plus the Rust toolchain.
+
+inputs:
+  key:
+    description: Extra cache-key discriminator, e.g. the runner and target.
+    required: false
+    default: ""
+
+runs:
+  using: composite
+  steps:
+    - name: Compute lockfile hashes
+      id: hash
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd "${CODE_DIR}"
+        lock_hash="$(sha256sum Cargo.lock | cut -d' ' -f1)"
+        toolchain_hash="$(sha256sum rust-toolchain.toml 2>/dev/null | cut -d' ' -f1 || echo none)"
+        {
+          echo "lock=${lock_hash}"
+          echo "toolchain=${toolchain_hash}"
+        } >> "$GITHUB_OUTPUT"
+
+    # actions/cache saves the path back under the primary key at the end of the
+    # job when the key missed, so there is no separate save step to write (the
+    # previous version of this action had a no-op one).
+    - name: Restore cargo home cache
+      uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+        key: cargo-home-${{ inputs.key }}-${{ steps.hash.outputs.lock }}-${{ steps.hash.outputs.toolchain }}
+        restore-keys: |
+          cargo-home-${{ inputs.key }}-

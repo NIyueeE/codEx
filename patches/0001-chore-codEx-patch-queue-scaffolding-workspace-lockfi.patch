@@ -1,4 +1,4 @@
-From 85f393045c6fd8806d90c5d3c95f18a3c13bb21d Mon Sep 17 00:00:00 2001
+From 72fe02ed7c22437398dc5eba8357518306b24d35 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -6,26 +6,28 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
 ---
  .codespellignore                              |   4 +
  .codespellrc                                  |   4 +-
- .gitignore                                    |   4 +
+ .gitignore                                    | 100 +---
  BASE_TAG                                      |   1 +
- README.md                                     | 397 +++++++++++++++---
- codex-rs/Cargo.lock                           | 319 +++++++-------
+ README.md                                     | 450 ++++++++++++++--
+ codex-rs/Cargo.lock                           | 319 +++++------
  .../tui/src/app/tests/safety_buffering.rs     |   5 +-
- scripts/bootstrap.sh                          |  55 +++
- scripts/check-patch-modules.sh                | 239 +++++++++++
- scripts/gen-patches.sh                        | 107 +++++
- scripts/patch-modules.conf                    | 251 +++++++++++
- scripts/update.sh                             | 131 ++++++
- 12 files changed, 1301 insertions(+), 216 deletions(-)
+ scripts/bootstrap.sh                          |  55 ++
+ scripts/check-patch-modules.sh                | 244 +++++++++
+ scripts/gates.sh                              | 502 ++++++++++++++++++
+ scripts/gen-patches.sh                        | 107 ++++
+ scripts/patch-modules.conf                    | 251 +++++++++
+ scripts/update.sh                             | 128 +++++
+ 13 files changed, 1865 insertions(+), 305 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
+ create mode 100644 scripts/gates.sh
  create mode 100644 scripts/gen-patches.sh
  create mode 100644 scripts/patch-modules.conf
  create mode 100644 scripts/update.sh
 
 diff --git a/.codespellignore b/.codespellignore
-index 4f3c8c3..2a3a4b8 100644
+index 4f3c8c35..2a3a4b88 100644
 --- a/.codespellignore
 +++ b/.codespellignore
 @@ -1,7 +1,11 @@
@@ -41,7 +43,7 @@ index 4f3c8c3..2a3a4b8 100644
 +backgroun
 +interrup
 diff --git a/.codespellrc b/.codespellrc
-index 838b7e8..43535b8 100644
+index 838b7e87..43535b8d 100644
 --- a/.codespellrc
 +++ b/.codespellrc
 @@ -1,6 +1,6 @@
@@ -54,29 +56,126 @@ index 838b7e8..43535b8 100644
 -ignore-words-list = ratatui,ser,iTerm,iterm2,iterm,te,TE,PASE,SEH
 +ignore-words-list = ratatui,ser,iTerm,iterm2,iterm,te,TE,PASE,SEH,Resul
 diff --git a/.gitignore b/.gitignore
-index dbcd863..24522f8 100644
+index dbcd8633..e240c311 100644
 --- a/.gitignore
 +++ b/.gitignore
-@@ -94,3 +94,7 @@ CHANGELOG.ignore.md
- # Python bytecode files
+@@ -1,96 +1,12 @@
+-# deps
+-# Node.js dependencies
+-node_modules
+-.pnpm-store
+-.pnpm-debug.log
++# Bootstrapped codex tree (scripts/bootstrap.sh) and update scratch space.
++tree/
++update-work/
+ 
+-# Keep pnpm-lock.yaml
+-!pnpm-lock.yaml
++# Insta pending snapshots from CI test runs.
++*.snap.new
+ 
+-# build
+-dist/
+-bazel-*
+-user.bazelrc
+-build/
+-out/
+-storybook-static/
++# Gate-runner lock (scripts/gates.sh keeps one run per tree at a time).
++.gates-*.lock
+ 
+-# ignore README for publishing
+-codex-cli/README.md
+-
+-# ignore Nix derivation results
+-result
+-
+-# editor
+-.vscode/
+-.idea/
+-.history/
+-.zed/
+-*.swp
+-*~
+-
+-# cli tools
+-CLAUDE.md
+-.claude/
+-AGENTS.override.md
+-
+-# caches
+-.cache/
+-.turbo/
+-.parcel-cache/
+-.eslintcache
+-.nyc_output/
+-.jest/
+-*.tsbuildinfo
+-
+-# logs
+-*.log
+-npm-debug.log*
+-yarn-debug.log*
+-yarn-error.log*
+-
+-# env
+-.env*
+-!.env.example
+-.venv/
+-
+-# package
+-*.tgz
+-
+-# ci
+-.vercel/
+-.netlify/
+-/.tmp/sdk-ci/
+-/upstream-rusty-v8/
+-
+-# patches
+-apply_patch/
+-
+-# coverage
+-coverage/
+-
+-# personal files
+-personal/
+-
+-# os
+-.DS_Store
+-Thumbs.db
+-Icon?
+-.Spotlight-V100/
+-
+-# Unwanted package managers
+-.yarn/
+-yarn.lock
+-
+-# release
+-package.json-e
+-session.ts-e
+-CHANGELOG.ignore.md
+-
+-# nix related
+-.direnv
+-.envrc
+-
+-# Python bytecode files
++# Bytecode from the Python suites and helper scripts the gates run.
  __pycache__/
- *.pyc
-+
-+# Generated fork patch queue (see scripts/gen-patches.sh). The slim patch-queue
-+# repository tracks these files; the full tree derives them from git history.
-+/patches/*.patch
+-*.pyc
 diff --git a/BASE_TAG b/BASE_TAG
 new file mode 100644
-index 0000000..6c1e89c
+index 00000000..6c1e89ca
 --- /dev/null
 +++ b/BASE_TAG
 @@ -0,0 +1 @@
 +rust-v0.160.1
 diff --git a/README.md b/README.md
-index 06b02fc..4e92171 100644
+index 06b02fce..49dfb5ac 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,370 @@
+@@ -1,81 +1,429 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -128,32 +227,40 @@ index 06b02fc..4e92171 100644
 +`codex-resources/` (bwrap, and the patched zsh on Unix). That layout is what
 +`InstallContext` recognizes and what `codex app-server daemon` copies when it
 +installs the shared background server.
- 
--The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
++
 +Windows users install from the release archive directly: download
 +`codex-x86_64-pc-windows-msvc.tar.gz`, verify it against the published
 +`.sha256`, and unpack the package into the standalone release directory
 +described under [`codex update`](#codex-update-pure-rust-self-update).
++
++### Upgrading from 0.155.1 or older
+ 
+-The standalone installers download from `https://releases.openai.com/codex` by default and fall back to GitHub Releases if a metadata or asset download is unavailable. To force GitHub Releases, set `CODEX_INSTALLER_USE_RELEASES_OPENAI_COM` to `false` (`0` and `no` are also accepted):
++Releases up to and including `0.155.1` shipped a flat archive (a bare `codex`
++plus `bwrap`). Such an install cannot move to the package layout with
++`codex update`: the old binary looks for `codex` at the archive root and
++rejects the new package with `release archive is missing codex or bwrap`.
  
 -```shell
 -curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_INSTALLER_USE_RELEASES_OPENAI_COM=false sh
--```
-+Environment overrides:
++Re-run the installer once instead - it replaces the flat release directory
++with a package release directory and repoints `current`, after which
++`codex update` works normally:
++
++```sh
++curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
+ ```
  
 -```powershell
 -$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
--```
++Environment overrides:
++
 +- `CODEX_RELEASE` - version to install, e.g. `0.160.0` (default: `latest`)
 +- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 +- `CODEX_HOME` - codex home (default: `~/.codex`)
- 
--Codex CLI can also be installed via the following package managers:
++
 +## What changes versus upstream
- 
--```shell
--# Install using npm
--npm install -g @openai/codex
--```
++
 +codEx keeps the upstream `codex` binary name and configuration format, so it
 +drops into existing workflows, but changes the surrounding experience:
 +
@@ -193,10 +300,7 @@ index 06b02fc..4e92171 100644
 +   chat to just before it; files are left untouched.
 +3. **Files only** - pick a numbered snapshot; a confirmation shows how many
 +   files would be restored and deleted before the workspace is touched.
- 
--```shell
--# Install using Homebrew
--brew install --cask codex
++
 +Both conversation scopes reuse the transcript picker (the same full-history
 +view the old double-Esc backtrack used): the newest user message starts
 +highlighted, **Left** steps to older messages, **Right** steps newer,
@@ -266,7 +370,7 @@ index 06b02fc..4e92171 100644
 +rewind_max_snapshots = 200       # keep 200 snapshots per conversation
  ```
  
--Then simply run `codex` to get started.
+-Codex CLI can also be installed via the following package managers:
 +**Limitations**:
 +
 +- Snapshot capture is best effort: a failed capture is surfaced in the
@@ -311,8 +415,9 @@ index 06b02fc..4e92171 100644
 +
 +### `codex update`: pure-Rust self-update
  
--<details>
--<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
+-```shell
+-# Install using npm
+-npm install -g @openai/codex
 +- `codex update` no longer shells out to `curl | sh`, npm, or brew. It is a
 +  self-contained Rust implementation:
 +  1. Maps the host architecture to the fork's release target
@@ -338,32 +443,22 @@ index 06b02fc..4e92171 100644
 +  update replaced the binary, and `codex app-server daemon update` requires
 +  `--from-cli`, which copies and pins **this CLI's own package** instead of
 +  fetching upstream's installer.
- 
--Each GitHub Release contains many executables, but in practice, you likely want one of these:
++
 +### No update chatter, no announcements
- 
--- macOS
--  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
--  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
--- Linux
--  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
--  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
++
 +- `check_for_update_on_startup` now defaults to **`false`**: the TUI does not
 +  phone home on startup. Set it to `true` in `config.toml` to opt in.
 +- The startup **announcement fetch** (remote `announcement_tip.toml`) was
 +  removed entirely; only the local random tooltips remain.
 +- Update banners/notices, when enabled, point at this fork's releases and tell
 +  you to run `codex update`.
- 
--Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
++
 +### Headless only: no closed-source surfaces
- 
--</details>
++
 +codEx is built for headless, self-hosted use in TUI and CLI. Every entry point
 +that pulled in OpenAI's closed-source products or vendor-run services is
 +removed, not merely disabled:
- 
--### Using Codex with your ChatGPT plan
++
 +- **`codex app` and the Desktop launcher.** The subcommand, its
 +  `AppCommand`, and the `desktop_app/` downloader are gone. On macOS it used to
 +  fetch a closed-source `.dmg`; on Windows it opened a vendor install page.
@@ -381,13 +476,11 @@ index 06b02fc..4e92171 100644
 +  which paired a local daemon with the vendor relay.
 +- **The remote plugin marketplace** (`openai-curated-remote`, served from the
 +  chatgpt.com backend) is refused. Local and Git marketplaces still work.
- 
--Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
++
 +Kept on purpose: the model/API backend the agent actually talks to, and the
 +Windows sandbox plumbing, which references vendor package identities only to
 +authorize sandbox IPC on the same machine.
- 
--You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
++
 +### Branding
 +
 +- `codex --version` prints
@@ -409,14 +502,61 @@ index 06b02fc..4e92171 100644
 +  - `codex-x86_64-pc-windows-msvc.tar.gz` (the same layout with `.exe`
 +    entrypoints and the Windows sandbox helpers under `codex-resources/`)
 +  - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
-+- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners:
-+  `cargo build --release --bin codex`, `cargo fmt --check`,
-+  `codex-tui` full test suite, `codex-core` unit tests, codespell, repo-checks.
-+  The sandbox-dependent core integration suite (`suite::*`) needs
-+  sandbox-capable runners and is excluded from hosted CI, mirroring upstream's
-+  own self-hosted-runner setup.
++- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners, tiered the way
++  upstream tiers it: a light gate that blocks a pull request, and a heavy gate
++  that does not. The fork is a patch-queue repository, so the tiers split on
++  whether a check needs the queue applied (`scripts/bootstrap.sh`), which is
++  the expensive part of CI.
++
++  | Gate | Workflow | Runs | Contains |
++  | --- | --- | --- | --- |
++  | Light | `repo-checks.yml` | every PR, every push to `main` | patch-queue layout, README ASCII, README.zh typography, shellcheck |
++  | Light | `blob-size-policy.yml` | every PR | changed-blob budget (upstream's policy) |
++  | Light | `codespell.yml` | every PR | spelling |
++  | Heavy | `rust-ci.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | queue integrity + export-drift check, package/installer suites, TUI/core boundary, `cargo check` on the CLI/TUI/core compile surface, config-schema fixture, `cargo fmt --check`, cargo-deny |
++  | Heavy | `rust-ci-full.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | `cargo build --release --bin codex`, `codex-tui` full suite, `codex-core` unit tests, Windows check |
++  | Heavy | `cargo-deny.yml` | post-merge, on dispatch | licence, ban, and advisory drift |
++
++  `blocking-ci.yml` aggregates the light gate and reports the single required
++  status; `postmerge-ci.yml` aggregates the heavy gate. The sandbox-dependent
++  core integration suite (`suite::*`) needs sandbox-capable runners and is
++  excluded from hosted CI, mirroring upstream's own self-hosted-runner setup.
 +- The workflows are bootstrap-aware: they work both in a full checkout and in
 +  this slim repo (bootstrap first, then build/test/release inside `tree/`).
++
++### Local gates (the same commands, before the remote sees them)
++
++`scripts/gates.sh` is the single gate runner. Both the local git hooks and CI
++call it, so a local pass is a CI pass rather than a parallel reimplementation:
++
++```sh
++bash scripts/gates.sh light # no patch list, no bootstrap: seconds
++bash scripts/bootstrap.sh   # once; the tree gates need the sources applied
++bash scripts/gates.sh tree  # queue integrity + compile surface
++bash scripts/gates.sh full  # release build + TUI/core suites
++bash scripts/gates.sh heavy # tree + full: what CI runs post-merge
++bash scripts/gates.sh all   # light + heavy
+ ```
+ 
+-```shell
+-# Install using Homebrew
+-brew install --cask codex
++Install the hooks so `git commit` runs the light gate and `git push` adds the
++heavy one, so the local tier runs first and most problems never reach remote
++CI:
++
++```sh
++pip install pre-commit
++pre-commit install                        # commit hook: the light gate
++pre-commit install --hook-type pre-push   # push hook: the heavy gate
+ ```
+ 
+-Then simply run `codex` to get started.
++`scripts/gates.sh` also auto-detects the tree, so it works from the slim repo,
++from `update-work/` during an upgrade, and from a full checkout without a flag.
++Both tiers can be sliced when a specific check matters (`--only`/`--skip`, with
++the ids listed in the script header), which is how the CI workflows select
++their jobs.
 +
 +### Patch-queue model
 +
@@ -424,7 +564,9 @@ index 06b02fc..4e92171 100644
 +fork that carries the full tree and periodically merges upstream. Instead it
 +stores only the delta, organized as **one patch per feature module** (not one
 +per commit):
-+
+ 
+-<details>
+-<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 +| Piece | Purpose |
 +| --- | --- |
 +| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.160.0`) |
@@ -434,31 +576,43 @@ index 06b02fc..4e92171 100644
 +| `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
 +| `scripts/update.sh` | upgrade to a new upstream tag (apply, CI-equivalent checks, regen) |
 +| `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
-+
++| `scripts/gates.sh` | the single gate runner (`light` / `tree` / `full` / `heavy` / `all`) that the git hooks and CI both call |
++| `scripts/asciicheck.py`, `scripts/check_blob_size.py` | upstream's README and blob-budget checkers, carried byte-identically so the light gate needs no bootstrapped tree |
+ 
+-Each GitHub Release contains many executables, but in practice, you likely want one of these:
 +The seven modules are `infra` (patch-queue tooling, lockfile, README),
 +`rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
 +interrupt), `privacy` (no startup network chatter), `distribution` (Linux CI +
 +Windows check, Linux + Windows releases), and `identity` (branding). Every
 +file changed by the fork is owned by exactly one module;
 +`check-patch-modules.sh` enforces the partition at export time (gen-patches),
-+during upgrades (update.sh), in CI
-+(repo-checks), and locally (pre-commit).
-+
++during upgrades (update.sh), in CI (rust-ci), and locally (`gates.sh tree`).
+ 
+-- macOS
+-  - Apple Silicon/arm64: `codex-aarch64-apple-darwin.tar.gz`
+-  - x86_64 (older Mac hardware): `codex-x86_64-apple-darwin.tar.gz`
+-- Linux
+-  - x86_64: `codex-x86_64-unknown-linux-musl.tar.gz`
+-  - arm64: `codex-aarch64-unknown-linux-musl.tar.gz`
 +Workflow: a **new feature** adds a section to `patch-modules.conf` and a
 +matching commit in the bootstrapped tree; a **change to an existing feature**
 +is rebased/folded into that module's commit. Hand-editing `patches/` is
 +rejected by the checker.
-+
+ 
+-Each archive contains a single entry with the platform baked into the name (e.g., `codex-x86_64-unknown-linux-musl`), so you likely want to rename it to `codex` after extracting it.
 +`bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
 +and release workflows do exactly that before building. See
 +[Building](#building-from-this-repository) and
 +[Upgrading](#upgrading-to-a-new-upstream-tag) below.
-+
+ 
+-</details>
 +## Building from this repository
-+
+ 
+-### Using Codex with your ChatGPT plan
 +The slim repository has no `codex-rs/` checked in, so build from a
 +bootstrapped tree:
-+
+ 
+-Run `codex` and select **Sign in with ChatGPT**. We recommend signing into your ChatGPT account to use Codex as part of your Plus, Pro, Business, Edu, or Enterprise plan. [Learn more about what's included in your ChatGPT plan](https://help.openai.com/en/articles/11369540-codex-in-chatgpt).
 +```sh
 +bash scripts/bootstrap.sh        # clones openai/codex@BASE_TAG into tree/ and applies patches/
 +cd tree/codex-rs
@@ -474,7 +628,8 @@ index 06b02fc..4e92171 100644
 +```
 +
 +## Upgrading to a new upstream tag
-+
+ 
+-You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 +```sh
 +bash scripts/update.sh rust-v0.160.0
 +```
@@ -502,7 +657,7 @@ index 06b02fc..4e92171 100644
 -This repository is licensed under the [Apache-2.0 License](LICENSE).
 +The fork retains the upstream license (Apache-2.0). See `LICENSE`.
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 19885ae..7ea2812 100644
+index 19885ae9..7ea2812d 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -268,7 +268,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
@@ -1925,7 +2080,7 @@ index 19885ae..7ea2812 100644
   "anyhow",
   "assert_cmd",
 diff --git a/codex-rs/tui/src/app/tests/safety_buffering.rs b/codex-rs/tui/src/app/tests/safety_buffering.rs
-index ca516ed..20e25a8 100644
+index ca516eda..20e25a8a 100644
 --- a/codex-rs/tui/src/app/tests/safety_buffering.rs
 +++ b/codex-rs/tui/src/app/tests/safety_buffering.rs
 @@ -1011,7 +1011,10 @@ goals = true
@@ -1942,7 +2097,7 @@ index ca516ed..20e25a8 100644
      assert!(retry_goal.time_used_seconds >= source_goal.time_used_seconds);
 diff --git a/scripts/bootstrap.sh b/scripts/bootstrap.sh
 new file mode 100644
-index 0000000..ccaeb2b
+index 00000000..ccaeb2ba
 --- /dev/null
 +++ b/scripts/bootstrap.sh
 @@ -0,0 +1,55 @@
@@ -2003,10 +2158,10 @@ index 0000000..ccaeb2b
 +echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"
 diff --git a/scripts/check-patch-modules.sh b/scripts/check-patch-modules.sh
 new file mode 100644
-index 0000000..43c9f16
+index 00000000..6895a17d
 --- /dev/null
 +++ b/scripts/check-patch-modules.sh
-@@ -0,0 +1,239 @@
+@@ -0,0 +1,244 @@
 +#!/usr/bin/env bash
 +# Validates that the fork's patch queue matches the module manifest at
 +# scripts/patch-modules.conf.
@@ -2039,6 +2194,9 @@ index 0000000..43c9f16
 +    local file="$1" slug="$2" line
 +    while IFS= read -r line; do
 +        [[ -n "$line" ]] || continue
++        # $line is a manifest glob pattern, so it must stay unquoted for `case`
++        # to expand it as a pattern rather than match it literally.
++        # shellcheck disable=SC2254
 +        case "$file" in ($line) return 0 ;; esac
 +    done <<< "${patterns[$slug]}"
 +    return 1
@@ -2107,6 +2265,8 @@ index 0000000..43c9f16
 +sync_ignored() { # $1 file -> 0 when the file is excluded from the sync check
 +    local file="$1" pat
 +    for pat in "${sync_ignore[@]}"; do
++        # $pat is a glob pattern, so it must stay unquoted for `case`.
++        # shellcheck disable=SC2254
 +        case "$file" in ($pat) return 0 ;; esac
 +    done
 +    return 1
@@ -2246,9 +2406,517 @@ index 0000000..43c9f16
 +    exit 1
 +fi
 +printf 'patch modules OK: %d modules\n' "${#order[@]}"
+diff --git a/scripts/gates.sh b/scripts/gates.sh
+new file mode 100644
+index 00000000..7a994597
+--- /dev/null
++++ b/scripts/gates.sh
+@@ -0,0 +1,502 @@
++#!/usr/bin/env bash
++# The single gate runner shared by the local git hooks and CI.
++#
++# Every check the fork gates on is implemented here, once, so a hook and a CI
++# job cannot drift apart: the local gate catches what the remote gate would
++# catch, just earlier. CI calls this script; .pre-commit-config.yaml calls this
++# script; developers call this script directly.
++#
++# Tiers
++# -----
++#   light   no patch list, no bootstrap: seconds. Runs on a pull request, on
++#           `git commit`, and from any checkout (`bash scripts/gates.sh light`).
++#   tree    needs the bootstrapped tree (BASE_TAG + patches/ applied): the
++#           queue's own invariants, the export drift check, the Python suites,
++#           the crate boundary, the Cargo compile surface, rustfmt, cargo-deny.
++#   full    needs the bootstrapped tree: the release CLI build and the full
++#           codex-tui / codex-core suites.
++#   heavy   tree + full. What `git push` runs, and what CI runs after a merge.
++#   all     light + heavy.
++#
++# Options
++# -------
++#   --tree DIR        bootstrapped tree root (default: auto-detect . / tree/ /
++#                     update-work/)
++#   --only ID[,ID]    run only the named checks
++#   --skip ID[,ID]    run everything except the named checks
++#   --fast-fail       stop at the first failing check (default for `light`)
++#   --no-fail-fast    keep going and report every failure at the end
++#                     (default for everything else)
++#
++# Check ids (stable; use them with --only/--skip)
++#   light:  queue readme-ascii readme-zh codespell shellcheck blob-size
++#   tree:   queue-tree export package-tests installer-tests boundary
++#           type-check config-schema rustfmt cargo-deny
++#   full:   release-build tui-tests core-tests
++#
++# Environment
++#   GATES_BASE_SHA, GATES_HEAD_SHA   git range for `blob-size` (CI sets them
++#                                    from the event; without them the check is
++#                                    skipped with a note)
++#   CARGO_BUILD_JOBS=2               memory ceiling, as in AGENTS.md
++#   RUST_MIN_STACK=8388608           stack headroom for the snapshot suites
++#   NEXTEST_PROFILE=local            the profile CI uses
++#   NEXTEST_JOBS=2                   thread cap, as in AGENTS.md
++#   TERM_PROFILE=xterm-256color      terminal the snapshot suites expect
++#
++# Exit status is 0 when every selected check passed, 1 otherwise.
++#
++# Never run two cargo-backed gate runs against the same tree at once. Cargo
++# serialises on the package-cache lock, and the workspace's own tests spawn
++# sandboxes, PTYs, and servers, so a second concurrent run starves the first
++# and turns marginal timeouts into spurious failures. This runner takes a
++# per-tree lock so the mistake surfaces as a clear refusal instead of a
++# mystery red test. The light tier runs no cargo, so it takes no lock.
++set -euo pipefail
++
++script_dir="$(cd "$(dirname "$0")" && pwd)"
++repo_root="$(cd "${script_dir}/.." && pwd)"
++cd "${repo_root}"
++
++usage() {
++  cat >&2 <<'EOF'
++usage: gates.sh [light|tree|full|heavy|all] [--tree DIR]
++                [--only ID[,ID]] [--skip ID[,ID]] [--fast-fail|--no-fail-fast]
++EOF
++}
++
++mode="${1:-light}"
++case "${mode}" in
++  light | tree | full | heavy | all) ;;
++  *)
++    usage
++    exit 2
++    ;;
++esac
++shift || true
++
++tree_dir=""
++fail_fast=""
++only=()
++skip=()
++while [[ $# -gt 0 ]]; do
++  case "$1" in
++    --tree) tree_dir="$2"; shift 2 ;;
++    --only) IFS=',' read -r -a only <<< "$2"; shift 2 ;;
++    --skip) IFS=',' read -r -a skip <<< "$2"; shift 2 ;;
++    --fast-fail) fail_fast=yes; shift ;;
++    --no-fail-fast) fail_fast=no; shift ;;
++    *)
++      echo "unknown option: $1" >&2
++      usage
++      exit 2
++      ;;
++  esac
++done
++
++# Memory ceilings: the AGENTS.md rules exist because a 20-core host OOMs when an
++# unconstrained cargo job links codex-cli with thin LTO (10+ GB in one process)
++# and nextest spawns one process per CPU. Keep the same caps CI uses so a local
++# pass means a CI pass.
++export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
++# codex-tui snapshot tests need the stack headroom CI gives them.
++export RUST_MIN_STACK="${RUST_MIN_STACK:-8388608}"
++# nextest's `local` profile keeps the app-server integration groups small
++# enough for a laptop; CI selects the same profile, so the two agree. The
++# thread cap matches the CI ceiling for the same reason.
++export NEXTEST_PROFILE="${NEXTEST_PROFILE:-local}"
++export NEXTEST_JOBS="${NEXTEST_JOBS:-2}"
++# The TUI snapshot suite renders ANSI style escapes, so a terminal that
++# advertises no colour makes the cursor/frame assertions fail on frames that
++# are perfectly correct. CI runners export a real TERM; pin the same one here
++# so a local pass means a CI pass, and so a snapshot is never regenerated
++# under a colour-blind terminal (see the snapshot-regeneration rule in
++# AGENTS.md).
++export TERM="${TERM_PROFILE:-xterm-256color}"
++unset NO_COLOR
++# The Python suites run inside the tree, and CI fails a job that leaves the
++# worktree dirty; bytecode is not part of any check, so never write it.
++export PYTHONDONTWRITEBYTECODE=1
++
++if [[ -z "${tree_dir}" ]]; then
++  if [[ -d codex-rs ]]; then
++    tree_dir="."
++  elif [[ -d tree/codex-rs ]]; then
++    tree_dir="tree"
++  elif [[ -d update-work/codex-rs ]]; then
++    tree_dir="update-work"
++  fi
++fi
++code_dir="${tree_dir:+${tree_dir}/codex-rs}"
++
++needs_tree() { [[ "${mode}" == "tree" || "${mode}" == "full" || "${mode}" == "heavy" || "${mode}" == "all" ]]; }
++
++if needs_tree && [[ -z "${tree_dir}" || ! -d "${code_dir}" ]]; then
++  echo "gates: mode=${mode} needs a bootstrapped tree, but none was found" >&2
++  echo "gates: looked for codex-rs/, tree/, update-work/ under ${repo_root}" >&2
++  echo "gates: run 'bash scripts/bootstrap.sh' first (network + a few minutes)." >&2
++  exit 1
++fi
++
++if [[ -z "${fail_fast}" ]]; then
++  if [[ "${mode}" == "light" ]]; then
++    fail_fast=yes
++  else
++    fail_fast=no
++  fi
++fi
++
++# One cargo-backed gate at a time per tree. flock on a per-tree lock file makes
++# a concurrent second invocation refuse rather than compete: two gate runs on
++# one host starve each other and turn marginal timeouts into spurious failures.
++if needs_tree; then
++  gate_lock="${repo_root}/.gates-$(echo "${tree_dir}" | tr '/' '-').lock"
++  exec 9>"${gate_lock}"
++  if ! flock -n 9; then
++    echo "gates: another gate run already holds ${gate_lock}." >&2
++    echo "gates: wait for it to finish, or run the tiers one at a time." >&2
++    echo "gates: two concurrent runs on one host make the test suites time out." >&2
++    exit 1
++  fi
++fi
++
++failed=()
++skipped=()
++
++# run <label> <cmd...>  -- run one check, honouring the fail-fast policy.
++run() {
++  local label="$1"
++  shift
++  printf '\n=== %s ===\n' "${label}"
++  if [[ "${fail_fast}" == "yes" ]]; then
++    "$@"
++    return
++  fi
++  if "$@"; then
++    return 0
++  fi
++  failed+=("${label}")
++  printf '\n!!! FAILED: %s\n' "${label}" >&2
++}
++
++# skip <label> <reason>
++skip() {
++  local label="$1" reason="$2"
++  skipped+=("${label}: ${reason}")
++  printf '\n--- %s: skipped (%s)\n' "${label}" "${reason}"
++}
++
++selected() { # $1 id -> 0 when the id was selected by --only/--skip
++  local id="$1" entry
++  if [[ "${#only[@]}" -gt 0 ]]; then
++    for entry in "${only[@]}"; do
++      [[ "${entry}" == "${id}" ]] && return 0
++    done
++    return 1
++  fi
++  for entry in "${skip[@]}"; do
++    [[ "${entry}" == "${id}" ]] && return 1
++  done
++  return 0
++}
++
++# check <id> <label> <cmd...>  -- run a check when --only/--skip selected it.
++check() {
++  local id="$1"
++  shift
++  selected "${id}" || return 0
++  run "$@"
++}
++
++# has <cmd> -- true when the command exists.
++has() { command -v "$1" >/dev/null 2>&1; }
++
++# A patch-queue checkout (this repository) exports the queue into patches/;
++# a full fork checkout (codex-rs/ at the root) is upstream's tree, where
++# patches/ is upstream's Bazel patch directory. The queue checks only apply to
++# the former.
++queue_repo() { [[ ! -d codex-rs ]]; }
++
++# ---------------------------------------------------------------------------
++# Light tier: everything that needs no patch list and no bootstrapped tree, so
++# it runs in seconds from the slim repo, from a full checkout, and from the
++# commit hook. It covers the queue's exported shape, the docs, spelling, shell
++# linting, and the changed-blob budget.
++# ---------------------------------------------------------------------------
++light_gate() {
++  # The queue is the repository's product, and the exported patches/ can be
++  # validated on its own: one patch per module, in order, with the exact
++  # subjects and file ownership the manifest declares.
++  if queue_repo; then
++    check queue "patch-queue layout (patches/ + manifest)" \
++      bash scripts/check-patch-modules.sh --patches patches
++  else
++    selected queue && skip "patch-queue layout" "not a patch-queue checkout (codex-rs/ present)"
++  fi
++
++  # README.md is fork-owned and shipped, so it has to stay ASCII (plus U+2728)
++  # for anchors, search, and diffing. scripts/asciicheck.py is upstream's own
++  # checker, carried at the slim root byte-identically so the local hook, CI,
++  # and the tree all enforce one implementation.
++  check readme-ascii "README ASCII check" \
++    python3 scripts/asciicheck.py README.md
++
++  # README.zh.md is slim-only, so the tree's asciicheck does not cover it, and
++  # its contract is different: it is a translation, so CJK and the CJK
++  # punctuation Chinese prose normally uses are expected. What is banned is the
++  # invisible and ambiguous set that breaks anchors, search, diffing, or
++  # copy-paste out of a terminal -- the codes asciicheck.py calls out for the
++  # ASCII README.
++  check readme-zh "README.zh typography check" python3 - <<-'PYEOF'
++	import sys
++	from pathlib import Path
++
++	# Invisible or look-alike code points that break anchors, search, or
++	# diffing. Deliberately excludes U+2014 (em dash, used as "——"), which
++	# is ordinary Chinese punctuation.
++	banned = {
++	    0x00A0,  # no-break space
++	    0x2011,  # no-break hyphen
++	    0x2018,  # left single quote
++	    0x2019,  # right single quote
++	    0x201C,  # left double quote
++	    0x201D,  # right double quote
++	    0x2026,  # ellipsis
++	    0x202F,  # narrow no-break space
++	}
++	path = Path("README.zh.md")
++	if not path.exists():
++	    print("README.zh.md is absent; nothing to check")
++	    raise SystemExit(0)
++	bad = {}
++	for lineno, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
++	    for char in line:
++	        if ord(char) in banned:
++	            bad.setdefault(f"U+{ord(char):04X}", []).append(lineno)
++	if bad:
++	    for code, lines in sorted(bad.items()):
++	        print(f"{path}: {code} on line(s) {lines[:10]}")
++	    print("Use the ASCII equivalent instead (see scripts/asciicheck.py).")
++	    sys.exit(1)
++	print("README.zh.md typography OK")
++	PYEOF
++
++  check codespell "codespell" bash -c '
++    if command -v codespell >/dev/null 2>&1; then
++      exec codespell -I .codespellignore
++    fi
++    # The pinned version CI uses; uvx keeps it out of an externally managed
++    # system Python.
++    git ls-files -z | xargs -0 uvx --from codespell==2.4.3 codespell -I .codespellignore
++  '
++
++  if has shellcheck; then
++    # action.yml files are YAML with embedded shell, which shellcheck cannot
++    # parse directly; the shell scripts are what matter, so check those.
++    check shellcheck "shellcheck" shellcheck scripts/*.sh install.sh
++  else
++    selected shellcheck && skip "shellcheck" "not installed (apt install shellcheck)"
++  fi
++
++  # Upstream's blob-size policy, narrowed to the fork: the queue is the fork's
++  # product and its module patches are the largest files it ships, so
++  # patches/*.patch is expanded into the allowlist at run time instead of
++  # pinning names that change whenever the queue is regenerated. Without a
++  # comparison range (a local run has no pushed range to inspect) the check has
++  # nothing to look at and says so.
++  if selected blob-size; then
++    if [[ -n "${GATES_BASE_SHA:-}" && -n "${GATES_HEAD_SHA:-}" ]]; then
++      check blob-size "changed blob sizes" blob_size_check
++    else
++      skip "changed blob sizes" "no comparison range (set GATES_BASE_SHA/GATES_HEAD_SHA; CI does)"
++    fi
++  fi
++}
++
++blob_size_check() {
++  local allowlist
++  allowlist="$(mktemp)"
++  # Expand at trap-set time: bash drops a function's locals before its RETURN
++  # trap runs, so a lazily-expanded ${allowlist} would be unbound.
++  trap "rm -f '${allowlist}'" RETURN
++  cat .github/blob-size-allowlist.txt > "${allowlist}"
++  local patch
++  for patch in patches/*.patch; do
++    [[ -e "${patch}" ]] && printf '%s\n' "${patch}" >> "${allowlist}"
++  done
++  python3 scripts/check_blob_size.py \
++    --base "${GATES_BASE_SHA}" \
++    --head "${GATES_HEAD_SHA}" \
++    --max-bytes 512000 \
++    --allowlist "${allowlist}"
++}
++
++# ---------------------------------------------------------------------------
++# Tree tier: the queue applied by scripts/bootstrap.sh. These are the checks
++# that only make sense against real sources -- the queue's layout in the tree,
++# the export drift check, the Python suites, the compile surface.
++# ---------------------------------------------------------------------------
++tree_gate() {
++  # The tree copy of the manifest check. --patches/--slim are only meaningful
++  # when the slim repo and the tree sit on the same base: during an upgrade
++  # (update-work/, BASE_TAG already bumped) the export has not been regenerated
++  # yet, so comparing it would report the in-flight upgrade as a violation.
++  local queue_args=(--tree "${tree_dir}")
++  if [[ "${tree_dir}" != "." && -f BASE_TAG && -f "${tree_dir}/BASE_TAG" ]] \
++      && [[ "$(cat BASE_TAG)" == "$(cat "${tree_dir}/BASE_TAG")" ]]; then
++    queue_args+=(--patches patches --slim .)
++  fi
++  check queue-tree "patch-module layout (tree, export, slim copies)" \
++    bash scripts/check-patch-modules.sh "${queue_args[@]}"
++
++  # A tree commit edited without re-exporting leaves patches/ stale in a way
++  # the layout check cannot see, because both sides still satisfy the manifest.
++  # This re-exports and byte-compares.
++  if queue_repo; then
++    check export "patch export matches tree" export_check
++  else
++    selected export && skip "patch export matches tree" "not a patch-queue checkout"
++  fi
++
++  # The package builder produces the release archives and the installer is the
++  # fork's own entry point; both suites are pure Python but they import from
++  # the tree, so they live in this tier.
++  check package-tests "codex_package tests" bash -c "
++    CODEX_REPO_ROOT=\"${repo_root}/${tree_dir}\" \
++      python3 -m unittest discover -s '${tree_dir}/scripts/codex_package' -p 'test_*.py'
++  "
++
++  check installer-tests "installer tests" bash -c "
++    CODEX_REPO_ROOT=\"${repo_root}/${tree_dir}\" \
++      python3 -m unittest discover -s '${tree_dir}/scripts/install' -p 'test_*.py'
++  "
++
++  # Upstream's rule that codex-tui must not import codex-core directly.
++  check boundary "codex-tui/codex-core boundary" \
++    python3 "${tree_dir}/.github/scripts/verify_tui_core_boundary.py"
++
++  # The CI-equivalent compile gate. A bare `cargo check --workspace` pulls in
++  # workspace members that need system headers the fork never installs
++  # (voice-host wants gstreamer/glib via pkg-config), so check exactly the
++  # three crates the fork builds, tests, and releases.
++  check type-check "type-check CLI, TUI, core" bash -c "
++    cd '${code_dir}' && cargo check -p codex-cli --bin codex -p codex-tui -p codex-core --all-targets
++  "
++
++  check config-schema "config schema fixture" bash -c "
++    cd '${code_dir}' || exit 1
++    fixture='core/config.schema.json'
++    tmp=\"\$(mktemp)\"
++    trap 'rm -f \"\$tmp\"' EXIT
++    cargo run -q -p codex-config-schema --bin codex-write-config-schema -- --out \"\$tmp\" || {
++      echo 'config-schema: failed to generate the schema' >&2
++      exit 1
++    }
++    if ! diff -u \"\$fixture\" \"\$tmp\"; then
++      echo 'config-schema: core/config.schema.json is out of date.' >&2
++      echo 'Fix: (cd ${code_dir} && cargo run -p codex-config-schema --bin codex-write-config-schema)' >&2
++      echo 'then re-export: (cd ${tree_dir} && bash ../scripts/gen-patches.sh \"\$(cat BASE_TAG)\")' >&2
++      exit 1
++    fi
++    echo 'config schema fixture OK'
++  "
++
++  check rustfmt "rustfmt" bash -c "cd '${code_dir}' && cargo fmt --check"
++
++  # cargo-deny is CI's own job (cargo-deny.yml, via upstream's action) because
++  # the action also caches the advisory database. Locally the same check runs
++  # when the binary is installed; without it the local gate says so rather than
++  # pretending the licences and advisories were inspected.
++  if selected cargo-deny; then
++    if has cargo-deny; then
++      check cargo-deny "cargo-deny" bash -c "cd '${code_dir}' && cargo deny check"
++    else
++      skip "cargo-deny" "cargo-deny not installed (CI runs it; cargo install cargo-deny)"
++    fi
++  fi
++}
++
++export_check() {
++  local base_tag tmp
++  base_tag="$(cat BASE_TAG)"
++  tmp="$(mktemp -d)"
++  # Expand at trap-set time; see the note in blob_size_check.
++  trap "rm -rf '${tmp}'" RETURN
++  if ! (cd "${tree_dir}" && bash ../scripts/gen-patches.sh "${base_tag}" "${tmp}" >/dev/null); then
++    echo "patch-export: gen-patches.sh failed; fix the tree/queue first" >&2
++    return 1
++  fi
++  if ! diff -rq patches "${tmp}" >/dev/null; then
++    echo "patch-export: patches/ drifted from the bootstrapped tree." >&2
++    echo "Re-export: (cd ${tree_dir} && bash ../scripts/gen-patches.sh \"${base_tag}\")" >&2
++    return 1
++  fi
++  echo "patch export matches tree"
++}
++
++# ---------------------------------------------------------------------------
++# Full tier: the build and the suites. Tens of minutes, so it runs on
++# pre-push and post-merge rather than on every commit.
++# ---------------------------------------------------------------------------
++full_gate() {
++  check release-build "release CLI build" bash -c "cd '${code_dir}' && cargo build --release --bin codex"
++
++  check tui-tests "codex-tui tests" bash -c "
++    cd '${code_dir}' || exit 1
++    if ! cargo nextest --version >/dev/null 2>&1; then
++      echo 'codex-tui tests: cargo-nextest is required (matches CI).' >&2
++      echo 'Install it with: cargo install --locked cargo-nextest' >&2
++      exit 1
++    fi
++    # A few TUI tests spawn the CLI binary, which nextest -p codex-tui does not
++    # build, so build it first so they can locate target/debug/codex.
++    cargo build --bin codex
++    RUST_MIN_STACK=${RUST_MIN_STACK} NEXTEST_PROFILE=${NEXTEST_PROFILE} \
++      cargo nextest run -j \"${NEXTEST_JOBS}\" --no-fail-fast -p codex-tui
++  "
++
++  check core-tests "codex-core tests" bash -c "
++    cd '${code_dir}' || exit 1
++    if ! cargo nextest --version >/dev/null 2>&1; then
++      echo 'codex-core tests: cargo-nextest is required (matches CI).' >&2
++      echo 'Install it with: cargo install --locked cargo-nextest' >&2
++      exit 1
++    fi
++    # The sandbox/approvals integration suite needs sandbox-capable runners,
++    # exactly like upstream, which runs it on self-hosted runners only. CI
++    # excludes suite::* and so does this gate.
++    RUST_MIN_STACK=${RUST_MIN_STACK} NEXTEST_PROFILE=${NEXTEST_PROFILE} \
++      cargo nextest run -j \"${NEXTEST_JOBS}\" --no-fail-fast \
++      -p codex-core -E 'not test(suite)'
++  "
++}
++
++printf 'gates: mode=%s tree=%s fail_fast=%s\n' "${mode}" "${tree_dir:-none}" "${fail_fast}"
++
++case "${mode}" in
++  light) light_gate ;;
++  tree) tree_gate ;;
++  full) full_gate ;;
++  heavy)
++    tree_gate
++    full_gate
++    ;;
++  all)
++    light_gate
++    tree_gate
++    full_gate
++    ;;
++esac
++
++if [[ ${#skipped[@]} -gt 0 ]]; then
++  printf '\nSkipped checks:\n'
++  printf '  - %s\n' "${skipped[@]}"
++fi
++
++if [[ ${#failed[@]} -gt 0 ]]; then
++  printf '\nFailed checks (%d):\n' "${#failed[@]}"
++  printf '  - %s\n' "${failed[@]}"
++  exit 1
++fi
++
++printf '\nAll %s checks passed.\n' "${mode}"
 diff --git a/scripts/gen-patches.sh b/scripts/gen-patches.sh
 new file mode 100644
-index 0000000..f49b884
+index 00000000..f49b8841
 --- /dev/null
 +++ b/scripts/gen-patches.sh
 @@ -0,0 +1,107 @@
@@ -2361,7 +3029,7 @@ index 0000000..f49b884
 +find "${output_dir}" -name '*.patch' | sort
 diff --git a/scripts/patch-modules.conf b/scripts/patch-modules.conf
 new file mode 100644
-index 0000000..45f5072
+index 00000000..45f50724
 --- /dev/null
 +++ b/scripts/patch-modules.conf
 @@ -0,0 +1,251 @@
@@ -2618,10 +3286,10 @@ index 0000000..45f5072
 +codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
 diff --git a/scripts/update.sh b/scripts/update.sh
 new file mode 100644
-index 0000000..61fd5ed
+index 00000000..57984f04
 --- /dev/null
 +++ b/scripts/update.sh
-@@ -0,0 +1,131 @@
+@@ -0,0 +1,128 @@
 +#!/usr/bin/env bash
 +# Upgrades the fork to a new upstream tag.
 +#
@@ -2635,8 +3303,8 @@ index 0000000..61fd5ed
 +#      (`git am --continue` / `git am --abort`), then run
 +#      `bash scripts/gen-patches.sh <new-upstream-tag>` to regenerate.
 +#   4. Verify the applied queue still matches the patch-module manifest,
-+#      then build + run the same checks as CI (build, fmt, nextest) from
-+#      the codex-rs workspace root.
++#      then run the same heavy gate the local pre-push hook and post-merge CI
++#      run (`scripts/gates.sh heavy`) against the in-flight tree.
 +#   5. Regenerate patches/, update BASE_TAG, and print release instructions.
 +set -euo pipefail
 +
@@ -2720,27 +3388,24 @@ index 0000000..61fd5ed
 +cd "${code_dir}"
 +# Linking codex-cli with thin LTO holds 10+ GB in one process and nextest spawns
 +# one process per CPU, so an uncapped run on a many-core host exhausts memory on
-+# its own. Cap both; raise CARGO_BUILD_JOBS explicitly if the host can take it.
-+export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
-+echo "Building ..."
-+cargo build --release --bin codex
-+
-+echo "Checking formatting ..."
-+cargo fmt --check
-+
++# its own. scripts/gates.sh applies the same caps CI does; raise CARGO_BUILD_JOBS
++# explicitly if the host can take it.
 +if ! command -v cargo-nextest >/dev/null 2>&1; then
 +  echo "cargo-nextest not found; installing it (same as CI) ..."
 +  cargo install --locked cargo-nextest
 +fi
 +
-+echo "Running codex-tui tests ..."
-+RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast -p codex-tui
-+
-+echo "Running codex-core tests ..."
-+# The full core integration suite (sandbox/approvals scenarios) needs
-+# sandbox-capable runners; CI excludes suite::* tests, so do the same here.
-+RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local cargo nextest run -j 2 --no-fail-fast \
-+  -p codex-core -E 'not test(suite)'
++# The upgrade is verified with the same heavy gate the local pre-push hook and
++# post-merge CI run, against the in-flight tree, so a resolved conflict cannot
++# slip past a check that the everyday gate would have caught.
++#
++# The export drift check is skipped: patches/ still holds the previous queue
++# until it is regenerated below, and gen-patches.sh verifies the new export
++# itself. The queue/layout check runs without --patches/--slim for the same
++# reason (scripts/gates.sh detects that the tree and the slim repo disagree on
++# BASE_TAG, which is exactly the in-flight-upgrade state).
++echo "Running the heavy gate against ${work_dir} ..."
++bash "${script_dir}/gates.sh" heavy --tree "${work_dir}" --skip export
 +
 +cd "${work_dir}"
 +echo "Regenerating patches ..."

@@ -1,4 +1,4 @@
-From f6776d84e7f242e72e77d2a0e65e838630b702ae Mon Sep 17 00:00:00 2001
+From abfef1b92403eb83d30ca0954061cbe55c3abba1 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -89,7 +89,7 @@ Subject: update: pure-Rust self-update against fork releases
  create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index 15ba769..560f067 100644
+index 15ba7692..560f0679 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
 @@ -283,15 +283,6 @@ pub async fn run_pid_update_loop(
@@ -134,7 +134,7 @@ index 15ba769..560f067 100644
      }
 diff --git a/codex-rs/app-server-daemon/src/manual_update.rs b/codex-rs/app-server-daemon/src/manual_update.rs
 deleted file mode 100644
-index 640c5bc..0000000
+index 640c5bc1..00000000
 --- a/codex-rs/app-server-daemon/src/manual_update.rs
 +++ /dev/null
 @@ -1,281 +0,0 @@
@@ -421,7 +421,7 @@ index 640c5bc..0000000
 -}
 diff --git a/codex-rs/app-server-daemon/src/migration.rs b/codex-rs/app-server-daemon/src/migration.rs
 deleted file mode 100644
-index b73dff0..0000000
+index b73dff0d..00000000
 --- a/codex-rs/app-server-daemon/src/migration.rs
 +++ /dev/null
 @@ -1,193 +0,0 @@
@@ -619,7 +619,7 @@ index b73dff0..0000000
 -    })
 -}
 diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
-index ecf2501..b091a56 100644
+index ecf2501d..b091a569 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install.rs
 @@ -72,7 +72,7 @@ pub async fn update_from_cli(
@@ -632,7 +632,7 @@ index ecf2501..b091a56 100644
  }
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 8f55126..c9067c4 100644
+index 8f551268..c9067c45 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
 @@ -1,113 +1,54 @@
@@ -1390,7 +1390,7 @@ index 8f55126..c9067c4 100644
  mod tests;
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index d932742..ac50a95 100644
+index d9327423..ac50a95f 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
 @@ -1,1036 +1,27 @@
@@ -2447,7 +2447,7 @@ index d932742..ac50a95 100644
 -    }
  }
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index 399230d..47ee738 100644
+index 399230d3..47ee7383 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
 @@ -79,6 +79,7 @@ codex-utils-path-uri = { workspace = true }
@@ -2479,7 +2479,7 @@ index 399230d..47ee738 100644
      "Win32_System_Threading",
 diff --git a/codex-rs/cli/src/app_cmd.rs b/codex-rs/cli/src/app_cmd.rs
 deleted file mode 100644
-index 44c22b6..0000000
+index 44c22b68..00000000
 --- a/codex-rs/cli/src/app_cmd.rs
 +++ /dev/null
 @@ -1,25 +0,0 @@
@@ -2509,7 +2509,7 @@ index 44c22b6..0000000
 -    }
 -}
 diff --git a/codex-rs/cli/src/daemon_install.rs b/codex-rs/cli/src/daemon_install.rs
-index cf1b450..0b2fc9a 100644
+index cf1b450b..0b2fc9ae 100644
 --- a/codex-rs/cli/src/daemon_install.rs
 +++ b/codex-rs/cli/src/daemon_install.rs
 @@ -23,7 +23,7 @@ pub(crate) fn confirm_install(request: &InstallRequest, yes: bool) -> Result<boo
@@ -2522,7 +2522,7 @@ index cf1b450..0b2fc9a 100644
          request.version,
          request.source.display(),
 diff --git a/codex-rs/cli/src/daemon_install_tests.rs b/codex-rs/cli/src/daemon_install_tests.rs
-index 700c237..de39c8a 100644
+index 700c2378..de39c8ae 100644
 --- a/codex-rs/cli/src/daemon_install_tests.rs
 +++ b/codex-rs/cli/src/daemon_install_tests.rs
 @@ -12,7 +12,7 @@ fn running_daemon_replacement_prompt() {
@@ -2535,7 +2535,7 @@ index 700c237..de39c8a 100644
      ");
  }
 diff --git a/codex-rs/cli/src/daemon_update_tests.rs b/codex-rs/cli/src/daemon_update_tests.rs
-index d93069f..d35b7cb 100644
+index d93069f0..d35b7cb5 100644
 --- a/codex-rs/cli/src/daemon_update_tests.rs
 +++ b/codex-rs/cli/src/daemon_update_tests.rs
 @@ -3,8 +3,8 @@ use codex_tui::DaemonUpdateSource;
@@ -2586,7 +2586,7 @@ index d93069f..d35b7cb 100644
      Ok(())
 diff --git a/codex-rs/cli/src/desktop_app/mac.rs b/codex-rs/cli/src/desktop_app/mac.rs
 deleted file mode 100644
-index 12abe08..0000000
+index 12abe08a..00000000
 --- a/codex-rs/cli/src/desktop_app/mac.rs
 +++ /dev/null
 @@ -1,512 +0,0 @@
@@ -3104,7 +3104,7 @@ index 12abe08..0000000
 -}
 diff --git a/codex-rs/cli/src/desktop_app/mod.rs b/codex-rs/cli/src/desktop_app/mod.rs
 deleted file mode 100644
-index 5a78341..0000000
+index 5a78341c..00000000
 --- a/codex-rs/cli/src/desktop_app/mod.rs
 +++ /dev/null
 @@ -1,22 +0,0 @@
@@ -3132,7 +3132,7 @@ index 5a78341..0000000
 -}
 diff --git a/codex-rs/cli/src/desktop_app/windows.rs b/codex-rs/cli/src/desktop_app/windows.rs
 deleted file mode 100644
-index ab0f757..0000000
+index ab0f7573..00000000
 --- a/codex-rs/cli/src/desktop_app/windows.rs
 +++ /dev/null
 @@ -1,133 +0,0 @@
@@ -3270,7 +3270,7 @@ index ab0f757..0000000
 -    }
 -}
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
-index 3dc3d07..2c60cb3 100644
+index 3dc3d07b..2c60cb3e 100644
 --- a/codex-rs/cli/src/doctor.rs
 +++ b/codex-rs/cli/src/doctor.rs
 @@ -73,7 +73,6 @@ use serde::Serialize;
@@ -3312,7 +3312,7 @@ index 3dc3d07..2c60cb3 100644
      let overall_status = overall_status(&checks);
 diff --git a/codex-rs/cli/src/doctor/desktop.rs b/codex-rs/cli/src/doctor/desktop.rs
 deleted file mode 100644
-index 96b6a06..0000000
+index 96b6a060..00000000
 --- a/codex-rs/cli/src/doctor/desktop.rs
 +++ /dev/null
 @@ -1,320 +0,0 @@
@@ -3638,7 +3638,7 @@ index 96b6a06..0000000
 -}
 diff --git a/codex-rs/cli/src/doctor/desktop/macos_security.rs b/codex-rs/cli/src/doctor/desktop/macos_security.rs
 deleted file mode 100644
-index ae0a1bf..0000000
+index ae0a1bf1..00000000
 --- a/codex-rs/cli/src/doctor/desktop/macos_security.rs
 +++ /dev/null
 @@ -1,236 +0,0 @@
@@ -3880,7 +3880,7 @@ index ae0a1bf..0000000
 -mod tests;
 diff --git a/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs b/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs
 deleted file mode 100644
-index 4fb1cc5..0000000
+index 4fb1cc51..00000000
 --- a/codex-rs/cli/src/doctor/desktop/macos_security_tests.rs
 +++ /dev/null
 @@ -1,67 +0,0 @@
@@ -3953,7 +3953,7 @@ index 4fb1cc5..0000000
 -}
 diff --git a/codex-rs/cli/src/doctor/desktop/platform.rs b/codex-rs/cli/src/doctor/desktop/platform.rs
 deleted file mode 100644
-index b06685a..0000000
+index b06685a8..00000000
 --- a/codex-rs/cli/src/doctor/desktop/platform.rs
 +++ /dev/null
 @@ -1,283 +0,0 @@
@@ -4242,7 +4242,7 @@ index b06685a..0000000
 -}
 diff --git a/codex-rs/cli/src/doctor/desktop/windows_security.rs b/codex-rs/cli/src/doctor/desktop/windows_security.rs
 deleted file mode 100644
-index d54f1b5..0000000
+index d54f1b59..00000000
 --- a/codex-rs/cli/src/doctor/desktop/windows_security.rs
 +++ /dev/null
 @@ -1,232 +0,0 @@
@@ -4480,7 +4480,7 @@ index d54f1b5..0000000
 -mod tests;
 diff --git a/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs b/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
 deleted file mode 100644
-index ddd6973..0000000
+index ddd69738..00000000
 --- a/codex-rs/cli/src/doctor/desktop/windows_security_tests.rs
 +++ /dev/null
 @@ -1,85 +0,0 @@
@@ -4571,7 +4571,7 @@ index ddd6973..0000000
 -}
 diff --git a/codex-rs/cli/src/doctor/desktop_tests.rs b/codex-rs/cli/src/doctor/desktop_tests.rs
 deleted file mode 100644
-index b5bd937..0000000
+index b5bd937f..00000000
 --- a/codex-rs/cli/src/doctor/desktop_tests.rs
 +++ /dev/null
 @@ -1,97 +0,0 @@
@@ -4673,7 +4673,7 @@ index b5bd937..0000000
 -    .expect("desktop log fixture should be created");
 -}
 diff --git a/codex-rs/cli/src/doctor/output.rs b/codex-rs/cli/src/doctor/output.rs
-index a614250..021fe09 100644
+index a6142503..021fe09c 100644
 --- a/codex-rs/cli/src/doctor/output.rs
 +++ b/codex-rs/cli/src/doctor/output.rs
 @@ -34,10 +34,6 @@ const GROUPS: &[OutputGroup] = &[
@@ -4759,7 +4759,7 @@ index a614250..021fe09 100644
              "doctor_human_report_environment_rows",
              render_human_report(&report, detailed_no_color_unicode_options())
 diff --git a/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap b/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
-index 7aec692..63dd1b3 100644
+index 7aec6928..63dd1b35 100644
 --- a/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
 +++ b/codex-rs/cli/src/doctor/snapshots/codex__doctor__output__tests__doctor_human_report_environment_rows.snap
 @@ -5,7 +5,6 @@ expression: "render_human_report(&report, detailed_no_color_unicode_options())"
@@ -4798,7 +4798,7 @@ index 7aec692..63dd1b3 100644
  --summary compact output           --all expand truncated lists
  --json redacted report
 diff --git a/codex-rs/cli/src/doctor/updates.rs b/codex-rs/cli/src/doctor/updates.rs
-index fbad7d9..1e1fd1d 100644
+index fbad7d91..1e1fd1de 100644
 --- a/codex-rs/cli/src/doctor/updates.rs
 +++ b/codex-rs/cli/src/doctor/updates.rs
 @@ -5,8 +5,6 @@
@@ -5364,7 +5364,7 @@ index fbad7d9..1e1fd1d 100644
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index bdd7771..8507ecf 100644
+index bdd7771b..8507ecf2 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -6133,7 +6133,7 @@ index bdd7771..8507ecf 100644
              app_server_from_args(["codex", "app-server", "daemon", "stop"].as_ref()).subcommand,
              Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
 diff --git a/codex-rs/cli/src/plugin_cmd.rs b/codex-rs/cli/src/plugin_cmd.rs
-index d282452..d921164 100644
+index d2824526..d9211646 100644
 --- a/codex-rs/cli/src/plugin_cmd.rs
 +++ b/codex-rs/cli/src/plugin_cmd.rs
 @@ -43,6 +43,13 @@ use std::sync::Arc;
@@ -6182,7 +6182,7 @@ index d282452..d921164 100644
      }
 diff --git a/codex-rs/cli/src/release_metadata.rs b/codex-rs/cli/src/release_metadata.rs
 new file mode 100644
-index 0000000..af3ee05
+index 00000000..af3ee05a
 --- /dev/null
 +++ b/codex-rs/cli/src/release_metadata.rs
 @@ -0,0 +1,124 @@
@@ -6312,7 +6312,7 @@ index 0000000..af3ee05
 +}
 diff --git a/codex-rs/cli/src/remote_control_cmd.rs b/codex-rs/cli/src/remote_control_cmd.rs
 deleted file mode 100644
-index 9c0d5e2..0000000
+index 9c0d5e2a..00000000
 --- a/codex-rs/cli/src/remote_control_cmd.rs
 +++ /dev/null
 @@ -1,780 +0,0 @@
@@ -7098,7 +7098,7 @@ index 9c0d5e2..0000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000..100e350
+index 00000000..100e350a
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
 @@ -0,0 +1,680 @@
@@ -7784,7 +7784,7 @@ index 0000000..100e350
 +}
 diff --git a/codex-rs/cli/src/wsl_paths.rs b/codex-rs/cli/src/wsl_paths.rs
 deleted file mode 100644
-index b90dc1e..0000000
+index b90dc1e2..00000000
 --- a/codex-rs/cli/src/wsl_paths.rs
 +++ /dev/null
 @@ -1,59 +0,0 @@
@@ -7848,7 +7848,7 @@ index b90dc1e..0000000
 -    }
 -}
 diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
-index 002012a..b3b9c0d 100644
+index 002012a9..b3b9c0d1 100644
 --- a/codex-rs/cli/tests/app_server_daemon.rs
 +++ b/codex-rs/cli/tests/app_server_daemon.rs
 @@ -92,6 +92,25 @@ impl TestDaemon {
@@ -7896,7 +7896,7 @@ index 002012a..b3b9c0d 100644
      assert!(daemon.pid("app-server-updater.pid").is_err());
      Ok(())
 diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
-index 1ec06aa..554738c 100644
+index 1ec06aa3..554738c8 100644
 --- a/codex-rs/cli/tests/worktree.rs
 +++ b/codex-rs/cli/tests/worktree.rs
 @@ -563,7 +563,7 @@ trust_level = "trusted"
@@ -7909,7 +7909,7 @@ index 1ec06aa..554738c 100644
                      ("\x1b[B\r", "Updating the local background server..."),
                  ] {
 diff --git a/codex-rs/tui/src/app/daemon_menu.rs b/codex-rs/tui/src/app/daemon_menu.rs
-index bf9934d..436b562 100644
+index bf9934df..436b5621 100644
 --- a/codex-rs/tui/src/app/daemon_menu.rs
 +++ b/codex-rs/tui/src/app/daemon_menu.rs
 @@ -56,28 +56,22 @@ impl App {
@@ -7979,7 +7979,7 @@ index bf9934d..436b562 100644
          };
          explanation.push_str("\nThis may restart the daemon and interrupt active or queued work.\nCodex exits to update in this terminal. Relaunch it afterward.");
 diff --git a/codex-rs/tui/src/app/daemon_menu_tests.rs b/codex-rs/tui/src/app/daemon_menu_tests.rs
-index 0928bf3..137444e 100644
+index 0928bf31..137444e7 100644
 --- a/codex-rs/tui/src/app/daemon_menu_tests.rs
 +++ b/codex-rs/tui/src/app/daemon_menu_tests.rs
 @@ -90,29 +90,19 @@ async fn daemon_menu_is_read_only_and_confirmation_can_cancel_or_handoff() {
@@ -8125,7 +8125,7 @@ index 0928bf3..137444e 100644
      app.daemon_cli_executable = None;
      app.open_daemon_menu();
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
-index 4de9db0..99f11fe 100644
+index 4de9db01..99f11fee 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 @@ -1,10 +1,10 @@
@@ -8143,7 +8143,7 @@ index 4de9db0..99f11fe 100644
    Codex exits to update in this terminal. Relaunch it afterward.
  
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
-index 70a7611..359895a 100644
+index 70a76119..359895a2 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_disconnected.snap
 @@ -6,7 +6,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
@@ -8156,7 +8156,7 @@ index 70a7611..359895a 100644
  
    enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
-index bc8a91e..921158d 100644
+index bc8a91e3..921158d1 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_menu.snap
 @@ -6,7 +6,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
@@ -8169,7 +8169,7 @@ index bc8a91e..921158d 100644
  
    enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
-index 8232050..e1743ed 100644
+index 8232050e..e1743edd 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_no_cli_handoff.snap
 @@ -7,7 +7,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
@@ -8182,7 +8182,7 @@ index 8232050..e1743ed 100644
  
    enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
-index ea209ab..842e54e 100644
+index ea209abf..842e54e6 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_remote_guidance.snap
 @@ -8,7 +8,6 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
@@ -8196,7 +8196,7 @@ index ea209ab..842e54e 100644
    enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
 deleted file mode 100644
-index f49bcbe..0000000
+index f49bcbef..00000000
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
 +++ /dev/null
 @@ -1,15 +0,0 @@
@@ -8216,7 +8216,7 @@ index f49bcbe..0000000
 -
 -  enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
-index dd6f597..d138e59 100644
+index dd6f597f..d138e590 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_unpackaged_cli.snap
 @@ -6,7 +6,7 @@ expression: "render_bottom_popup(&app.chat_widget, 80)"
@@ -8230,7 +8230,7 @@ index dd6f597..d138e59 100644
  
    enter select · esc back
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index 8f9c547..71c2b57 100644
+index 8f9c5476..71c2b574 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 @@ -420,6 +420,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
@@ -8248,7 +8248,7 @@ index 8f9c547..71c2b57 100644
                  "restored_conversation",
                  render_bottom_popup(&app.chat_widget, /*width*/ 80)
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
-index 335071a..b37853d 100644
+index 335071a0..b37853d5 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 @@ -3,8 +3,6 @@ source: tui/src/app/tests/active_reconnect_tests.rs
@@ -8261,7 +8261,7 @@ index 335071a..b37853d 100644
  
    gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index c5fa224..4523ffa 100644
+index c5fa2241..4523ffad 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -5,6 +5,7 @@ use crate::style::accent_color;
@@ -8330,7 +8330,7 @@ index c5fa224..4523ffa 100644
  
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
 deleted file mode 100644
-index a9dd9ca..0000000
+index a9dd9cac..00000000
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
 +++ /dev/null
 @@ -1,11 +0,0 @@
@@ -8346,7 +8346,7 @@ index a9dd9ca..0000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0..83c906c 100644
+index e5cc9a0c..83c906c0 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -8367,7 +8367,7 @@ index e5cc9a0..83c906c 100644
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352d..9137016 100644
+index c8f352db..91370166 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,10 +2,10 @@
@@ -8390,7 +8390,7 @@ index c8f352d..9137016 100644
 +╰──────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
 deleted file mode 100644
-index fb15a05..0000000
+index fb15a057..00000000
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
 +++ /dev/null
 @@ -1,12 +0,0 @@
@@ -8407,7 +8407,7 @@ index fb15a05..0000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 9b0dc60..1300c41 100644
+index 9b0dc603..1300c417 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
 @@ -1371,35 +1371,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
@@ -8447,7 +8447,7 @@ index 9b0dc60..1300c41 100644
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053..cc9feb8 100644
+index 53c80530..cc9feb85 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
@@ -8467,7 +8467,7 @@ index 53c8053..cc9feb8 100644
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642..33ce487 100644
+index b5476422..33ce4874 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
@@ -8485,7 +8485,7 @@ index b547642..33ce487 100644
    3. Skip until next version
  
 diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
-index a0ff9cb..64c1149 100644
+index a0ff9cb3..64c11491 100644
 --- a/codex-rs/tui/src/startup_orchestration.rs
 +++ b/codex-rs/tui/src/startup_orchestration.rs
 @@ -903,7 +903,6 @@ pub(super) async fn run_main_inner(
@@ -8497,7 +8497,7 @@ index a0ff9cb..64c1149 100644
                  },
              ),
 diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
-index 860d0bd..be30a6c 100644
+index 860d0bd1..be30a6c4 100644
 --- a/codex-rs/tui/src/update_action.rs
 +++ b/codex-rs/tui/src/update_action.rs
 @@ -8,21 +8,14 @@ use codex_install_context::StandalonePlatform;
@@ -8683,7 +8683,7 @@ index 860d0bd..be30a6c 100644
          }
      }
 diff --git a/codex-rs/tui/src/update_prompt.rs b/codex-rs/tui/src/update_prompt.rs
-index 30e948d..4f824ff 100644
+index 30e948da..4f824ff7 100644
 --- a/codex-rs/tui/src/update_prompt.rs
 +++ b/codex-rs/tui/src/update_prompt.rs
 @@ -39,7 +39,8 @@ use ratatui::widgets::Wrap;
@@ -8715,7 +8715,7 @@ index 30e948d..4f824ff 100644
      }
  
 diff --git a/codex-rs/tui/src/update_versions.rs b/codex-rs/tui/src/update_versions.rs
-index b0aa3de..0c8243e 100644
+index b0aa3deb..0c8243e1 100644
 --- a/codex-rs/tui/src/update_versions.rs
 +++ b/codex-rs/tui/src/update_versions.rs
 @@ -8,10 +8,14 @@ pub(crate) fn is_newer(latest: &str, current: &str) -> Option<bool> {
@@ -8760,7 +8760,7 @@ index b0aa3de..0c8243e 100644
  
      #[test]
 diff --git a/codex-rs/tui/src/updates.rs b/codex-rs/tui/src/updates.rs
-index 9bbdf31..39e4085 100644
+index 9bbdf310..39e4085d 100644
 --- a/codex-rs/tui/src/updates.rs
 +++ b/codex-rs/tui/src/updates.rs
 @@ -1,10 +1,6 @@
@@ -8913,7 +8913,7 @@ index 9bbdf31..39e4085 100644
  pub fn get_upgrade_version_for_popup(config: &Config) -> Option<String> {
 diff --git a/codex-rs/utils/cli/src/fork.rs b/codex-rs/utils/cli/src/fork.rs
 new file mode 100644
-index 0000000..71f1c12
+index 00000000..71f1c12f
 --- /dev/null
 +++ b/codex-rs/utils/cli/src/fork.rs
 @@ -0,0 +1,59 @@
@@ -8978,7 +8978,7 @@ index 0000000..71f1c12
 +mod tests;
 diff --git a/codex-rs/utils/cli/src/fork_tests.rs b/codex-rs/utils/cli/src/fork_tests.rs
 new file mode 100644
-index 0000000..93a2a8b
+index 00000000..93a2a8b4
 --- /dev/null
 +++ b/codex-rs/utils/cli/src/fork_tests.rs
 @@ -0,0 +1,32 @@
@@ -9015,7 +9015,7 @@ index 0000000..93a2a8b
 +    }
 +}
 diff --git a/codex-rs/utils/cli/src/lib.rs b/codex-rs/utils/cli/src/lib.rs
-index 633638e..b989481 100644
+index 633638e7..b9894814 100644
 --- a/codex-rs/utils/cli/src/lib.rs
 +++ b/codex-rs/utils/cli/src/lib.rs
 @@ -1,5 +1,6 @@

@@ -1,4 +1,4 @@
-From 6677283f63fe06d6d9a1c26a4ff5d9fdb2a319d9 Mon Sep 17 00:00:00 2001
+From c9435b55f703d76fd6d5ab86238e0140ca3cec86 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:22 +0000
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -41,7 +41,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 9915de6..9ff3073 100644
+index 9915de6b..9ff30733 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -518,10 +518,25 @@ pub struct ConfigToml {
@@ -73,7 +73,7 @@ index 9915de6..9ff3073 100644
      pub disable_paste_burst: Option<bool>,
  
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index ac6171c..33f6a8d 100644
+index ac6171c0..33f6a8dd 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
 @@ -6654,7 +6654,7 @@
@@ -108,7 +108,7 @@ index ac6171c..33f6a8d 100644
        "allOf": [
          {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index b2a2dc4..8806014 100644
+index b2a2dc45..88060140 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -631,6 +631,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
@@ -154,7 +154,7 @@ index b2a2dc4..8806014 100644
  async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
      let codex_home = tempdir()?;
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index 60c6f65..1316c7c 100644
+index 60c6f653..1316c7c8 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -1127,10 +1127,24 @@ pub struct Config {
@@ -210,7 +210,7 @@ index 60c6f65..1316c7c 100644
                  .tui
                  .as_ref()
 diff --git a/codex-rs/thread-manager-sample/src/main.rs b/codex-rs/thread-manager-sample/src/main.rs
-index b137e6b..777dfa8 100644
+index b137e6bc..777dfa84 100644
 --- a/codex-rs/thread-manager-sample/src/main.rs
 +++ b/codex-rs/thread-manager-sample/src/main.rs
 @@ -384,6 +384,9 @@ async fn new_config(
@@ -224,7 +224,7 @@ index b137e6b..777dfa8 100644
          analytics_enabled: Some(false),
          feedback_enabled: false,
 diff --git a/codex-rs/tui/Cargo.toml b/codex-rs/tui/Cargo.toml
-index 9d61157..a54613f 100644
+index 9d61157c..a54613f4 100644
 --- a/codex-rs/tui/Cargo.toml
 +++ b/codex-rs/tui/Cargo.toml
 @@ -85,6 +85,7 @@ diffy = { workspace = true }
@@ -252,7 +252,7 @@ index 9d61157..a54613f 100644
  pretty_assertions = { workspace = true }
  rand = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index da28bf2..1364087 100644
+index da28bf2c..13640876 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
 @@ -425,6 +425,37 @@ impl App {
@@ -325,7 +325,7 @@ index da28bf2..1364087 100644
                  self.handle_pet_selected(tui, pet_id);
              }
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index 52e7e02..c8c712a 100644
+index 52e7e020..c8c712aa 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -1,4 +1,4 @@
@@ -473,7 +473,7 @@ index 52e7e02..c8c712a 100644
  #[path = "history_ui_tests.rs"]
  mod tests;
 diff --git a/codex-rs/tui/src/app/history_ui_tests.rs b/codex-rs/tui/src/app/history_ui_tests.rs
-index 252eb04..863c938 100644
+index 252eb046..863c9386 100644
 --- a/codex-rs/tui/src/app/history_ui_tests.rs
 +++ b/codex-rs/tui/src/app/history_ui_tests.rs
 @@ -1,38 +1,14 @@
@@ -521,7 +521,7 @@ index 252eb04..863c938 100644
  async fn owned_clear_resets_navigation_and_retains_one_fresh_header() -> Result<()> {
      let (mut app, _rx, _op_rx) = make_test_app_with_channels().await;
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index 46c0da6..67de6bb 100644
+index 46c0da6d..67de6bb7 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
 @@ -583,7 +583,7 @@ async fn owned_transcript_keeps_text_out_of_the_pet_columns() -> Result<()> {
@@ -638,7 +638,7 @@ index 46c0da6..67de6bb 100644
      assert_eq!(app.backtrack.nth_user_message, 2);
      for key in [
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index 5995bb7..ea61dce 100644
+index 5995bb79..ea61dce7 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
 @@ -1117,6 +1117,11 @@ impl App {
@@ -655,7 +655,7 @@ index 5995bb7..ea61dce 100644
          self.chat_widget
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
 deleted file mode 100644
-index 16e3549..0000000
+index 16e3549a..00000000
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
 +++ /dev/null
 @@ -1,5 +0,0 @@
@@ -666,7 +666,7 @@ index 16e3549..0000000
 -■ Failed to open this session in the Desktop app: launch failed. Install or launch the Desktop app and try again.
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
 deleted file mode 100644
-index 8e34f8e..0000000
+index 8e34f8e8..00000000
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
 +++ /dev/null
 @@ -1,5 +0,0 @@
@@ -676,7 +676,7 @@ index 8e34f8e..0000000
 ----
 -• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index 9c1af27..828e477 100644
+index 9c1af274..828e477a 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -5973,7 +5973,7 @@ async fn ctrl_l_clears_owned_history_and_preserves_the_draft() -> Result<()> {
@@ -1429,7 +1429,7 @@ index 9c1af27..828e477 100644
      Box::pin(crate::start_embedded_app_server_for_picker(&app.config)).await
  }
 diff --git a/codex-rs/tui/src/app/tests/turn_submission.rs b/codex-rs/tui/src/app/tests/turn_submission.rs
-index 6fd095f..48ca3ec 100644
+index 6fd095fb..48ca3ec2 100644
 --- a/codex-rs/tui/src/app/tests/turn_submission.rs
 +++ b/codex-rs/tui/src/app/tests/turn_submission.rs
 @@ -143,6 +143,9 @@ async fn turn_start_failure_is_shown_without_exiting() -> Result<()> {
@@ -1443,7 +1443,7 @@ index 6fd095f..48ca3ec 100644
      app.active_thread_id = Some(thread_id);
      app.chat_widget
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 4e63f0c..b6b1b13 100644
+index 4e63f0ca..b6b1b137 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
 @@ -59,7 +59,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
@@ -1677,7 +1677,7 @@ index 4e63f0c..b6b1b13 100644
      cells: &[Arc<dyn crate::history_cell::HistoryCell>],
  ) -> impl Iterator<Item = usize> + '_ {
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index ce30da4..dcefca3 100644
+index ce30da4a..dcefca35 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
 @@ -251,6 +251,17 @@ pub(crate) enum TranscriptExportDestination {
@@ -1758,7 +1758,7 @@ index ce30da4..dcefca3 100644
      PetSelected {
          pet_id: String,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 7fafd6d..4cc6690 100644
+index 7fafd6dd..4cc66903 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
 @@ -701,6 +701,9 @@ pub(crate) struct ChatWidget {
@@ -1808,7 +1808,7 @@ index 7fafd6d..4cc6690 100644
          self.cancel_image_submission();
          self.blocks_direct_input = true;
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 5184f1c..9f9c59c 100644
+index 5184f1c6..9f9c59c9 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
 @@ -240,6 +240,15 @@ impl ChatWidget {
@@ -1885,7 +1885,7 @@ index 5184f1c..9f9c59c 100644
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 4fe2ed0..d98bcce 100644
+index 4fe2ed05..d98bcce8 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 @@ -277,15 +277,8 @@ impl ChatWidget {
@@ -1924,7 +1924,7 @@ index 4fe2ed0..d98bcce 100644
              | SlashCommand::Review
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
 new file mode 100644
-index 0000000..d5da994
+index 00000000..d5da994d
 --- /dev/null
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
 @@ -0,0 +1,15 @@
@@ -1944,7 +1944,7 @@ index 0000000..d5da994
 +
 +  enter select · esc back
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index e03e997..690d8fd 100644
+index e03e997d..690d8fd6 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
 @@ -794,6 +794,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
@@ -1958,7 +1958,7 @@ index e03e997..690d8fd 100644
          .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
      chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 099806b..7689027 100644
+index 099806b8..7689027f 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -1678,7 +1678,7 @@ fn interrupted_history(
@@ -2049,7 +2049,7 @@ index 099806b..7689027 100644
                      if scenario == "escape" {
                          chat.on_interrupted_turn(TurnAbortReason::Interrupted);
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index e8e5b4c..071e4f5 100644
+index e8e5b4c4..071e4f5f 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -1210,7 +1210,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
@@ -2102,7 +2102,7 @@ index e8e5b4c..071e4f5 100644
  
 diff --git a/codex-rs/tui/src/rewind/actions.rs b/codex-rs/tui/src/rewind/actions.rs
 new file mode 100644
-index 0000000..7b56002
+index 00000000..7b560029
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/actions.rs
 @@ -0,0 +1,392 @@
@@ -2500,7 +2500,7 @@ index 0000000..7b56002
 +}
 diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
 new file mode 100644
-index 0000000..fdb69c0
+index 00000000..fdb69c05
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/mod.rs
 @@ -0,0 +1,1364 @@
@@ -3870,7 +3870,7 @@ index 0000000..fdb69c0
 +pub(crate) use actions::rewind_scope_selection_params;
 diff --git a/codex-rs/tui/src/rewind/rewind_tests.rs b/codex-rs/tui/src/rewind/rewind_tests.rs
 new file mode 100644
-index 0000000..81078cc
+index 00000000..81078ccc
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/rewind_tests.rs
 @@ -0,0 +1,1203 @@
@@ -5078,7 +5078,7 @@ index 0000000..81078cc
 +    assert_eq!(fs::read(&file).expect("read"), b"v1");
 +}
 diff --git a/codex-rs/tui/src/slash_command.rs b/codex-rs/tui/src/slash_command.rs
-index 301de2e..7b0df2d 100644
+index 301de2e0..7b0df2d6 100644
 --- a/codex-rs/tui/src/slash_command.rs
 +++ b/codex-rs/tui/src/slash_command.rs
 @@ -34,7 +34,7 @@ pub enum SlashCommand {
