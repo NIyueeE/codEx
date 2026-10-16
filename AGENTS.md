@@ -446,6 +446,29 @@ rust-v0.155.1, rust-v0.160.0, and rust-v0.163.0 upgrades:
   re-published older tag must not roll it back. The script is carried at the
   slim root next to `check_ci_results.py` rather than bootstrapped in the
   release job.
+- The same applies to `gen-patches.sh`: `git format-patch` ends every patch
+  with a `-- ` signature line carrying the *producing* git version, so an
+  export made by a workstation's git (2.47) and one made by the runner's
+  (2.55) differ even when the queue is identical. The exporter passes
+  `--no-signature` for that reason; the drift check additionally normalizes the
+  `From <sha>` line, which a fresh `git am` legitimately changes.
+- A dependency bump can change a *type* under the fork's own `#[cfg(windows)]`
+  code. 0.163.0's resolution moved the workspace onto a windows-sys release
+  where `HANDLE` is `*mut c_void` (older ones made it an `isize`), so
+  `cli/src/self_update.rs`'s `handle != 0` stopped compiling on Windows only.
+  No local gate can see that (the fork's Linux CI cannot cross-check the ring
+  and sandbox build scripts), so the Windows job in `rust-ci-full.yml` is the
+  only place it surfaces -- treat a red Windows check as a real regression, not
+  as CI flakiness.
+- The cargo home cache restores `~/.cargo/bin`, so any `cargo install` in a
+  workflow must be idempotent: the second run fails with "binary ... already
+  exists in destination" otherwise. The heavy gate checks `command -v
+  cargo-nextest` first and installs a pinned version when the cache is cold.
+- Advisories age independently of this repository: a lockfile that passed
+  cargo-deny last week can fail today because rustsec published a new advisory
+  (0.163.0 shipped rustls 0.23.45 into four of them). The fix is to bump the
+  dependency in the `[infra]` lockfile (`cargo update -p <crate>`) and
+  re-export, never to add the advisory to `deny.toml`'s ignore list.
 - Comparing the merged tree against the slim copies is the fastest way to find
   the files a `[distribution]` conflict damaged: every fork-carried workflow
   that `git am` auto-merged should be byte-identical to its slim copy (`cmp`),
