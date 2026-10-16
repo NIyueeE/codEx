@@ -1,4 +1,4 @@
-From a89ce66bf7dd38d315508e54884636947cb46e90 Mon Sep 17 00:00:00 2001
+From 49332387f12fd33997bf90913498d36f13d1b3a3 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -9,7 +9,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  .gitignore                                    | 100 +---
  BASE_TAG                                      |   1 +
  README.md                                     | 450 +++++++++++++--
- codex-rs/Cargo.lock                           | 321 +++++------
+ codex-rs/Cargo.lock                           | 341 ++++++------
  .../tui/src/app/tests/safety_buffering.rs     |   5 +-
  scripts/bootstrap.sh                          |  55 ++
  scripts/check-patch-modules.sh                | 244 ++++++++
@@ -17,7 +17,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/gen-patches.sh                        | 107 ++++
  scripts/patch-modules.conf                    | 256 +++++++++
  scripts/update.sh                             | 128 +++++
- 13 files changed, 1896 insertions(+), 306 deletions(-)
+ 13 files changed, 1906 insertions(+), 316 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -657,7 +657,7 @@ index 06b02fc..f006f1a 100644
 -This repository is licensed under the [Apache-2.0 License](LICENSE).
 +The fork retains the upstream license (Apache-2.0). See `LICENSE`.
 diff --git a/codex-rs/Cargo.lock b/codex-rs/Cargo.lock
-index 72658b9..7198d76 100644
+index 72658b9..97b7fe9 100644
 --- a/codex-rs/Cargo.lock
 +++ b/codex-rs/Cargo.lock
 @@ -276,7 +276,7 @@ checksum = "2a4385e2e34eb35d6b3efe798b9eb88096925d87726c0798709bf56d9ed84af3"
@@ -2087,6 +2087,87 @@ index 72658b9..7198d76 100644
  dependencies = [
   "anyhow",
   "assert_cmd",
+@@ -6847,7 +6848,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
+ checksum = "39cab71617ae0d63f51a36d69f866391735b51691dbda63cf6f96d042b63efeb"
+ dependencies = [
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -7499,7 +7500,7 @@ dependencies = [
+  "gobject-sys",
+  "libc",
+  "system-deps",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -9611,7 +9612,7 @@ checksum = "3640c1c38b8e4e43584d8df18be5fc6b0aa314ce6ebf51b53313d4306cca8e46"
+ dependencies = [
+  "hermit-abi",
+  "libc",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -9677,7 +9678,7 @@ dependencies = [
+  "portable-atomic",
+  "portable-atomic-util",
+  "serde_core",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -12246,7 +12247,7 @@ dependencies = [
+  "libc",
+  "log",
+  "socket2 0.6.3",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -13558,14 +13559,14 @@ dependencies = [
+  "errno",
+  "libc",
+  "linux-raw-sys 0.12.1",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+ name = "rustls"
+-version = "0.23.45"
++version = "0.23.46"
+ source = "registry+https://github.com/rust-lang/crates.io-index"
+-checksum = "0d41d731c7d2f962d1ccc364cec258de3c0e93b38c2fb3ba97ac74513048d634"
++checksum = "48e13bd8c0e9365c43cfa5c9e8f9ad49d3c8444926c9aac819e0e4dc503c8fdf"
+ dependencies = [
+  "aws-lc-rs",
+  "log",
+@@ -13617,7 +13618,7 @@ dependencies = [
+  "security-framework 3.5.1",
+  "security-framework-sys",
+  "webpki-root-certs",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
+@@ -15271,7 +15272,7 @@ dependencies = [
+  "getrandom 0.4.2",
+  "once_cell",
+  "rustix 1.1.4",
+- "windows-sys 0.52.0",
++ "windows-sys 0.59.0",
+ ]
+ 
+ [[package]]
 diff --git a/codex-rs/tui/src/app/tests/safety_buffering.rs b/codex-rs/tui/src/app/tests/safety_buffering.rs
 index 71a8f2b..23f0832 100644
 --- a/codex-rs/tui/src/app/tests/safety_buffering.rs
