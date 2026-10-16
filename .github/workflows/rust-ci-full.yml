@@ -56,7 +56,18 @@ jobs:
         with:
           key: rust-ci-full-test-tui
       - name: Install cargo-nextest
-        run: cargo install --locked cargo-nextest
+        run: |
+          set -euo pipefail
+          # The cargo cache restores ~/.cargo/bin, and `cargo install` refuses
+          # to overwrite an existing binary ("already exists in destination"),
+          # so only install what the cache did not provide. The version is
+          # pinned because an unpinned install picks up whatever the registry
+          # published last, which is how this step first failed a rerun.
+          if command -v cargo-nextest >/dev/null 2>&1; then
+            cargo nextest --version
+            exit 0
+          fi
+          cargo install --locked cargo-nextest@0.9.146
       - name: Run codex-tui tests
         run: bash scripts/gates.sh full --only tui-tests --tree "${TREE_DIR}" --fast-fail
       - name: Check for a clean worktree
@@ -77,7 +88,18 @@ jobs:
         with:
           key: rust-ci-full-test-core
       - name: Install cargo-nextest
-        run: cargo install --locked cargo-nextest
+        run: |
+          set -euo pipefail
+          # The cargo cache restores ~/.cargo/bin, and `cargo install` refuses
+          # to overwrite an existing binary ("already exists in destination"),
+          # so only install what the cache did not provide. The version is
+          # pinned because an unpinned install picks up whatever the registry
+          # published last, which is how this step first failed a rerun.
+          if command -v cargo-nextest >/dev/null 2>&1; then
+            cargo nextest --version
+            exit 0
+          fi
+          cargo install --locked cargo-nextest@0.9.146
       # The sandbox-dependent core integration suite (suite::*) needs
       # sandbox-capable runners, exactly like upstream, which runs it on
       # self-hosted runners only. Hosted CI covers core unit tests; gates.sh
