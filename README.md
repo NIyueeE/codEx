@@ -28,7 +28,7 @@ under `~/.codex/packages/standalone/releases/<version>-<target>/` so
 
 The archive is the same canonical package upstream publishes: a
 `codex-package.json` manifest next to `bin/codex`, `codex-path/rg`, and
-`codex-resources/` (bwrap, and the patched zsh on Unix). That layout is what
+`codex-resources/` (the bwrap sandbox helper on Linux). That layout is what
 `InstallContext` recognizes and what `codex app-server daemon` copies when it
 installs the shared background server.
 

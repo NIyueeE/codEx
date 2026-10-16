@@ -1,4 +1,4 @@
-From 1cce2e1fa740482e7639bc5ef5ab5bf5095586f8 Mon Sep 17 00:00:00 2001
+From c90379c7c48d049b953b0a81e758d3867c9f9f38 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -8,7 +8,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/actions/cargo-cache/action.yml        |   43 +
  .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
- .github/workflows/bazel.yml                   |  549 ----
+ .github/workflows/bazel.yml                   |  550 ----
  .github/workflows/blob-size-policy.yml        |   49 +-
  .github/workflows/blocking-ci.yml             |   54 +-
  .github/workflows/cargo-deny.yml              |   32 +-
@@ -21,19 +21,18 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/python-sdk-release.yml      |  172 --
  .github/workflows/r2-release.yml              |   59 -
  .github/workflows/repo-checks.yml             |  104 +-
- .../rust-ci-full-nextest-platform.yml         |  439 ----
- .github/workflows/rust-ci-full.yml            |  663 +----
- .github/workflows/rust-ci.yml                 |  290 +--
+ .../rust-ci-full-nextest-platform.yml         |  439 ---
+ .github/workflows/rust-ci-full.yml            |  665 +----
+ .github/workflows/rust-ci.yml                 |  290 +-
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  214 --
- .github/workflows/rust-release-windows.yml    |  624 -----
- .github/workflows/rust-release-zsh.yml        |  182 --
- .github/workflows/rust-release.yml            | 2245 +++--------------
+ .github/workflows/rust-release-windows.yml    |  701 -----
+ .github/workflows/rust-release.yml            | 2375 +++--------------
  .github/workflows/rusty-v8-release.yml        |  479 ----
  .github/workflows/sdk.yml                     |  161 --
- .github/workflows/v8-canary.yml               |  444 ----
+ .github/workflows/v8-canary.yml               |  444 ---
  install.sh                                    |  215 ++
- patches/BUILD.bazel                           |   35 -
+ patches/BUILD.bazel                           |   37 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 -
@@ -47,13 +46,13 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
  patches/v8_bazel_rules.patch                  |  509 ----
- patches/v8_module_deps.patch                  |  285 ---
+ patches/v8_module_deps.patch                  |  285 --
  patches/v8_source_portability.patch           |  316 ---
  .../webrtc-sys_hermetic_darwin_sysroot.patch  |   75 -
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 49 files changed, 1004 insertions(+), 8606 deletions(-)
+ 48 files changed, 1031 insertions(+), 8609 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -67,7 +66,6 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  delete mode 100644 .github/workflows/rust-release-argument-comment-lint.yml
  delete mode 100644 .github/workflows/rust-release-provisioned-macos.yml
  delete mode 100644 .github/workflows/rust-release-windows.yml
- delete mode 100644 .github/workflows/rust-release-zsh.yml
  delete mode 100644 .github/workflows/rusty-v8-release.yml
  delete mode 100644 .github/workflows/sdk.yml
  delete mode 100644 .github/workflows/v8-canary.yml
@@ -95,7 +93,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
 new file mode 100644
-index 00000000..83d9a73f
+index 0000000..83d9a73
 --- /dev/null
 +++ b/.github/actions/bootstrap-tree/action.yml
 @@ -0,0 +1,47 @@
@@ -148,7 +146,7 @@ index 00000000..83d9a73f
 +        } >> "$GITHUB_ENV"
 diff --git a/.github/actions/cargo-cache/action.yml b/.github/actions/cargo-cache/action.yml
 new file mode 100644
-index 00000000..3088aec2
+index 0000000..3088aec
 --- /dev/null
 +++ b/.github/actions/cargo-cache/action.yml
 @@ -0,0 +1,43 @@
@@ -196,7 +194,7 @@ index 00000000..3088aec2
 +        restore-keys: |
 +          cargo-home-${{ inputs.key }}-
 diff --git a/.github/blob-size-allowlist.txt b/.github/blob-size-allowlist.txt
-index 27d1c59e..cd2ee5d8 100644
+index 27d1c59..cd2ee5d 100644
 --- a/.github/blob-size-allowlist.txt
 +++ b/.github/blob-size-allowlist.txt
 @@ -1,6 +1,15 @@
@@ -226,7 +224,7 @@ index 27d1c59e..cd2ee5d8 100644
 +# own, so any change to it would otherwise trip the policy.
 +codex-rs/tui/src/bottom_pane/chat_composer.rs
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index a7d37b7f..90af7193 100644
+index a7d37b7..90af719 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -263,10 +261,10 @@ index a7d37b7f..90af7193 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index ede5a7f0..00000000
+index 2f4b09d..0000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
-@@ -1,549 +0,0 @@
+@@ -1,550 +0,0 @@
 -name: Bazel
 -
 -# Note this workflow was originally derived from:
@@ -520,8 +518,8 @@ index ede5a7f0..00000000
 -  test-windows-native-main:
 -    # Native Windows Bazel tests are slower and frequently approach the
 -    # 30-minute PR budget. Run this only for post-merge commits to main and give
--    # it a larger timeout.
--    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+-    # it a larger timeout. Also allow manual runs for native toolchain changes.
+-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || github.event_name == 'workflow_dispatch'
 -    timeout-minutes: 40
 -    runs-on:
 -      group: ${{ github.event.repository.name }}-runners
@@ -559,6 +557,7 @@ index ede5a7f0..00000000
 -
 -          bazel_test_args=(
 -            test
+-            --config=ci-windows-msvc
 -            --platforms=//:windows_x86_64_msvc
 -            --test_tag_filters=-argument-comment-lint
 -            --test_verbose_timeout_warnings
@@ -817,7 +816,7 @@ index ede5a7f0..00000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
-index f80fb0e4..0fa93def 100644
+index f80fb0e..0fa93de 100644
 --- a/.github/workflows/blob-size-policy.yml
 +++ b/.github/workflows/blob-size-policy.yml
 @@ -1,31 +1,48 @@
@@ -907,7 +906,7 @@ index f80fb0e4..0fa93def 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index c6f00555..a40475a5 100644
+index c6f0055..a40475a 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
 @@ -1,30 +1,45 @@
@@ -1006,7 +1005,7 @@ index c6f00555..a40475a5 100644
  
        - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-index 0f8ebae9..6415e5e1 100644
+index 0f8ebae..6415e5e 100644
 --- a/.github/workflows/cargo-deny.yml
 +++ b/.github/workflows/cargo-deny.yml
 @@ -1,30 +1,36 @@
@@ -1060,7 +1059,7 @@ index 0f8ebae9..6415e5e1 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
-index 996b3ded..5bdd5583 100644
+index 996b3de..5bdd558 100644
 --- a/.github/workflows/codespell.yml
 +++ b/.github/workflows/codespell.yml
 @@ -1,29 +1,40 @@
@@ -1115,7 +1114,7 @@ index 996b3ded..5bdd5583 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
-index ac2b46d1..fa2cb354 100644
+index ac2b46d..fa2cb35 100644
 --- a/.github/workflows/postmerge-ci.yml
 +++ b/.github/workflows/postmerge-ci.yml
 @@ -1,29 +1,45 @@
@@ -1176,7 +1175,7 @@ index ac2b46d1..fa2cb354 100644
      steps:
 diff --git a/.github/workflows/python-runtime-build.yml b/.github/workflows/python-runtime-build.yml
 deleted file mode 100644
-index 748ff2f1..00000000
+index 748ff2f..0000000
 --- a/.github/workflows/python-runtime-build.yml
 +++ /dev/null
 @@ -1,114 +0,0 @@
@@ -1296,7 +1295,7 @@ index 748ff2f1..00000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index f7f0b4af..00000000
+index f7f0b4a..0000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
 @@ -1,63 +0,0 @@
@@ -1365,7 +1364,7 @@ index f7f0b4af..00000000
 -            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 diff --git a/.github/workflows/python-sdk-build.yml b/.github/workflows/python-sdk-build.yml
 deleted file mode 100644
-index 66d89bc9..00000000
+index 66d89bc..0000000
 --- a/.github/workflows/python-sdk-build.yml
 +++ /dev/null
 @@ -1,65 +0,0 @@
@@ -1436,7 +1435,7 @@ index 66d89bc9..00000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-sdk-cli-release.yml b/.github/workflows/python-sdk-cli-release.yml
 deleted file mode 100644
-index 2f7f6a7f..00000000
+index 2f7f6a7..0000000
 --- a/.github/workflows/python-sdk-cli-release.yml
 +++ /dev/null
 @@ -1,156 +0,0 @@
@@ -1598,7 +1597,7 @@ index 2f7f6a7f..00000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 0e01f23a..00000000
+index 0e01f23..0000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
 @@ -1,172 +0,0 @@
@@ -1776,7 +1775,7 @@ index 0e01f23a..00000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
-index d1783bb2..00000000
+index d1783bb..0000000
 --- a/.github/workflows/r2-release.yml
 +++ /dev/null
 @@ -1,59 +0,0 @@
@@ -1840,7 +1839,7 @@ index d1783bb2..00000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 4f05cd06..4547e4f0 100644
+index 4f05cd0..4547e4f 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -1,77 +1,59 @@
@@ -1966,7 +1965,7 @@ index 4f05cd06..4547e4f0 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index 47453526..00000000
+index 4745352..0000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
 @@ -1,439 +0,0 @@
@@ -2410,7 +2409,7 @@ index 47453526..00000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 0ad68df3..62c4e520 100644
+index 4a61b6b..62c4e52 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
 @@ -1,574 +1,189 @@
@@ -2516,18 +2515,17 @@ index 0ad68df3..62c4e520 100644
 +    name: Core tests
      runs-on: ubuntu-24.04
 -    env:
--      CARGO_DYLINT_VERSION: 5.0.0
--      DYLINT_LINK_VERSION: 5.0.0
+-      CARGO_DYLINT_VERSION: 6.1.0
+-      DYLINT_LINK_VERSION: 6.1.0
 +    timeout-minutes: 180
      steps:
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
            persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
-+      - uses: ./.github/actions/bootstrap-tree
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
 -        with:
--          toolchain: nightly-2025-09-18
+-          toolchain: nightly-2026-08-20
 -          components: llvm-tools-preview, rustc-dev, rust-src
 -      - name: Cache cargo-dylint tooling
 -        id: cargo_dylint_cache
@@ -2711,6 +2709,8 @@ index 0ad68df3..62c4e520 100644
 -              group: ${{ github.event.repository.name }}-runners
 -              labels: ${{ github.event.repository.name }}-windows-arm64
 -
++      - uses: ./.github/actions/bootstrap-tree
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 +      - uses: ./.github/actions/cargo-cache
 +        with:
 +          key: rust-ci-full-test-core
@@ -2921,11 +2921,8 @@ index 0ad68df3..62c4e520 100644
 -
 -      - name: Pre-warm dependency cache (cargo-chef)
 -        if: ${{ matrix.profile == 'release' }}
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
-+      - name: Type-check the TUI for Windows
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          set -euo pipefail
 -          RECIPE="${RUNNER_TEMP}/chef-recipe.json"
 -          cargo chef prepare --recipe-path "$RECIPE"
@@ -2941,12 +2938,7 @@ index 0ad68df3..62c4e520 100644
 -          name: cargo-timings-rust-ci-clippy-${{ matrix.target }}-${{ matrix.profile }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
 -          if-no-files-found: warn
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-tui
-+      - name: Check for a clean worktree
-+        if: always() && !cancelled()
-+        uses: ./.github/actions/check-clean-worktree
- 
+-
 -      # Save caches explicitly; make non-fatal so cache packaging
 -      # never fails the overall job. Only save when key wasn't hit.
 -      - name: Save cargo home cache
@@ -2980,8 +2972,11 @@ index 0ad68df3..62c4e520 100644
 -
 -      - name: sccache summary
 -        if: always() && env.USE_SCCACHE == 'true'
--        shell: bash
--        run: |
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
++      - name: Type-check the TUI for Windows
+         shell: bash
+         run: |
 -          {
 -            echo "### sccache stats — ${{ matrix.target }} (${{ matrix.profile }})";
 -            echo;
@@ -3009,7 +3004,12 @@ index 0ad68df3..62c4e520 100644
 -      artifact_id: macos-aarch64
 -      use_sccache: true
 -    secrets: inherit
--
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-tui
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -  tests_linux_x64_remote:
 -    name: Tests — ubuntu-24.04 - x86_64-unknown-linux-gnu (remote)
 -    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
@@ -3128,7 +3128,7 @@ index 0ad68df3..62c4e520 100644
 +          NEEDS: ${{ toJSON(needs) }}
 +        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-index 81d7d731..4382c5d7 100644
+index 48bee97..4382c5d 100644
 --- a/.github/workflows/rust-ci.yml
 +++ b/.github/workflows/rust-ci.yml
 @@ -1,263 +1,65 @@
@@ -3292,8 +3292,8 @@ index 81d7d731..4382c5d7 100644
 -    needs: changed
 -    if: ${{ needs.changed.outputs.argument_comment_lint_package == 'true' }}
 -    env:
--      CARGO_DYLINT_VERSION: 5.0.0
--      DYLINT_LINK_VERSION: 5.0.0
+-      CARGO_DYLINT_VERSION: 6.1.0
+-      DYLINT_LINK_VERSION: 6.1.0
 -    steps:
 -      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 -        with:
@@ -3303,13 +3303,13 @@ index 81d7d731..4382c5d7 100644
 -      - name: Install nightly argument-comment-lint toolchain
 -        shell: bash
 -        run: |
--          rustup toolchain install nightly-2025-09-18 \
+-          rustup toolchain install nightly-2026-08-20 \
 -            --profile minimal \
 -            --component llvm-tools-preview \
 -            --component rustc-dev \
 -            --component rust-src \
 -            --no-self-update
--          rustup default nightly-2025-09-18
+-          rustup default nightly-2026-08-20
 -      - name: Cache cargo-dylint tooling
 -        id: cargo_dylint_cache
 -        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
@@ -3443,7 +3443,7 @@ index 81d7d731..4382c5d7 100644
 -          NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT_PACKAGE: ${{ needs.changed.outputs.argument_comment_lint_package }}
 diff --git a/.github/workflows/rust-release-argument-comment-lint.yml b/.github/workflows/rust-release-argument-comment-lint.yml
 deleted file mode 100644
-index 5bf11219..00000000
+index d49f896..0000000
 --- a/.github/workflows/rust-release-argument-comment-lint.yml
 +++ /dev/null
 @@ -1,113 +0,0 @@
@@ -3474,8 +3474,8 @@ index 5bf11219..00000000
 -    runs-on: ${{ matrix.runs_on || matrix.runner }}
 -    timeout-minutes: 60
 -    env:
--      CARGO_DYLINT_VERSION: 5.0.0
--      DYLINT_LINK_VERSION: 5.0.0
+-      CARGO_DYLINT_VERSION: 6.1.0
+-      DYLINT_LINK_VERSION: 6.1.0
 -
 -    strategy:
 -      fail-fast: false
@@ -3484,25 +3484,25 @@ index 5bf11219..00000000
 -          - runner: macos-15-xlarge
 -            target: aarch64-apple-darwin
 -            archive_name: argument-comment-lint-aarch64-apple-darwin.tar.gz
--            lib_name: libargument_comment_lint@nightly-2025-09-18-aarch64-apple-darwin.dylib
+-            lib_name: libargument_comment_lint@nightly-2026-08-20-aarch64-apple-darwin.dylib
 -            runner_binary: argument-comment-lint
 -            cargo_dylint_binary: cargo-dylint
 -          - runner: ubuntu-24.04
 -            target: x86_64-unknown-linux-gnu
 -            archive_name: argument-comment-lint-x86_64-unknown-linux-gnu.tar.gz
--            lib_name: libargument_comment_lint@nightly-2025-09-18-x86_64-unknown-linux-gnu.so
+-            lib_name: libargument_comment_lint@nightly-2026-08-20-x86_64-unknown-linux-gnu.so
 -            runner_binary: argument-comment-lint
 -            cargo_dylint_binary: cargo-dylint
 -          - runner: ubuntu-24.04-arm
 -            target: aarch64-unknown-linux-gnu
 -            archive_name: argument-comment-lint-aarch64-unknown-linux-gnu.tar.gz
--            lib_name: libargument_comment_lint@nightly-2025-09-18-aarch64-unknown-linux-gnu.so
+-            lib_name: libargument_comment_lint@nightly-2026-08-20-aarch64-unknown-linux-gnu.so
 -            runner_binary: argument-comment-lint
 -            cargo_dylint_binary: cargo-dylint
 -          - runner: windows-x64
 -            target: x86_64-pc-windows-msvc
 -            archive_name: argument-comment-lint-x86_64-pc-windows-msvc.zip
--            lib_name: argument_comment_lint@nightly-2025-09-18-x86_64-pc-windows-msvc.dll
+-            lib_name: argument_comment_lint@nightly-2026-08-20-x86_64-pc-windows-msvc.dll
 -            runner_binary: argument-comment-lint.exe
 -            cargo_dylint_binary: cargo-dylint.exe
 -            runs_on:
@@ -3514,9 +3514,9 @@ index 5bf11219..00000000
 -        with:
 -          persist-credentials: false
 -
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
 -        with:
--          toolchain: nightly-2025-09-18
+-          toolchain: nightly-2026-08-20
 -          targets: ${{ matrix.target }}
 -          components: llvm-tools-preview, rustc-dev, rust-src
 -
@@ -3562,7 +3562,7 @@ index 5bf11219..00000000
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-provisioned-macos.yml b/.github/workflows/rust-release-provisioned-macos.yml
 deleted file mode 100644
-index 6d1b2459..00000000
+index 6d1b245..0000000
 --- a/.github/workflows/rust-release-provisioned-macos.yml
 +++ /dev/null
 @@ -1,214 +0,0 @@
@@ -3782,10 +3782,10 @@ index 6d1b2459..00000000
 -          if-no-files-found: warn
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
 deleted file mode 100644
-index 20490c5e..00000000
+index 0f28688..0000000
 --- a/.github/workflows/rust-release-windows.yml
 +++ /dev/null
-@@ -1,624 +0,0 @@
+@@ -1,701 +0,0 @@
 -name: rust-release-windows
 -
 -on:
@@ -3796,19 +3796,33 @@ index 20490c5e..00000000
 -
 -jobs:
 -  build-windows-binaries:
--    name: Build Windows binaries - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
+-    name: Build Windows binaries - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }} - ${{ matrix.build-system }}
+-    # Parallel Bazel artifacts are advisory while Cargo remains the release path.
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: ${{ matrix.runs_on }}
--    # Windows release builds can exceed an hour, so keep the timeout aligned
--    # with the top-level release build headroom.
--    timeout-minutes: 90
+-    environment:
+-      name: bazel
+-      deployment: false
+-    # Temporary increase from 90 minutes while Cargo and Bazel build paths coexist.
+-    # Reassess after the transition using Bazel release build timings.
+-    timeout-minutes: 120
 -    permissions:
 -      contents: read
 -    defaults:
 -      run:
 -        working-directory: codex-rs
+-    env:
+-      # Preserve Cargo names while teams opt into the additional Bazel artifacts.
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - x86_64-pc-windows-msvc
+-          - aarch64-pc-windows-msvc
+-        bundle: [primary, helpers, app-server]
 -        include:
 -          - runner: windows-x64
 -            target: x86_64-pc-windows-msvc
@@ -3858,6 +3872,7 @@ index 20490c5e..00000000
 -        with:
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
+-        if: matrix.build-system == 'cargo'
 -      - name: Print runner specs (Windows)
 -        shell: powershell
 -        run: |
@@ -3872,21 +3887,41 @@ index 20490c5e..00000000
 -          Write-Host "Total RAM: $ramGiB GiB"
 -          Write-Host "Disk usage:"
 -          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - name: Set up Rust toolchain
+-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
 -        with:
--          targets: ${{ matrix.target }}
+-          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
+-
+-      - name: Prepare Bazel release build
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        uses: ./.github/actions/prepare-bazel-ci
+-        with:
+-          target: ${{ matrix.target }}
+-          cache-scope: bazel-release-${{ matrix.bundle }}
 -
 -      - name: Configure rusty_v8 artifact overrides and verify checksums
+-        if: matrix.build-system == 'cargo'
 -        uses: ./.github/actions/setup-rusty-v8
 -        with:
 -          target: ${{ matrix.target }}
 -
--      - name: Configure LLVM linker
+-      - name: Configure MSVC environment
 -        uses: ./.github/actions/setup-msvc-env
 -        with:
 -          target: ${{ matrix.target }}
 -
+-      - name: Build Bazel release binaries and symbols
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        uses: ./.github/actions/build-bazel-release
+-        env:
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+-        with:
+-          target: ${{ matrix.target }}
+-          bundle: ${{ matrix.bundle }}
+-          release-dir: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
+-
 -      - name: Cargo build (Windows binaries)
+-        if: ${{ matrix.build-system == 'cargo' }}
 -        shell: bash
 -        run: |
 -          target="${{ matrix.target }}"
@@ -3900,13 +3935,6 @@ index 20490c5e..00000000
 -          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
 -          export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
--
--      - name: Upload Cargo timings
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: cargo-timings-rust-release-windows-${{ matrix.target }}-${{ matrix.bundle }}
--          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
--          if-no-files-found: warn
 -
 -      - name: Stage Windows binaries
 -        shell: bash
@@ -3932,7 +3960,7 @@ index 20490c5e..00000000
 -      - name: Upload Windows binaries
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: windows-binaries-${{ matrix.target }}-${{ matrix.bundle }}
+-          name: windows-binaries-${{ matrix.target }}-${{ matrix.bundle }}${{ env.ARTIFACT_SUFFIX }}
 -          path: |
 -            ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release/staged-${{ matrix.bundle }}/*
 -
@@ -4010,8 +4038,6 @@ index 20490c5e..00000000
 -        env:
 -          ARCH: ${{ matrix.arch }}
 -          VOICE_ARCH: ${{ matrix.arch }}
--          # Avoid Java JIT crashes in the Windows ARM64 voice build.
--          BAZEL_HOST_JVM_ARG: ${{ matrix.arch == 'aarch64' && '-Xint' || '' }}
 -          BUILDBUDDY_API_KEY: ""
 -        run: |
 -          (cd codex-rs && cargo update --workspace)
@@ -4020,7 +4046,7 @@ index 20490c5e..00000000
 -            --print-failed-action-summary \
 -            --windows-msvc-host-platform \
 -            -- \
--            test -c opt \
+-            test --config=release \
 -            --platforms=//:local_windows_msvc \
 -            --extra_toolchains=@local_config_cc//:cc-toolchain-x64_windows,@local_config_cc//:cc-toolchain-arm64_windows,//third_party/voice:windows_pkg_config_toolchain,//third_party/voice:windows_cmake_toolchain \
 -            --repo_env=BAZEL_DO_NOT_DETECT_CPP_TOOLCHAIN=0 \
@@ -4067,7 +4093,8 @@ index 20490c5e..00000000
 -  build-windows-symbols:
 -    needs:
 -      - build-windows-binaries
--    name: Build Windows symbols - ${{ matrix.target }}
+-    name: Build Windows symbols - ${{ matrix.target }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: ubuntu-24.04
 -    timeout-minutes: 15
 -    permissions:
@@ -4075,9 +4102,13 @@ index 20490c5e..00000000
 -    defaults:
 -      run:
 -        working-directory: codex-rs
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
 -        target:
 -          - aarch64-pc-windows-msvc
 -          - x86_64-pc-windows-msvc
@@ -4089,7 +4120,7 @@ index 20490c5e..00000000
 -      - name: Download prebuilt Windows binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          pattern: windows-binaries-${{ matrix.target }}-*
+-          pattern: windows-binaries-${{ matrix.target }}-{primary,helpers,app-server}${{ env.ARTIFACT_SUFFIX }}
 -          merge-multiple: true
 -          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
 -      - name: Build symbols archive
@@ -4101,10 +4132,21 @@ index 20490c5e..00000000
 -            --release-dir "${CARGO_TARGET_DIR}/${{ matrix.target }}/release" \
 -            --archive-dir "symbols-dist/${{ matrix.target }}" \
 -            --binaries "${WINDOWS_BINARIES}"
+-      - name: Suffix Bazel artifact filenames
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          for artifact in "symbols-dist/${{ matrix.target }}"/*; do
+-            name="${artifact##*/}"
+-            stem="${name%%.*}"
+-            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
+-          done
+-
 -      - name: Upload symbols archive
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.target }}-symbols
+-          name: ${{ matrix.target }}-symbols${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/symbols-dist/${{ matrix.target }}/*
 -          if-no-files-found: error
 -
@@ -4112,7 +4154,8 @@ index 20490c5e..00000000
 -    needs:
 -      - build-windows-binaries
 -      - build-windows-voice
--    name: Build - ${{ matrix.runner }} - ${{ matrix.target }}
+-    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: ${{ matrix.runs_on }}
 -    environment:
 -      name: azure-artifact-signing
@@ -4124,9 +4167,16 @@ index 20490c5e..00000000
 -    defaults:
 -      run:
 -        working-directory: codex-rs
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - x86_64-pc-windows-msvc
+-          - aarch64-pc-windows-msvc
 -        include:
 -          - runner: windows-x64
 -            target: x86_64-pc-windows-msvc
@@ -4149,19 +4199,19 @@ index 20490c5e..00000000
 -      - name: Download prebuilt Windows primary binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: windows-binaries-${{ matrix.target }}-primary
+-          name: windows-binaries-${{ matrix.target }}-primary${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
 -
 -      - name: Download prebuilt Windows helper binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: windows-binaries-${{ matrix.target }}-helpers
+-          name: windows-binaries-${{ matrix.target }}-helpers${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
 -
 -      - name: Download prebuilt Windows app-server binary
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: windows-binaries-${{ matrix.target }}-app-server
+-          name: windows-binaries-${{ matrix.target }}-app-server${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/${{ matrix.target }}/release
 -
 -      - name: Verify binaries
@@ -4172,11 +4222,13 @@ index 20490c5e..00000000
 -            ls -lh "$CARGO_TARGET_DIR/${{ matrix.target }}/release/${binary}.exe"
 -          done
 -
--      - name: Sign Windows binaries with Azure Trusted Signing
+-      - name: Sign Windows release files with Azure Trusted Signing
 -        uses: ./.github/actions/windows-code-sign
 -        with:
 -          target: ${{ matrix.target }}
 -          binaries: ${{ env.WINDOWS_BINARIES }}
+-          # The installer is architecture-independent; sign it only in the x64 job.
+-          additional-files: ${{ matrix.target == 'x86_64-pc-windows-msvc' && format('{0}/scripts/install/install.ps1', github.workspace) || '' }}
 -          client-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_CLIENT_ID }}
 -          tenant-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_TENANT_ID }}
 -          subscription-id: ${{ secrets.AZURE_ARTIFACT_SIGNING_SUBSCRIPTION_ID }}
@@ -4301,6 +4353,7 @@ index 20490c5e..00000000
 -          if ($LASTEXITCODE -ne 0) { throw 'Packaged runtime receipt verification failed' }
 -
 -      - name: Build Python runtime wheel
+-        if: ${{ matrix.build-system == 'cargo' }}
 -        shell: bash
 -        run: |
 -          set -euo pipefail
@@ -4340,6 +4393,7 @@ index 20490c5e..00000000
 -          "${RUNNER_TEMP}/python-runtime-build-venv/Scripts/python.exe" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
 -
 -      - name: Upload Python runtime wheel
+-        if: ${{ matrix.build-system == 'cargo' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
 -          name: python-runtime-wheel-${{ matrix.target }}
@@ -4405,204 +4459,39 @@ index 20490c5e..00000000
 -            "${GITHUB_WORKSPACE}/.github/workflows/zstd" -T0 -19 "$dest/$base"
 -          ' _
 -
+-      - name: Verify and stage signed PowerShell installer
+-        if: matrix.build-system == 'cargo' && matrix.target == 'x86_64-pc-windows-msvc'
+-        shell: powershell
+-        run: |
+-          $installer = Join-Path $env:GITHUB_WORKSPACE 'scripts/install/install.ps1'
+-          $signature = Get-AuthenticodeSignature $installer
+-          if ($signature.Status -ne 'Valid' -or $null -eq $signature.TimeStamperCertificate) {
+-            throw "Installer signature is invalid or missing a timestamp: $($signature.Status)"
+-          }
+-          # Stage after compression so the installer remains a plain script.
+-          Copy-Item $installer 'dist/${{ matrix.target }}/install.ps1'
+-
+-      - name: Suffix Bazel artifact filenames
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          for artifact in "dist/${{ matrix.target }}"/*; do
+-            name="${artifact##*/}"
+-            stem="${name%%.*}"
+-            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
+-          done
+-
 -      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.target }}
+-          name: ${{ matrix.target }}${{ env.ARTIFACT_SUFFIX }}
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
-diff --git a/.github/workflows/rust-release-zsh.yml b/.github/workflows/rust-release-zsh.yml
-deleted file mode 100644
-index 030cc92a..00000000
---- a/.github/workflows/rust-release-zsh.yml
-+++ /dev/null
-@@ -1,182 +0,0 @@
--name: rust-release-zsh
--
--on:
--  push:
--    tags:
--      - "codex-zsh-v*.*.*"
--
--env:
--  ZSH_COMMIT: 77045ef899e53b9598bebc5a41db93a548a40ca6
--  ZSH_PATCH: codex-rs/shell-escalation/patches/zsh-exec-wrapper.patch
--
--concurrency:
--  group: ${{ github.workflow }}::${{ github.ref_name }}
--  cancel-in-progress: false
--
--jobs:
--  metadata:
--    runs-on: ubuntu-latest
--    outputs:
--      release_tag: ${{ steps.release_tag.outputs.release_tag }}
--
--    steps:
--      - name: Validate release tag
--        id: release_tag
--        env:
--          RELEASE_TAG: ${{ github.ref_name }}
--        shell: bash
--        run: |
--          set -euo pipefail
--
--          if [[ ! "${RELEASE_TAG}" =~ ^codex-zsh-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
--            echo "Tag ${RELEASE_TAG} does not match codex-zsh-vX.Y.Z." >&2
--            exit 1
--          fi
--
--          echo "release_tag=${RELEASE_TAG}" >> "${GITHUB_OUTPUT}"
--
--      - name: Ensure release does not exist
--        env:
--          GH_TOKEN: ${{ github.token }}
--          RELEASE_TAG: ${{ steps.release_tag.outputs.release_tag }}
--        shell: bash
--        run: |
--          set -euo pipefail
--
--          if gh release view "${RELEASE_TAG}" --repo "${GITHUB_REPOSITORY}" > /dev/null 2>&1; then
--            echo "Release ${RELEASE_TAG} already exists; publish changed artifacts under a new tag." >&2
--            exit 1
--          fi
--
--  linux:
--    name: Build zsh (Linux) - ${{ matrix.variant }} - ${{ matrix.target }}
--    needs: metadata
--    runs-on: ${{ matrix.runner }}
--    timeout-minutes: 30
--    container:
--      image: ${{ matrix.image }}
--
--    strategy:
--      fail-fast: false
--      matrix:
--        include:
--          - runner: ubuntu-24.04
--            target: x86_64-unknown-linux-musl
--            variant: ubuntu-24.04
--            image: ubuntu:24.04
--            archive_name: codex-zsh-x86_64-unknown-linux-musl.tar.gz
--          - runner: ubuntu-24.04-arm
--            target: aarch64-unknown-linux-musl
--            variant: ubuntu-24.04
--            image: arm64v8/ubuntu:24.04
--            archive_name: codex-zsh-aarch64-unknown-linux-musl.tar.gz
--
--    steps:
--      - name: Install build prerequisites
--        shell: bash
--        run: |
--          set -euo pipefail
--          apt-get update
--          DEBIAN_FRONTEND=noninteractive apt-get install -y \
--            autoconf \
--            bison \
--            build-essential \
--            ca-certificates \
--            gettext \
--            git \
--            libncursesw5-dev
--
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
--      - name: Build, smoke-test, and stage zsh artifact
--        shell: bash
--        run: |
--          "${GITHUB_WORKSPACE}/.github/scripts/build-zsh-release-artifact.sh" \
--            "dist/zsh/${{ matrix.target }}/${{ matrix.archive_name }}"
--
--      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: codex-zsh-${{ matrix.target }}
--          path: dist/zsh/${{ matrix.target }}/*
--
--  darwin:
--    name: Build zsh (macOS) - ${{ matrix.variant }} - ${{ matrix.target }}
--    needs: metadata
--    runs-on: ${{ matrix.runner }}
--    timeout-minutes: 30
--
--    strategy:
--      fail-fast: false
--      matrix:
--        include:
--          - runner: macos-15-large
--            target: x86_64-apple-darwin
--            variant: macos-15
--            archive_name: codex-zsh-x86_64-apple-darwin.tar.gz
--          - runner: macos-15-xlarge
--            target: aarch64-apple-darwin
--            variant: macos-15
--            archive_name: codex-zsh-aarch64-apple-darwin.tar.gz
--
--    steps:
--      - name: Install build prerequisites
--        shell: bash
--        run: |
--          set -euo pipefail
--          if ! command -v autoconf >/dev/null 2>&1; then
--            brew install autoconf
--          fi
--
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
--      - name: Build, smoke-test, and stage zsh artifact
--        shell: bash
--        run: |
--          "${GITHUB_WORKSPACE}/.github/scripts/build-zsh-release-artifact.sh" \
--            "dist/zsh/${{ matrix.target }}/${{ matrix.archive_name }}"
--
--      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: codex-zsh-${{ matrix.target }}
--          path: dist/zsh/${{ matrix.target }}/*
--
--  publish-release:
--    needs:
--      - metadata
--      - linux
--      - darwin
--    runs-on: ubuntu-latest
--    permissions:
--      contents: write
--      actions: read
--
--    steps:
--      - name: Checkout repository
--        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
--
--      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
--          path: dist
--
--      - name: Create GitHub Release
--        uses: softprops/action-gh-release@153bb8e04406b158c6c84fc1615b65b24149a1fe # v2.6.1
--        with:
--          tag_name: ${{ needs.metadata.outputs.release_tag }}
--          name: ${{ needs.metadata.outputs.release_tag }}
--          files: dist/**
--          # Keep zsh artifact releases out of Codex's normal "latest release" channel.
--          prerelease: true
--
--      - name: Publish DotSlash manifest
--        uses: ./.github/actions/publish-dotslash
--        env:
--          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
--        with:
--          tag: ${{ needs.metadata.outputs.release_tag }}
--          configs: .github/dotslash-zsh-config.json
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 26d4985a..1343353e 100644
+index 42011c6..bd011b6 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,227 +1,251 @@
+@@ -1,240 +1,251 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4632,22 +4521,21 @@ index 26d4985a..1343353e 100644
    push:
      tags:
 -      - "rust-v*.*.*"
--
--env:
--  CODEX_REPO_ROOT: ${{ github.workspace }}
--  CODEX_ZSH_RELEASE_TAG: codex-zsh-v0.1.0
--  CODEX_ZSH_MANIFEST_SHA256: c534eab89dcea7e3d8a5e5b3f49c025c7c64cd4e4d9814ee24871de58a9359a1
 +      - "rust-v*"
 +      - "v*"
  
+-env:
+-  CODEX_REPO_ROOT: ${{ github.workspace }}
+-
+-# The launcher uses this per-tag group as the migration boundary. Keep shared
+-# publication jobs on the original queued group below when changing this.
  concurrency:
--  group: ${{ github.workflow }}
--  cancel-in-progress: false
 +  # Tag re-pushes supersede stale release runs (e.g. after force-updating the
 +  # release tag during an iteration), so never queue behind an old run. The
 +  # group is scoped to the ref so building one tag never cancels another tag's
 +  # release, and a cancellation can never land between delete and create.
-+  group: ${{ github.workflow }}-${{ github.ref }}
+   group: ${{ github.workflow }}-${{ github.ref }}
+-  cancel-in-progress: false
 +  cancel-in-progress: true
  
  jobs:
@@ -4701,8 +4589,13 @@ index 26d4985a..1343353e 100644
  
    build:
      needs: tag-check
--    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }}
--    runs-on: ${{ matrix.runs_on || matrix.runner }}
+-    name: Build - ${{ matrix.runner }} - ${{ matrix.target }} - ${{ matrix.bundle }} - ${{ matrix.build-system }}
+-    # Parallel Bazel artifacts are advisory while Cargo remains the release path.
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
+-    runs-on: ${{ matrix.runner }}
+-    environment:
+-      name: bazel
+-      deployment: false
 -    # Linux releases also build the native voice runtime in this job.
 -    timeout-minutes: 120
 +    name: Build - ${{ matrix.target }}
@@ -4719,12 +4612,12 @@ index 26d4985a..1343353e 100644
 -      run:
 -        working-directory: codex-rs
      env:
--      # macOS release packages archive packed dSYM bundles before stripping.
+-      # Preserve Cargo names while teams opt into the additional Bazel artifacts.
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-      # Archive packed macOS dSYMs before stripping the Cargo binaries.
 -      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: ${{ contains(matrix.target, 'apple-darwin') && 'packed' || 'off' }}
-       # Use the git CLI instead of Cargo's libgit2 path for git dependencies.
--      # macOS release runners have intermittently failed to fetch nested
--      # submodules through SecureTransport/libgit2, especially libwebrtc's
--      # libyuv submodule from chromium.googlesource.com.
+-      # The git CLI reliably fetches nested native-library submodules on macOS.
++      # Use the git CLI instead of Cargo's libgit2 path for git dependencies.
        CARGO_NET_GIT_FETCH_WITH_CLI: "true"
 +      # Avoid problematic aws-lc jitter entropy code path on musl builders.
 +      AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
@@ -4733,6 +4626,13 @@ index 26d4985a..1343353e 100644
      strategy:
        fail-fast: false
        matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - aarch64-apple-darwin
+-          - x86_64-apple-darwin
+-          - x86_64-unknown-linux-musl
+-          - aarch64-unknown-linux-musl
+-        bundle: [primary, app-server]
          include:
 -          - runner: macos-15-xlarge
 -            target: aarch64-apple-darwin
@@ -4825,37 +4725,40 @@ index 26d4985a..1343353e 100644
 -          df -h .
 -      - name: Install Linux bwrap build dependencies
 -        if: ${{ runner.os == 'Linux' }}
-+
-+      - name: Bootstrap tree if needed
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          set -euo pipefail
 -          sudo apt-get update -y
 -          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          # Linux only because CODE_DIR is one level below the tree root).
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-         with:
-           targets: ${{ matrix.target }}
+-      - name: Set up Rust toolchain
+-        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        with:
+-          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
  
--      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Use hermetic Cargo home (musl)
--        shell: bash
--        run: |
++      - name: Bootstrap tree if needed
+         shell: bash
+         run: |
 -          set -euo pipefail
 -          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
 -          mkdir -p "${cargo_home}/bin"
 -          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
 -          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
 -          : > "${cargo_home}/config.toml"
--
--      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
++          if [[ ! -d codex-rs ]]; then
++            bash scripts/bootstrap.sh
++          fi
++          # Linux only because CODE_DIR is one level below the tree root).
++          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
++          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+ 
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Install Zig
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        with:
++          targets: ${{ matrix.target }}
++
 +      # ---- Linux musl toolchain -------------------------------------------
 +      - name: Install Zig
 +        if: matrix.platform == 'linux'
@@ -4864,7 +4767,7 @@ index 26d4985a..1343353e 100644
            version: 0.14.0
            use-cache: false
  
--      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Install musl build tools
 +      - name: Install musl build tools
 +        if: matrix.platform == 'linux'
@@ -4873,7 +4776,7 @@ index 26d4985a..1343353e 100644
 -        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 +        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
  
--      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Disable aws-lc jitter entropy (musl)
 -        shell: bash
 +      # The symbols/strip script shells out to objcopy, which the musl
@@ -4911,6 +4814,7 @@ index 26d4985a..1343353e 100644
 +      # platforms verify the downloaded checksum manifest against the manifest
 +      # committed under third_party/v8 before trusting its contents.
        - name: Configure rusty_v8 artifact overrides and verify checksums
+-        if: ${{ matrix.build-system == 'cargo' }}
 -        uses: ./.github/actions/setup-rusty-v8
 -        with:
 -          target: ${{ matrix.target }}
@@ -4993,7 +4897,7 @@ index 26d4985a..1343353e 100644
 +          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
 +          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
  
--      - if: ${{ contains(matrix.target, 'linux') }}
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Build bwrap and export digest
 +      # ---- Build -----------------------------------------------------------
 +      - name: Build bwrap and export digest
@@ -5008,17 +4912,16 @@ index 26d4985a..1343353e 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -237,1827 +261,202 @@ jobs:
+@@ -250,1923 +261,233 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
 -      - name: Cargo build
--        shell: bash
+-        if: ${{ matrix.build-system == 'cargo' }}
++      - name: Build codex
+         shell: bash
 -        run: |
 -          target="${{ matrix.target }}"
--          if [[ "$target" == "x86_64-pc-windows-msvc" ]]; then
--            export LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC
--          fi
 -          build_args=()
 -          for binary in ${{ matrix.binaries }}; do
 -            # bwrap was built, finalized, and hashed before this build so
@@ -5032,12 +4935,22 @@ index 26d4985a..1343353e 100644
 -          export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
 -
--      - name: Upload Cargo timings
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-      - name: Prepare Bazel release build
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        uses: ./.github/actions/prepare-bazel-ci
 -        with:
--          name: cargo-timings-rust-release-${{ matrix.target }}-${{ matrix.bundle }}
--          path: codex-rs/target/**/cargo-timings/cargo-timing.html
--          if-no-files-found: warn
+-          target: ${{ matrix.target }}
+-          cache-scope: bazel-release-${{ matrix.bundle }}
+-
+-      - name: Build Bazel release binaries and symbols
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        uses: ./.github/actions/build-bazel-release
+         env:
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
+-        with:
+-          target: ${{ matrix.target }}
+-          bundle: ${{ matrix.bundle }}
+-          release-dir: ${{ github.workspace }}/codex-rs/target/${{ matrix.target }}/release
 -
 -      - name: Build symbols archive and strip binaries
 -        shell: bash
@@ -5058,10 +4971,23 @@ index 26d4985a..1343353e 100644
 -            --archive-dir "symbols-dist/${{ matrix.artifact_name }}" \
 -            --binaries "${binaries[*]}"
 -
+-      - name: Suffix Bazel artifact filenames
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        shell: bash
++          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
+-          set -euo pipefail
+-          for artifact in "symbols-dist/${{ matrix.artifact_name }}"/*; do
+-            name="${artifact##*/}"
+-            stem="${name%%.*}"
+-            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
+-          done
+-
 -      - name: Upload symbols archive
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-symbols
+-          name: ${{ matrix.artifact_name }}-symbols${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/symbols-dist/${{ matrix.artifact_name }}/*
 -          if-no-files-found: error
 -
@@ -5070,16 +4996,19 @@ index 26d4985a..1343353e 100644
 -        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
 -        with:
 -          bazelisk-version: 1.28.1
--
++          cd "${CODE_DIR}"
++          cargo build --target "${{ matrix.target }}" --release --bin codex
+ 
 -      - name: Build Linux voice runtime
 -        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
-+      - name: Build codex
++      # Upstream ships every one of these inside `bin/` or `codex-resources/`;
++      # a canonical package is rejected when one is missing. bwrap is built and
++      # digested separately above.
++      - name: Build helper binaries
          shell: bash
          env:
 -          APP_TARGET: ${{ matrix.target }}
-+          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
-+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -          cd "$GITHUB_WORKSPACE"
 -          voice_target="${APP_TARGET%-musl}-gnu"
@@ -5088,7 +5017,7 @@ index 26d4985a..1343353e 100644
 -            x86_64-unknown-linux-gnu) prefix=linux_x86_64 ;;
 -            *) exit 1 ;;
 -          esac
--          bazel build -c opt //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          bazel build --config=release //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
 -          source="bazel-bin/third_party/voice/native_runtime_${prefix}"
 -          output="${RUNNER_TEMP}/signed-voice/${APP_TARGET}"
 -          mkdir -p "$output"
@@ -5098,17 +5027,10 @@ index 26d4985a..1343353e 100644
 -          chmod 0755 "$output/codex-voice-host"
 -          python3 third_party/voice/release_runtime.py seal \
 -            --target "$voice_target" --output "$output/runtime"
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
-+      # Upstream ships every one of these inside `bin/` or `codex-resources/`;
-+      # a canonical package is rejected when one is missing. bwrap is built and
-+      # digested separately above.
-+      - name: Build helper binaries
-         shell: bash
-+        env:
+-        shell: bash
 +          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
          run: |
 -          set -euo pipefail
@@ -5137,7 +5059,7 @@ index 26d4985a..1343353e 100644
 -        name: Upload unsigned macOS artifacts
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-unsigned
+-          name: ${{ matrix.artifact_name }}-unsigned${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/unsigned-dist/${{ matrix.target }}/*
 -          if-no-files-found: error
 -
@@ -5177,17 +5099,6 @@ index 26d4985a..1343353e 100644
            fi
 +          cargo build --target "$target" --release "${helpers[@]}"
  
--      - name: Download packaged zsh manifest
--        if: ${{ runner.os != 'macOS' }}
--        shell: bash
--        run: |
--          set -euo pipefail
--          curl -fsSL \
--            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${CODEX_ZSH_RELEASE_TAG}/codex-zsh" \
--            -o "${RUNNER_TEMP}/codex-zsh"
--          bash "${GITHUB_WORKSPACE}/.github/scripts/verify-zsh-manifest.sh" \
--            "${RUNNER_TEMP}/codex-zsh" "$CODEX_ZSH_MANIFEST_SHA256"
--
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
 +      # The symbols script only exists in the bootstrapped tree (the slim repo
@@ -5219,7 +5130,6 @@ index 26d4985a..1343353e 100644
 -            --bundle "$BUNDLE" \
 -            --entrypoint-dir "target/${TARGET}/release" \
 -            --archive-dir "dist/${TARGET}" \
--            --zsh-manifest "${RUNNER_TEMP}/codex-zsh" \
 -            "${voice_args[@]}"
 -
 -      - name: Cosign Linux voice package archives
@@ -5231,7 +5141,7 @@ index 26d4985a..1343353e 100644
 -          binaries: codex-package-${{ matrix.target }}.tar.gz codex-package-${{ matrix.target }}.tar.zst
 -
 -      - name: Build Python runtime wheel
--        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
+-        if: ${{ matrix.build-system == 'cargo' && matrix.bundle == 'primary' && runner.os != 'macOS' }}
 -        shell: bash
 -        run: |
 -          set -euo pipefail
@@ -5268,8 +5178,7 @@ index 26d4985a..1343353e 100644
 -            --target "${{ matrix.target }}" \
 -            --bundle primary \
 -            --entrypoint-dir "target/${{ matrix.target }}/release" \
--            --archive-dir "$wheel_archives" \
--            --zsh-manifest "${RUNNER_TEMP}/codex-zsh"
+-            --archive-dir "$wheel_archives"
 -          wheel_archive="${wheel_archives}/codex-package-${{ matrix.target }}.tar.gz"
 -          python3 - "$wheel_archive" <<'PY'
 -          import sys
@@ -5292,7 +5201,7 @@ index 26d4985a..1343353e 100644
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
 -
 -      - name: Upload Python runtime wheel
--        if: ${{ matrix.bundle == 'primary' && runner.os != 'macOS' }}
+-        if: ${{ matrix.build-system == 'cargo' && matrix.bundle == 'primary' && runner.os != 'macOS' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
 -          name: python-runtime-wheel-${{ matrix.target }}
@@ -5336,10 +5245,21 @@ index 26d4985a..1343353e 100644
 -            zstd -T0 -19 --rm "$dest/$base"
 -          done
 -
+-      - name: Suffix Bazel artifact filenames
+-        if: ${{ matrix.build-system == 'bazel' && runner.os != 'macOS' }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          for artifact in "dist/${{ matrix.target }}"/*; do
+-            name="${artifact##*/}"
+-            stem="${name%%.*}"
+-            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
+-          done
+-
 -      - uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        if: ${{ runner.os != 'macOS' }}
 -        with:
--          name: ${{ matrix.artifact_name }}
+-          name: ${{ matrix.artifact_name }}${{ env.ARTIFACT_SUFFIX }}
 -          # Upload the per-binary .zst files, .tar.gz equivalents, and any
 -          # prebuilt archives staged above.
 -          path: |
@@ -5382,7 +5302,7 @@ index 26d4985a..1343353e 100644
 -          # Release tags bump Cargo.toml without rewriting the workspace lockfile.
 -          # Refresh workspace versions before Bazel reads the Cargo dependency graph.
 -          (cd codex-rs && cargo update --workspace)
--          bazel build -c opt //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          bazel build --config=release --macos_minimum_os=14.0 //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
 -          runtime="bazel-bin/third_party/voice/native_runtime_${PREFIX}"
 -          PYTHONPATH=third_party/voice python3 - "$runtime" "$TARGET" <<'PY'
 -          from pathlib import Path
@@ -5405,7 +5325,8 @@ index 26d4985a..1343353e 100644
 -  sign-macos-binaries:
 -    needs: [build, build-macos-voice]
 -    if: ${{ always() && needs.build.result == 'success' && needs.build-macos-voice.result == 'success' }}
--    name: Sign macOS binaries - ${{ matrix.target }} - ${{ matrix.bundle }}
+-    name: Sign macOS binaries - ${{ matrix.target }} - ${{ matrix.bundle }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: ubuntu-latest
 -    timeout-minutes: 45
 -    environment:
@@ -5415,9 +5336,17 @@ index 26d4985a..1343353e 100644
 -      contents: read
 -      id-token: write
 -
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - aarch64-apple-darwin
+-          - x86_64-apple-darwin
+-        bundle: [primary, app-server]
 -        include:
 -          - target: aarch64-apple-darwin
 -            bundle: primary
@@ -5444,7 +5373,7 @@ index 26d4985a..1343353e 100644
 -      - name: Download unsigned macOS binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-unsigned
+-          name: ${{ matrix.artifact_name }}-unsigned${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/unsigned-macos
 -
 -      - name: Download unsigned voice runtime
@@ -5574,24 +5503,19 @@ index 26d4985a..1343353e 100644
 -          APPLE_NOTARIZATION_AKV_KEY_VERSION: ${{ secrets.AKV_NOTARIZATION_KEY_VERSION }}
 -        run: |
 -          set -euo pipefail
-+          # The builder fetches ripgrep (and, on Unix, the patched zsh) from
-+          # upstream's pinned DotSlash manifests.
++          # The builder fetches ripgrep from upstream's pinned DotSlash
++          # manifests. The patched zsh upstream used to bundle was removed in
++          # upstream 0.163.0, and this fork follows that layout.
 +          export CODEX_REPO_ROOT="$tree_dir"
 +          python3 "${tree_dir}/scripts/build_codex_package.py" "${package_args[@]}"
  
 -          signed_root="${GITHUB_WORKSPACE}/signed-resources/${TARGET}"
--          zsh_manifest="${RUNNER_TEMP}/codex-zsh-${TARGET}"
 -          mkdir -p "$signed_root"
--          curl -fsSL \
--            "https://github.com/${GITHUB_REPOSITORY}/releases/download/${CODEX_ZSH_RELEASE_TAG}/codex-zsh" \
--            -o "$zsh_manifest"
--          bash "${GITHUB_WORKSPACE}/.github/scripts/verify-zsh-manifest.sh" \
--            "$zsh_manifest" "$CODEX_ZSH_MANIFEST_SHA256"
 +          sha256sum "${dest}/codex-${TARGET}.tar.gz" | \
 +            awk '{print $1 "  codex-'"${TARGET}"'.tar.gz"}' \
 +            > "${dest}/codex-${TARGET}.tar.gz.sha256"
  
--          PYTHONPATH="${GITHUB_WORKSPACE}/scripts" python3 - "$TARGET" "$signed_root" "$zsh_manifest" <<'PY'
+-          PYTHONPATH="${GITHUB_WORKSPACE}/scripts" python3 - "$TARGET" "$signed_root" <<'PY'
 -          import shutil
 -          import sys
 +          # The package must be exactly what the running CLI accepts, or the
@@ -5602,15 +5526,10 @@ index 26d4985a..1343353e 100644
  
 -          from codex_package.ripgrep import fetch_rg
 -          from codex_package.targets import TARGET_SPECS
--          from codex_package.zsh import resolve_zsh_bin
 -
 -          spec = TARGET_SPECS[sys.argv[1]]
 -          signed_root = Path(sys.argv[2])
--          zsh_bin = resolve_zsh_bin(spec, Path(sys.argv[3]))
--          if zsh_bin is None:
--              raise RuntimeError(f"Pinned zsh release is missing {spec.target}")
 -          shutil.copy2(fetch_rg(spec), signed_root / "rg")
--          shutil.copy2(zsh_bin, signed_root / "zsh")
 +          package = Path(sys.argv[1])
 +          windows = sys.argv[2] == "windows"
 +          suffix = ".exe" if windows else ""
@@ -5629,7 +5548,7 @@ index 26d4985a..1343353e 100644
 +                  "codex-resources/codex-windows-sandbox-setup.exe",
 +              ]
 +          else:
-+              required += ["codex-resources/bwrap", "codex-resources/zsh/bin/zsh"]
++              required += ["codex-resources/bwrap"]
 +
 +          missing = [name for name in required if not (package / name).is_file()]
 +          if missing:
@@ -5637,7 +5556,7 @@ index 26d4985a..1343353e 100644
 +          print(f"package OK: {manifest['version']} {manifest['target']} {manifest['entrypoint']}")
            PY
  
--          for resource in rg zsh; do
+-          for resource in rg; do
 -            binary="${signed_root}/${resource}"
 -            report_dir="${GITHUB_WORKSPACE}/macos-binary-signing-verification/${TARGET}/${resource}"
 -            mkdir -p "$report_dir"
@@ -5705,7 +5624,7 @@ index 26d4985a..1343353e 100644
 -        if: ${{ matrix.bundle == 'primary' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: voice-${{ matrix.target }}-signed
+-          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
 -          path: signed-voice-${{ matrix.target }}.tar.gz
 -          if-no-files-found: error
 -
@@ -5713,7 +5632,7 @@ index 26d4985a..1343353e 100644
 +      - name: Upload archive
          uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
          with:
--          name: ${{ matrix.artifact_name }}-signed-binaries
+-          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
 -          path: signed-macos/${{ matrix.target }}/*
 +          name: dist-${{ matrix.target }}
 +          path: dist/${{ matrix.target }}/*
@@ -5728,7 +5647,7 @@ index 26d4985a..1343353e 100644
 +        if: matrix.platform == 'linux'
          uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
          with:
--          name: ${{ matrix.target }}-signed-resources
+-          name: ${{ matrix.target }}-signed-resources${{ env.ARTIFACT_SUFFIX }}
 -          path: signed-resources/${{ matrix.target }}/*
 +          name: ${{ matrix.target }}-symbols
 +          path: symbols-dist/${{ matrix.target }}/*
@@ -5738,13 +5657,14 @@ index 26d4985a..1343353e 100644
 -        if: ${{ always() }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-binary-signing-verification
+-          name: ${{ matrix.artifact_name }}-binary-signing-verification${{ env.ARTIFACT_SUFFIX }}
 -          path: macos-binary-signing-verification/${{ matrix.target }}/
 -          if-no-files-found: warn
 -
 -  package-macos:
 -    needs: sign-macos-binaries
--    name: Package macOS artifacts - ${{ matrix.target }} - ${{ matrix.bundle }}
+-    name: Package macOS artifacts - ${{ matrix.target }} - ${{ matrix.bundle }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: macos-15-xlarge
 -    timeout-minutes: 45
 +  release:
@@ -5756,9 +5676,17 @@ index 26d4985a..1343353e 100644
 -      run:
 -        working-directory: codex-rs
 -
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - aarch64-apple-darwin
+-          - x86_64-apple-darwin
+-        bundle: [primary, app-server]
 -        include:
 -          - target: aarch64-apple-darwin
 -            bundle: primary
@@ -5790,13 +5718,13 @@ index 26d4985a..1343353e 100644
 -      - name: Download signed macOS binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-signed-binaries
+-          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/target/${{ matrix.target }}/release
 -
 -      - name: Download signed macOS helpers
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.target }}-signed-resources
+-          name: ${{ matrix.target }}-signed-resources${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/signed-resources/${{ matrix.target }}
 -
 -      - name: Download signed voice runtime
@@ -5804,13 +5732,18 @@ index 26d4985a..1343353e 100644
 +      - name: Download archives
          uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
          with:
--          name: voice-${{ matrix.target }}-signed
+-          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/signed-voice
--
++          pattern: dist-*
++          merge-multiple: true
++          path: dist
+ 
 -      - name: Verify signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
 -        shell: bash
--        env:
++      - name: Decide whether this tag becomes the latest release
++        id: latest
+         env:
 -          TARGET: ${{ matrix.target }}
 -        run: |
 -          set -euo pipefail
@@ -5845,16 +5778,17 @@ index 26d4985a..1343353e 100644
 -            codesign --verify --strict --verbose=2 "$binary_path"
 -          done
 -
--          for resource in rg zsh; do
+-          for resource in rg; do
 -            resource_path="signed-resources/${{ matrix.target }}/${resource}"
 -            chmod 0755 "$resource_path"
 -            codesign --verify --strict --verbose=2 "$resource_path"
 -          done
 -
 -      - name: Stage macOS artifacts
--        shell: bash
--        run: |
--          set -euo pipefail
++          GH_TOKEN: ${{ github.token }}
+         shell: bash
+         run: |
+           set -euo pipefail
 -          dest="dist/${{ matrix.target }}"
 -          mkdir -p "$dest"
 -
@@ -5866,14 +5800,13 @@ index 26d4985a..1343353e 100644
 -            fi
 -            cp "target/${{ matrix.target }}/release/${binary}" "$dest/${binary}-${{ matrix.target }}"
 -          done
-+          pattern: dist-*
-+          merge-multiple: true
-+          path: dist
++          tag="${GITHUB_REF_NAME}"
++          version="${tag#rust-v}"
++          version="${version#v}"
  
 -      - name: Build Codex package archive
 -        shell: bash
-+      - name: Create or update GitHub release
-         env:
+-        env:
 -          TARGET: ${{ matrix.target }}
 -          BUNDLE: ${{ matrix.bundle }}
 -        run: |
@@ -5882,19 +5815,33 @@ index 26d4985a..1343353e 100644
 -          if [[ "$BUNDLE" == "primary" ]]; then
 -            voice_args+=(--voice-release-dir "${RUNNER_TEMP}/signed-voice/${TARGET}")
 -            voice_args+=(--release-version "${GITHUB_REF_NAME#rust-v}")
--          fi
++          # `codex update` resolves the newest fork release through the
++          # `releases/latest` redirect, so the pointer must never move back to
++          # an older tag. Upstream's releases.py owns the comparison; a
++          # repository with no release yet (or an unreadable pointer) has
++          # nothing to compare against and keeps GitHub's default.
++          make_latest="true"
++          if latest_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" 2>/dev/null)"; then
++            make_latest="$(printf '%s' "${latest_json}" \
++              | python3 .github/scripts/releases.py "${version}" --check-github latest)"
++          else
++            echo "No existing latest release to compare against."
+           fi
 -          bash "${GITHUB_WORKSPACE}/.github/scripts/build-codex-package-archive.sh" \
 -            --target "$TARGET" \
 -            --bundle "$BUNDLE" \
 -            --entrypoint-dir "target/${TARGET}/release" \
 -            --archive-dir "dist/${TARGET}" \
 -            --rg-bin "signed-resources/${TARGET}/rg" \
--            --zsh-bin "signed-resources/${TARGET}/zsh" \
 -            ${voice_args[@]+"${voice_args[@]}"}
--
++          echo "make_latest=${make_latest}" >> "$GITHUB_OUTPUT"
+ 
 -      - name: Build unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
++      - name: Create or update GitHub release
++        env:
 +          GH_TOKEN: ${{ github.token }}
++          MAKE_LATEST: ${{ steps.latest.outputs.make_latest }}
          shell: bash
          run: |
            set -euo pipefail
@@ -5948,12 +5895,12 @@ index 26d4985a..1343353e 100644
 -        if: ${{ matrix.build_dmg == 'true' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-unsigned-dmg
+-          name: ${{ matrix.artifact_name }}-unsigned-dmg${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/target/${{ matrix.target }}/release/codex-${{ matrix.target }}.dmg
 -          if-no-files-found: error
 -
 -      - name: Build Python runtime wheel
--        if: ${{ matrix.bundle == 'primary' }}
+-        if: ${{ matrix.build-system == 'cargo' && matrix.bundle == 'primary' }}
 -        shell: bash
 -        run: |
 -          set -euo pipefail
@@ -5983,8 +5930,7 @@ index 26d4985a..1343353e 100644
 -            --bundle primary \
 -            --entrypoint-dir "target/${{ matrix.target }}/release" \
 -            --archive-dir "$wheel_archives" \
--            --rg-bin "signed-resources/${{ matrix.target }}/rg" \
--            --zsh-bin "signed-resources/${{ matrix.target }}/zsh"
+-            --rg-bin "signed-resources/${{ matrix.target }}/rg"
 -          wheel_archive="${wheel_archives}/codex-package-${{ matrix.target }}.tar.gz"
 -          python3 - "$wheel_archive" <<'PY'
 -          import sys
@@ -6005,7 +5951,7 @@ index 26d4985a..1343353e 100644
 -          "${RUNNER_TEMP}/python-runtime-build-venv/bin/python" -m build --wheel --outdir "$wheel_dir" "$stage_dir"
 -
 -      - name: Upload Python runtime wheel
--        if: ${{ matrix.bundle == 'primary' }}
+-        if: ${{ matrix.build-system == 'cargo' && matrix.bundle == 'primary' }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
 -          name: python-runtime-wheel-${{ matrix.target }}
@@ -6030,13 +5976,14 @@ index 26d4985a..1343353e 100644
 -      - name: Upload packaged macOS artifacts
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-packaged
+-          name: ${{ matrix.artifact_name }}-packaged${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/dist/${{ matrix.target }}/*
 -          if-no-files-found: error
 -
 -  sign-macos-dmg:
 -    needs: package-macos
--    name: Sign macOS DMG - ${{ matrix.target }}
+-    name: Sign macOS DMG - ${{ matrix.target }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: ubuntu-latest
 -    timeout-minutes: 45
 -    environment:
@@ -6046,9 +5993,16 @@ index 26d4985a..1343353e 100644
 -      contents: read
 -      id-token: write
 -
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - aarch64-apple-darwin
+-          - x86_64-apple-darwin
 -        include:
 -          - target: aarch64-apple-darwin
 -            artifact_name: aarch64-apple-darwin
@@ -6063,7 +6017,7 @@ index 26d4985a..1343353e 100644
 -      - name: Download unsigned macOS DMG
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-unsigned-dmg
+-          name: ${{ matrix.artifact_name }}-unsigned-dmg${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/unsigned-dmg
 -
 -      - name: Set up AKV PKCS11 macOS signing
@@ -6117,7 +6071,7 @@ index 26d4985a..1343353e 100644
 -      - name: Upload signed macOS DMG
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-signed-dmg
+-          name: ${{ matrix.artifact_name }}-signed-dmg${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/unsigned-dmg/codex-${{ matrix.target }}.dmg
 -          if-no-files-found: error
 -
@@ -6125,7 +6079,7 @@ index 26d4985a..1343353e 100644
 -        if: ${{ always() }}
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}-dmg-signing-verification
+-          name: ${{ matrix.artifact_name }}-dmg-signing-verification${{ env.ARTIFACT_SUFFIX }}
 -          path: macos-dmg-signing-verification/${{ matrix.target }}/
 -          if-no-files-found: warn
 -
@@ -6133,7 +6087,8 @@ index 26d4985a..1343353e 100644
 -    needs:
 -      - package-macos
 -      - sign-macos-dmg
--    name: Verify macOS artifacts - ${{ matrix.target }} - ${{ matrix.bundle }}
+-    name: Verify macOS artifacts - ${{ matrix.target }} - ${{ matrix.bundle }} - ${{ matrix.build-system }}
+-    continue-on-error: ${{ matrix.build-system == 'bazel' }}
 -    runs-on: macos-15-xlarge
 -    timeout-minutes: 30
 -    permissions:
@@ -6142,9 +6097,17 @@ index 26d4985a..1343353e 100644
 -      run:
 -        working-directory: codex-rs
 -
+-    env:
+-      ARTIFACT_SUFFIX: ${{ matrix.build-system == 'bazel' && '-bazel' || '' }}
+-
 -    strategy:
 -      fail-fast: false
 -      matrix:
+-        build-system: [cargo, bazel]
+-        target:
+-          - aarch64-apple-darwin
+-          - x86_64-apple-darwin
+-        bundle: [primary, app-server]
 -        include:
 -          - target: aarch64-apple-darwin
 -            bundle: primary
@@ -6175,20 +6138,20 @@ index 26d4985a..1343353e 100644
 -      - name: Download packaged macOS artifacts
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-packaged
+-          name: ${{ matrix.artifact_name }}-packaged${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/dist/${{ matrix.target }}
 -
 -      - name: Download signed macOS binaries
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-signed-binaries
+-          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/signed-binaries
 -
 -      - name: Download signed macOS DMG
 -        if: ${{ matrix.verify_dmg == 'true' }}
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
--          name: ${{ matrix.artifact_name }}-signed-dmg
+-          name: ${{ matrix.artifact_name }}-signed-dmg${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/signed-dmg
 -
 -      - name: Verify signed macOS artifacts
@@ -6275,8 +6238,7 @@ index 26d4985a..1343353e 100644
 -          verify_signed_binary "${package_dir}/bin/codex-code-mode-host" "codex-code-mode-host"
 -
 -          for resource in \
--            "${package_dir}/codex-path/rg" \
--            "${package_dir}/codex-resources/zsh/bin/zsh"
+-            "${package_dir}/codex-path/rg"
 -          do
 -            chmod 0755 "$resource"
 -            lipo "$resource" -verify_arch "$expected_arch"
@@ -6358,10 +6320,21 @@ index 26d4985a..1343353e 100644
 -          trap - EXIT
 -          cp "$dmg_path" "dist/${target}/codex-${target}.dmg"
 -
+-      - name: Suffix Bazel artifact filenames
+-        if: ${{ matrix.build-system == 'bazel' }}
+-        shell: bash
+-        run: |
+-          set -euo pipefail
+-          for artifact in "dist/${{ matrix.target }}"/*; do
+-            name="${artifact##*/}"
+-            stem="${name%%.*}"
+-            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
+-          done
+-
 -      - name: Upload verified macOS artifacts
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
--          name: ${{ matrix.artifact_name }}
+-          name: ${{ matrix.artifact_name }}${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/dist/${{ matrix.target }}/*
 -          if-no-files-found: error
 -
@@ -6441,6 +6414,12 @@ index 26d4985a..1343353e 100644
 -          if-no-files-found: error
 -
 -  release:
+-    # Each job checks its channel under this lock; out-of-order builds cannot
+-    # roll back GitHub, npm, R2, or the canary branch.
+-    concurrency: &release-publication
+-      group: rust-release
+-      queue: max
+-      cancel-in-progress: false
 -    needs:
 -      - tag-check
 -      - build
@@ -6493,10 +6472,10 @@ index 26d4985a..1343353e 100644
 -
 -          # Use the commit message for the commit the tag points at (not the
 -          # annotated tag message).
--          git log -1 --format=%B "${commit}" > "${notes_path}"
--          # Ensure trailing newline so GitHub's markdown renderer doesn't
--          # occasionally run the last line into subsequent content.
--          echo >> "${notes_path}"
+-          # Preserve the previous publisher's 124,999-character cap, reserving
+-          # the last character for a trailing newline for GitHub's renderer.
+-          git log -1 --format=%B "${commit}" |
+-            python3 -c 'import sys; print(sys.stdin.read()[:124998])' > "${notes_path}"
 -
 -          echo "path=${notes_path}" >> "${GITHUB_OUTPUT}"
 -
@@ -6504,7 +6483,7 @@ index 26d4985a..1343353e 100644
 -        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
 -        with:
 -          path: dist
--          pattern: "{{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc},*-symbols,argument-comment-lint-*,python-runtime-wheel-*,npm-packages}"
+-          pattern: "{{aarch64,x86_64}-{apple-darwin{,-app-server},unknown-linux-musl{,-app-server},pc-windows-msvc}{,-bazel},*-symbols{,-bazel},argument-comment-lint-*,python-runtime-wheel-*,npm-packages}"
 -
 -      - name: Download verified provisioned macOS packages
 -        if: vars.CODEX_PROVISIONED_MACOS_CANDIDATE == 'true'
@@ -6549,7 +6528,10 @@ index 26d4985a..1343353e 100644
 -
 -      - name: Define release name
 -        id: release_name
+-        env:
+-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 -        run: |
+-          set -euo pipefail
 -          # Extract the version from the tag name, which is in the format
 -          # "rust-v0.1.0".
 -          version="${GITHUB_REF_NAME#rust-v}"
@@ -6558,7 +6540,9 @@ index 26d4985a..1343353e 100644
 -            echo "make_latest=false" >> $GITHUB_OUTPUT
 -            echo "prerelease=true" >> $GITHUB_OUTPUT
 -          else
--            echo "make_latest=true" >> $GITHUB_OUTPUT
+-            make_latest="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" \
+-              | python3 .github/scripts/releases.py "$version" --check-github latest)"
+-            echo "make_latest=${make_latest}" >> $GITHUB_OUTPUT
 -            echo "prerelease=false" >> $GITHUB_OUTPUT
 -          fi
 -
@@ -6584,33 +6568,53 @@ index 26d4985a..1343353e 100644
            else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
-           fi
+-          fi
 -
 -      - name: Stage installer scripts
 -        run: |
 -          cp scripts/install/install.sh dist/install.sh
--          cp scripts/install/install.ps1 dist/install.ps1
+-          mv dist/x86_64-pc-windows-msvc/install.ps1 dist/install.ps1
 -
 -      - name: Create GitHub Release
--        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
--        with:
--          name: ${{ steps.release_name.outputs.name }}
--          tag_name: ${{ github.ref_name }}
--          body_path: ${{ steps.release_notes.outputs.path }}
--          files: dist/**
--          overwrite_files: true
--          # Release asset uploads follow normal REST API behavior. GitHub recommends
--          # serial API requests to avoid secondary rate limits:
--          # https://docs.github.com/en/rest/releases/assets#upload-a-release-asset
--          # https://docs.github.com/en/rest/using-the-rest-api/best-practices-for-using-the-rest-api#avoid-concurrent-requests
--          preserve_order: true
--          make_latest: ${{ steps.release_name.outputs.make_latest }}
--          # Mark as prerelease only when the version has a suffix after x.y.z
--          # (e.g. -alpha, -beta). Otherwise publish a normal release.
--          prerelease: ${{ steps.release_name.outputs.prerelease }}
+-        env:
+-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+-          RELEASE_NAME: ${{ steps.release_name.outputs.name }}
+-          RELEASE_NOTES: ${{ steps.release_notes.outputs.path }}
+-          MAKE_LATEST: ${{ steps.release_name.outputs.make_latest }}
+-          PRERELEASE: ${{ steps.release_name.outputs.prerelease }}
+-        run: |
+-          set -euo pipefail
+-
+-          # Look up this tag, including drafts, without listing release history.
+-          # API errors must fail the step rather than look like an absent release.
+-          # shellcheck disable=SC2016
+-          exists="$(gh api graphql \
+-            -f query='query($owner:String!,$repo:String!,$tag:String!){repository(owner:$owner,name:$repo){release(tagName:$tag){databaseId}}}' \
+-            -f owner="$GITHUB_REPOSITORY_OWNER" \
+-            -f repo="${GITHUB_REPOSITORY#*/}" \
+-            -f tag="$GITHUB_REF_NAME" \
+-            --jq '.data.repository.release != null')"
+-          release_args=(
+-            --repo "$GITHUB_REPOSITORY"
+-            --title "$RELEASE_NAME"
+-            --notes-file "$RELEASE_NOTES"
+-            --prerelease="$PRERELEASE"
+-          )
+-          if [[ "$exists" == false ]]; then
+-            # Prereleases must be created directly to keep prereleased events.
+-            draft=true
+-            if [[ "$PRERELEASE" == true ]]; then
+-              draft=false
+-            fi
+-            gh release create "$GITHUB_REF_NAME" "${release_args[@]}" \
+-              --draft="$draft" --verify-tag --latest=false
+-          fi
+-
+-          mapfile -d '' assets < <(find dist -type f -print0 | sort -z)
+-          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" \
+-            --repo "$GITHUB_REPOSITORY" --clobber
+-          gh release edit "$GITHUB_REF_NAME" "${release_args[@]}" \
+-            --draft=false --latest="$MAKE_LATEST"
 -
 -  publish-r2-assets:
 -    name: publish-r2-assets
@@ -6627,6 +6631,7 @@ index 26d4985a..1343353e 100644
 -      stage: assets
 -
 -  publish-r2:
+-    concurrency: *release-publication
 -    name: publish-r2
 -    needs: [release, publish-dotslash, publish-r2-assets]
 -    if: >-
@@ -6681,6 +6686,7 @@ index 26d4985a..1343353e 100644
 -  # July 31, 2025: https://github.blog/changelog/2025-07-31-npm-trusted-publishing-with-oidc-is-generally-available/
 -  # npm docs: https://docs.npmjs.com/trusted-publishers
 -  publish-npm:
+-    concurrency: *release-publication
 -    # Publish to npm for stable releases, numbered alphas, and alpha hotfixes.
 -    if: >-
 -      ${{
@@ -6696,6 +6702,11 @@ index 26d4985a..1343353e 100644
 -      contents: read
 -
 -    steps:
+-      - name: Checkout repository
+-        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-
 -      - name: Setup Node.js
 -        uses: actions/setup-node@53b83947a5a98c8d113130e565377fae1a50d02f # v6.3.0
 -        with:
@@ -6816,6 +6827,10 @@ index 26d4985a..1343353e 100644
 -                ;;
 -            esac
 -
+-            # The publication workflow holds the lock from this lookup through
+-            # publish, including concurrent releases from other version lines.
+-            tag="$(python3 .github/scripts/npm_alpha_tag.py "${tarball}" "${VERSION}" "${tag:-latest}")"
+-
 -            publish_cmd=(npm publish "${GITHUB_WORKSPACE}/${tarball}")
 -            if [[ -n "${tag}" ]]; then
 -              publish_cmd+=(--tag "${tag}")
@@ -6867,9 +6882,14 @@ index 26d4985a..1343353e 100644
 -          if ! curl -sS -f -o /dev/null -X POST "$DEV_WEBSITE_VERCEL_DEPLOY_HOOK_URL"; then
 -            echo "::warning title=developers.openai.com deploy hook failed::Vercel deploy hook POST failed for ${GITHUB_REF_NAME}"
 -            exit 1
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
++                --latest="${MAKE_LATEST}"
+           fi
 -
 -  winget:
+-    concurrency: *release-publication
 -    name: winget
 -    needs: release
 -    # Only publish stable/mainline releases to WinGet; pre-releases include a
@@ -6931,6 +6951,7 @@ index 26d4985a..1343353e 100644
 -          komac cleanup --only-merged
 -
 -  update-branch:
+-    concurrency: *release-publication
 -    name: Update latest-alpha-cli branch
 -    if: >-
 -      ${{
@@ -6966,7 +6987,7 @@ index 26d4985a..1343353e 100644
 -          # is JSON metadata with the file contents encoded as base64.
 -          update="$(gh api "repos/$GITHUB_REPOSITORY/contents/codex-rs/Cargo.toml?ref=latest-alpha-cli" \
 -            -H 'Accept: application/vnd.github.raw+json' \
--            | python3 .github/scripts/check_github_canary.py "$RELEASE_VERSION")"
+-            | python3 .github/scripts/releases.py "$RELEASE_VERSION" --check-github canary)"
 -          echo "update=$update" >> "$GITHUB_OUTPUT"
 -      - name: Update latest-alpha-cli branch
 -        if: success() && steps.github_canary.outputs.update == 'true'
@@ -6980,9 +7001,12 @@ index 26d4985a..1343353e 100644
 -            -f sha="${GITHUB_SHA}" \
 -            -F force=true
 +          gh release upload "${tag}" "${assets[@]}" --clobber
++          # An existing release may predate this run's decision, so apply it
++          # explicitly as well (idempotent for a freshly created release).
++          gh release edit "${tag}" --latest="${MAKE_LATEST}"
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index 32ec3af8..00000000
+index 32ec3af..0000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
 @@ -1,479 +0,0 @@
@@ -7467,7 +7491,7 @@ index 32ec3af8..00000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 3f91dd18..00000000
+index 3f91dd1..0000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
 @@ -1,161 +0,0 @@
@@ -7634,7 +7658,7 @@ index 3f91dd18..00000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index 94f1aa01..00000000
+index 94f1aa0..0000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
 @@ -1,444 +0,0 @@
@@ -8084,7 +8108,7 @@ index 94f1aa01..00000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 00000000..02c85609
+index 0000000..e807e8f
 --- /dev/null
 +++ b/install.sh
 @@ -0,0 +1,215 @@
@@ -8100,7 +8124,7 @@ index 00000000..02c85609
 +#     codex-package.json
 +#     bin/codex
 +#     codex-path/rg
-+#     codex-resources/{bwrap,zsh/bin/zsh}
++#     codex-resources/bwrap
 +#     codex -> bin/codex
 +#
 +# The package layout is the same one upstream publishes: it is what
@@ -8305,19 +8329,21 @@ index 00000000..02c85609
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 6fd6aded..00000000
+index e442235..0000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,35 +0,0 @@
+@@ -1,37 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
 -    "llvm_rusty_v8_custom_libcxx.patch",
 -    "llvm_windows_arm64_powl.patch",
 -    "llvm_windows_mingw_compat.patch",
+-    "mxc-sdk_utf8_resources.patch",
 -    "rules_rust_build_script_tools_transition.patch",
 -    "rules_rust_compiler_thp.patch",
--    "rules_rust_group_build_script_arg_files.patch",
+-    "rules_rust_process_wrapper_param_file.patch",
+-    "rules_rust_release_build_script_profile.patch",
 -    "rules_rust_windows_execroot_separators.patch",
 -    "rules_rust_windows_msvc_direct_link_args.patch",
 -    "rules_rust_windows_process_wrapper_skip_temp_outputs.patch",
@@ -8346,7 +8372,7 @@ index 6fd6aded..00000000
 -])
 diff --git a/patches/abseil_windows_gnullvm_thread_identity.patch b/patches/abseil_windows_gnullvm_thread_identity.patch
 deleted file mode 100644
-index 27c4ecf7..00000000
+index 27c4ecf..0000000
 --- a/patches/abseil_windows_gnullvm_thread_identity.patch
 +++ /dev/null
 @@ -1,16 +0,0 @@
@@ -8368,7 +8394,7 @@ index 27c4ecf7..00000000
 - #elif defined(__APPLE__) && defined(ABSL_HAVE_THREAD_LOCAL)
 diff --git a/patches/bzip2_windows_stack_args.patch b/patches/bzip2_windows_stack_args.patch
 deleted file mode 100644
-index 2786e908..00000000
+index 2786e90..0000000
 --- a/patches/bzip2_windows_stack_args.patch
 +++ /dev/null
 @@ -1,23 +0,0 @@
@@ -8397,7 +8423,7 @@ index 2786e908..00000000
 -+bazel_dep(name = "platforms", version = "1.0.0")
 diff --git a/patches/llvm_rusty_v8_custom_libcxx.patch b/patches/llvm_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index dc5f4e65..00000000
+index dc5f4e6..0000000
 --- a/patches/llvm_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,108 +0,0 @@
@@ -8511,7 +8537,7 @@ index dc5f4e65..00000000
 -             "@mingw//:mingw_w64_headers_crt_directory",
 diff --git a/patches/llvm_windows_arm64_powl.patch b/patches/llvm_windows_arm64_powl.patch
 deleted file mode 100644
-index 0fd33c97..00000000
+index 0fd33c9..0000000
 --- a/patches/llvm_windows_arm64_powl.patch
 +++ /dev/null
 @@ -1,25 +0,0 @@
@@ -8542,7 +8568,7 @@ index 0fd33c97..00000000
 -         # Clang will respect the user's chosen CRT variant.
 diff --git a/patches/llvm_windows_mingw_compat.patch b/patches/llvm_windows_mingw_compat.patch
 deleted file mode 100644
-index 66cf4e7b..00000000
+index 66cf4e7..0000000
 --- a/patches/llvm_windows_mingw_compat.patch
 +++ /dev/null
 @@ -1,50 +0,0 @@
@@ -8598,7 +8624,7 @@ index 66cf4e7b..00000000
 -         ":winpthread",
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index 7bb49cbc..00000000
+index 7bb49cb..0000000
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,112 +0,0 @@
@@ -8716,7 +8742,7 @@ index 7bb49cbc..00000000
 - 
 diff --git a/patches/rules_cc_rusty_v8_custom_libcxx.patch b/patches/rules_cc_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index 3efda035..00000000
+index 3efda03..0000000
 --- a/patches/rules_cc_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,44 +0,0 @@
@@ -8766,7 +8792,7 @@ index 3efda035..00000000
 -     _cc_library(**kwargs)
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 deleted file mode 100644
-index 2f38c2bf..00000000
+index 2f38c2b..0000000
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ /dev/null
 @@ -1,58 +0,0 @@
@@ -8830,7 +8856,7 @@ index 2f38c2bf..00000000
 -     "build_script_data_select": _label_list_dict(),
 diff --git a/patches/rules_rust_build_script_tools_transition.patch b/patches/rules_rust_build_script_tools_transition.patch
 deleted file mode 100644
-index dcbc4569..00000000
+index dcbc456..0000000
 --- a/patches/rules_rust_build_script_tools_transition.patch
 +++ /dev/null
 @@ -1,19 +0,0 @@
@@ -8855,7 +8881,7 @@ index dcbc4569..00000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index a8eba2ba..00000000
+index a8eba2b..0000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
 @@ -1,109 +0,0 @@
@@ -8970,7 +8996,7 @@ index a8eba2ba..00000000
 -     """A helper function for `_add_native_link_flags`.
 diff --git a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch b/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 deleted file mode 100644
-index 52c5ae86..00000000
+index 52c5ae8..0000000
 --- a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 +++ /dev/null
 @@ -1,15 +0,0 @@
@@ -8991,7 +9017,7 @@ index 52c5ae86..00000000
 -             }
 diff --git a/patches/rusty_v8_prebuilt_out_dir.patch b/patches/rusty_v8_prebuilt_out_dir.patch
 deleted file mode 100644
-index 4242a29b..00000000
+index 4242a29..0000000
 --- a/patches/rusty_v8_prebuilt_out_dir.patch
 +++ /dev/null
 @@ -1,74 +0,0 @@
@@ -9071,7 +9097,7 @@ index 4242a29b..00000000
 -       } else if target.contains("apple")
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 deleted file mode 100644
-index dde0efdf..00000000
+index dde0efd..0000000
 --- a/patches/v8_bazel_rules.patch
 +++ /dev/null
 @@ -1,509 +0,0 @@
@@ -9586,7 +9612,7 @@ index dde0efdf..00000000
 - )
 diff --git a/patches/v8_module_deps.patch b/patches/v8_module_deps.patch
 deleted file mode 100644
-index d179617e..00000000
+index d179617..0000000
 --- a/patches/v8_module_deps.patch
 +++ /dev/null
 @@ -1,285 +0,0 @@
@@ -9877,7 +9903,7 @@ index d179617e..00000000
 -+ # usages with an empty list.
 diff --git a/patches/v8_source_portability.patch b/patches/v8_source_portability.patch
 deleted file mode 100644
-index 6b6537cb..00000000
+index 6b6537c..0000000
 --- a/patches/v8_source_portability.patch
 +++ /dev/null
 @@ -1,316 +0,0 @@
@@ -10199,7 +10225,7 @@ index 6b6537cb..00000000
 -   // A fix is also included in the 5.4.182 and 5.10.103 versions ("x86/fpu:
 diff --git a/patches/webrtc-sys_hermetic_darwin_sysroot.patch b/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 deleted file mode 100644
-index c90edbd0..00000000
+index c90edbd..0000000
 --- a/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 +++ /dev/null
 @@ -1,75 +0,0 @@
@@ -10280,7 +10306,7 @@ index c90edbd0..00000000
 -+        .unwrap();
 diff --git a/patches/windows-link.patch b/patches/windows-link.patch
 deleted file mode 100644
-index 92423d1f..00000000
+index 92423d1..0000000
 --- a/patches/windows-link.patch
 +++ /dev/null
 @@ -1,10 +0,0 @@
@@ -10296,7 +10322,7 @@ index 92423d1f..00000000
 - /// Defines an external function to import.
 diff --git a/patches/xz_windows_stack_args.patch b/patches/xz_windows_stack_args.patch
 deleted file mode 100644
-index 926fb0a6..00000000
+index 926fb0a..0000000
 --- a/patches/xz_windows_stack_args.patch
 +++ /dev/null
 @@ -1,14 +0,0 @@
@@ -10316,7 +10342,7 @@ index 926fb0a6..00000000
 -     defines = select({
 diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index c45a360a..00000000
+index c45a360..0000000
 --- a/patches/zstd-sys_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,41 +0,0 @@

@@ -360,8 +360,9 @@ jobs:
             )
           fi
 
-          # The builder fetches ripgrep (and, on Unix, the patched zsh) from
-          # upstream's pinned DotSlash manifests.
+          # The builder fetches ripgrep from upstream's pinned DotSlash
+          # manifests. The patched zsh upstream used to bundle was removed in
+          # upstream 0.163.0, and this fork follows that layout.
           export CODEX_REPO_ROOT="$tree_dir"
           python3 "${tree_dir}/scripts/build_codex_package.py" "${package_args[@]}"
 
@@ -393,7 +394,7 @@ jobs:
                   "codex-resources/codex-windows-sandbox-setup.exe",
               ]
           else:
-              required += ["codex-resources/bwrap", "codex-resources/zsh/bin/zsh"]
+              required += ["codex-resources/bwrap"]
 
           missing = [name for name in required if not (package / name).is_file()]
           if missing:
@@ -436,9 +437,35 @@ jobs:
           merge-multiple: true
           path: dist
 
+      - name: Decide whether this tag becomes the latest release
+        id: latest
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          version="${tag#rust-v}"
+          version="${version#v}"
+
+          # `codex update` resolves the newest fork release through the
+          # `releases/latest` redirect, so the pointer must never move back to
+          # an older tag. Upstream's releases.py owns the comparison; a
+          # repository with no release yet (or an unreadable pointer) has
+          # nothing to compare against and keeps GitHub's default.
+          make_latest="true"
+          if latest_json="$(gh api "repos/${GITHUB_REPOSITORY}/releases/latest" 2>/dev/null)"; then
+            make_latest="$(printf '%s' "${latest_json}" \
+              | python3 .github/scripts/releases.py "${version}" --check-github latest)"
+          else
+            echo "No existing latest release to compare against."
+          fi
+          echo "make_latest=${make_latest}" >> "$GITHUB_OUTPUT"
+
       - name: Create or update GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
+          MAKE_LATEST: ${{ steps.latest.outputs.make_latest }}
         shell: bash
         run: |
           set -euo pipefail
@@ -457,6 +484,10 @@ jobs:
           else
             gh release create "${tag}" \
                 --title "codEx ${tag}" \
-                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)"
+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
+                --latest="${MAKE_LATEST}"
           fi
           gh release upload "${tag}" "${assets[@]}" --clobber
+          # An existing release may predate this run's decision, so apply it
+          # explicitly as well (idempotent for a freshly created release).
+          gh release edit "${tag}" --latest="${MAKE_LATEST}"

@@ -224,7 +224,7 @@ regions the fork patches touch. Resolve conflicts with a clear hierarchy:
   resolve with `git rm` and move on.
 
 Operational experience from the rust-v0.149.1, rust-v0.151.0, rust-v0.154.0,
-rust-v0.155.1, and rust-v0.160.0 upgrades:
+rust-v0.155.1, rust-v0.160.0, and rust-v0.163.0 upgrades:
 
 - `git am --3way` needs the previous base tag's blobs to build its fake
   ancestor; a shallow clone of the new tag alone fails with "sha1
@@ -296,9 +296,13 @@ rust-v0.155.1, and rust-v0.160.0 upgrades:
   for an event (`multi_agents_tests.rs`'s `wait_for_recorded_user_input`), which
   is enough on an idle host and not enough while the box is also compiling.
   They pass 6/6 in isolation, fail 2/2672 under load, and nextest itself
-  reports them as flaky. Upstream owns that file and the fork never touches
-  it, so treat a `send_input_*` failure as load, re-run it alone, and do not
-  patch upstream's timeout to make a loaded box green.
+  reports them as flaky. The 0.163.0 upgrade hit the same class once:
+  `thread_manager::tests::mcp_invalidation_refreshes_threads_that_are_still_starting`
+  timed out after five seconds in the full-suite run ("thread should enter its
+  startup lifecycle: Elapsed(())") and passes alone in under a second. Upstream
+  owns those files and the fork never touches them, so treat such a failure as
+  load, re-run it alone, and do not patch upstream's timeout to make a loaded
+  box green.
 - A deterministic single-test failure is not automatically an upgrade
   regression. Before treating it as one, check in order: which assert
   actually fired (read the panic, not just the test name), whether the
@@ -375,7 +379,76 @@ rust-v0.155.1, and rust-v0.160.0 upgrades:
   what drives its diff (branding -> `[identity]`, keymap/footer -> `[input]`),
   and prefer an existing `dir/*` pattern over new explicit lines: the 0.155.1
   upgrade briefly double-claimed `tui/src/status/snapshots/*`, which `[input]`
-  already owned.
+  already owned. New *platform variants* count as separate files: 0.163.0
+  introduced `...@windows.snap` siblings, and a fork patch that rewrites the
+  generic snapshot rewrites the Windows sibling with it, so each new
+  `@windows.snap` needs its own manifest line (a directory-wide pattern would
+  double-claim snapshots other modules own).
+- `git checkout --ours/--theirs` does not stage the file: the index keeps all
+  three stages, so `git status` still reports it as unmerged (`UU`) and a
+  later `git diff --diff-filter=U | while read; do git checkout ...; done`
+  sweep will silently overwrite hand-resolved files. Always `git add`
+  immediately after a resolution, and never resolve by looping over the
+  unmerged list without staging as you go.
+- When a sweep does clobber a resolved file, rebuild the merge instead of
+  guessing: `git merge-file -L HEAD -L base -L "<patch subject>" -p
+  <upstream-tag-blob> <old-tag-blob> <fork-blob>` reproduces exactly the
+  conflict `git am --3way` produced (same hunk boundaries and labels), so the
+  recorded resolution edits apply again verbatim. The three blobs are
+  `git show <new-tag>:<path>`, `git show <old-tag>:<path>`, and
+  `git -C <tree> show <module-commit>:<path>`.
+- Upstream removals do not only hit files the fork patches; they hit *surface
+  the fork's own branding leans on*. 0.163.0 deleted the empty-state greeting
+  (`set_session_greeting`, `Greeting`, the `greeting` field on the session
+  header), so the fork's branded session card had to drop the greeting line it
+  used to append, and the `[identity]` test that asserted it had to move to
+  the new behaviour. Grep the merged tree for the removed symbol before
+  deciding a conflict in the fork's favour.
+- New upstream *tests* can wait for the upstream product name. 0.163.0's
+  `tui/tests/suite/gov_cloud_guidance_tests.rs` polls the PTY until the screen
+  contains "OpenAI Codex", which the fork's branding never renders, so the test
+  timed out after 30s. Adapt the string to `codEx` and claim the file for
+  `[identity]` (it becomes a fork-delta file the moment you touch it); grep the
+  merged tree for `OpenAI Codex` in `*.rs` after every upgrade, since the
+  branding module's job is to make that string unreachable in the UI.
+- New upstream tests can also need workspace *helper binaries*. 0.163.0 added
+  `code_mode_host::tests`, which spawn `codex-code-mode-host` from
+  `target/debug`; that binary links V8 through the pinned rusty-v8 artifacts,
+  which only the release workflow downloads. `scripts/gates.sh` therefore
+  excludes `test(code_mode_host)` from the core suite next to
+  `test(suite)` -- both are upstream suites whose runner prerequisites the
+  fork's hosted CI does not provide -- instead of failing three tests on a
+  missing binary. Upstream builds its own test archive after wiring rusty-v8
+  up, so this is a narrowing, not a workaround for fork code.
+- 0.163.0 also dropped the bundled zsh from the canonical package:
+  `scripts/codex_package/layout.py` no longer ships or requires
+  `codex-resources/zsh/bin/zsh`, `codex_package/zsh.py` and the
+  `--zsh-manifest`/`--zsh-bin` flags are gone, and upstream's release workflow
+  lost its `CODEX_ZSH_*` env and manifest verification. The fork's release
+  workflow, `install.sh` and READMEs all had to stop listing the path.
+  `scripts/build_codex_package.py` itself is now a thin wrapper over
+  `scripts/codex_package/cli.py`; the flags the fork passes are unchanged.
+- Moving a setting out of a workflow is not the same as deleting it. 0.163.0
+  removed the inline `LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC` export from
+  `rust-release.yml` only because the Windows build moved to
+  `rust-release-windows.yml` (and the new `build-cargo-package-binaries`
+  action), where it is still required. The fork's single-workflow release keeps
+  the export.
+- Upstream now keeps the `releases/latest` pointer monotonic: the release job
+  compares the tag against `repos/<repo>/releases/latest` through
+  `.github/scripts/releases.py --check-github latest` and passes the result to
+  `gh release create/edit --latest`. The fork adopted it because its own
+  `codex update` resolves the newest release through that redirect, so a
+  re-published older tag must not roll it back. The script is carried at the
+  slim root next to `check_ci_results.py` rather than bootstrapped in the
+  release job.
+- Comparing the merged tree against the slim copies is the fastest way to find
+  the files a `[distribution]` conflict damaged: every fork-carried workflow
+  that `git am` auto-merged should be byte-identical to its slim copy (`cmp`),
+  so a short loop over `git ls-files .github install.sh` names the ones that
+  still need attention. In the 0.163.0 upgrade only `rust-ci.yml` and
+  `rust-ci-full.yml` differed, because the fork replaces their content
+  wholesale; `rust-release.yml` needs the manual narrowing described above.
 - The dual-copy rule is broader than the manifest: every fork-owned file
   that exists at the slim root *and* in the bootstrapped tree must be
   byte-identical in both, and the list is not just `scripts/`: `README.md`,
@@ -431,9 +504,11 @@ Tests use `cargo-nextest` in the bootstrapped tree:
 ```sh
 CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
   cargo nextest run -j 2 --no-fail-fast -p codex-tui
+# suite::* needs self-hosted sandbox runners; code_mode_host::* needs the
+# V8-linked helper binary only the release workflow builds (see gates.sh).
 CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
   cargo nextest run -j 2 --no-fail-fast \
-  -p codex-core -E 'not test(suite)'   # sandbox-dependent suite::* tests need self-hosted runners
+  -p codex-core -E 'not test(suite) and not test(code_mode_host)'
 ```
 
 Add regression tests with bug fixes (e.g. `/rewind` tests). `rust-ci.yml`
@@ -481,5 +556,5 @@ post-merge through `postmerge-ci.yml` (`rust-ci`, `rust-ci-full`,
 it before merging, and locally as `scripts/gates.sh heavy` from the `pre-push`
 hook -- install it (`pre-commit install --hook-type pre-push`) so the compile
 check happens before the push rather than after the merge. Describe the change
-and motivation; link related issues when they exist. Upgrades commit the new `BASE_TAG` and
-regenerated `patches/` together, tagged `rust-v<semver>`.
+and motivation; link related issues when they exist. Upgrades commit the new
+`BASE_TAG` and regenerated `patches/` together, tagged `rust-v<semver>`.

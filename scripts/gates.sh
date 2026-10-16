@@ -313,22 +313,25 @@ light_gate() {
   fi
 }
 
+# Scratch paths the checks clean up on return. They live at script scope because
+# bash drops a function's locals before its RETURN trap runs, so a trap that
+# expands them lazily would see them unbound; shellcheck wants the lazy form.
+blob_allowlist_file=""
+export_tmp_dir=""
+
 blob_size_check() {
-  local allowlist
-  allowlist="$(mktemp)"
-  # Expand at trap-set time: bash drops a function's locals before its RETURN
-  # trap runs, so a lazily-expanded ${allowlist} would be unbound.
-  trap "rm -f '${allowlist}'" RETURN
-  cat .github/blob-size-allowlist.txt > "${allowlist}"
+  blob_allowlist_file="$(mktemp)"
+  trap 'rm -f "${blob_allowlist_file}"' RETURN
+  cat .github/blob-size-allowlist.txt > "${blob_allowlist_file}"
   local patch
   for patch in patches/*.patch; do
-    [[ -e "${patch}" ]] && printf '%s\n' "${patch}" >> "${allowlist}"
+    [[ -e "${patch}" ]] && printf '%s\n' "${patch}" >> "${blob_allowlist_file}"
   done
   python3 scripts/check_blob_size.py \
     --base "${GATES_BASE_SHA}" \
     --head "${GATES_HEAD_SHA}" \
     --max-bytes 512000 \
-    --allowlist "${allowlist}"
+    --allowlist "${blob_allowlist_file}"
 }
 
 # ---------------------------------------------------------------------------
@@ -417,17 +420,32 @@ tree_gate() {
 }
 
 export_check() {
-  local base_tag tmp
+  local base_tag
   base_tag="$(cat BASE_TAG)"
-  tmp="$(mktemp -d)"
-  # Expand at trap-set time; see the note in blob_size_check.
-  trap "rm -rf '${tmp}'" RETURN
-  if ! (cd "${tree_dir}" && bash ../scripts/gen-patches.sh "${base_tag}" "${tmp}" >/dev/null); then
+  export_tmp_dir="$(mktemp -d)"
+  trap 'rm -rf "${export_tmp_dir}"' RETURN
+  if ! (cd "${tree_dir}" && bash ../scripts/gen-patches.sh "${base_tag}" "${export_tmp_dir}/fresh" >/dev/null); then
     echo "patch-export: gen-patches.sh failed; fix the tree/queue first" >&2
     return 1
   fi
-  if ! diff -rq patches "${tmp}" >/dev/null; then
+  # Each patch's first line carries the SHA of the commit it was exported from,
+  # and a fresh `git am` (CI's bootstrap, or a re-bootstrap after an upgrade)
+  # recreates those commits with new SHAs while the payload stays identical.
+  # Strip that line before comparing, so the check reports content drift
+  # instead of which tree happened to produce the export.
+  local patch name
+  mkdir -p "${export_tmp_dir}/slim" "${export_tmp_dir}/fresh-normalized"
+  for patch in patches/*.patch; do
+    name="$(basename "${patch}")"
+    grep -v '^From [0-9a-f]\{40\} ' "${patch}" > "${export_tmp_dir}/slim/${name}"
+  done
+  for patch in "${export_tmp_dir}"/fresh/*.patch; do
+    name="$(basename "${patch}")"
+    grep -v '^From [0-9a-f]\{40\} ' "${patch}" > "${export_tmp_dir}/fresh-normalized/${name}"
+  done
+  if ! diff -rq "${export_tmp_dir}/slim" "${export_tmp_dir}/fresh-normalized" >/dev/null; then
     echo "patch-export: patches/ drifted from the bootstrapped tree." >&2
+    diff -rq "${export_tmp_dir}/slim" "${export_tmp_dir}/fresh-normalized" >&2 || true
     echo "Re-export: (cd ${tree_dir} && bash ../scripts/gen-patches.sh \"${base_tag}\")" >&2
     return 1
   fi
@@ -465,9 +483,16 @@ full_gate() {
     # The sandbox/approvals integration suite needs sandbox-capable runners,
     # exactly like upstream, which runs it on self-hosted runners only. CI
     # excludes suite::* and so does this gate.
+    #
+    # code_mode_host::* spawns the V8-linked codex-code-mode-host helper as a
+    # sibling binary, and only the release workflow builds that (it downloads
+    # the pinned rusty-v8 artifacts first). Upstream's test jobs build the whole
+    # workspace through a nextest archive with the same setup; doing that here
+    # would add a ~100 MB download to every run for three upstream tests in code
+    # the fork never touches, so they are excluded like suite::* is.
     RUST_MIN_STACK=${RUST_MIN_STACK} NEXTEST_PROFILE=${NEXTEST_PROFILE} \
       cargo nextest run -j \"${NEXTEST_JOBS}\" --no-fail-fast \
-      -p codex-core -E 'not test(suite)'
+      -p codex-core -E 'not test(suite) and not test(code_mode_host)'
   "
 }
 

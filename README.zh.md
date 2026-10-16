@@ -24,8 +24,8 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 `~/.local/bin`(或 `CODEX_INSTALL_DIR`)。
 
 归档就是上游发布的那种规范 Codex 包:`codex-package.json` 清单与
-`bin/codex`、`codex-path/rg`、`codex-resources/`(bwrap,Unix 上还有打过补丁
-的 zsh)并列。`InstallContext` 识别的正是这个布局,`codex app-server daemon`
+`bin/codex`、`codex-path/rg`、`codex-resources/`(Linux 上是 bwrap 沙箱
+辅助程序)并列。`InstallContext` 识别的正是这个布局,`codex app-server daemon`
 安装共享后台服务时复制的也是它。
 
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,

@@ -10,7 +10,7 @@
 #     codex-package.json
 #     bin/codex
 #     codex-path/rg
-#     codex-resources/{bwrap,zsh/bin/zsh}
+#     codex-resources/bwrap
 #     codex -> bin/codex
 #
 # The package layout is the same one upstream publishes: it is what
