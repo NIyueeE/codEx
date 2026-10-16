@@ -20,7 +20,11 @@ here; `bootstrap.sh` rebuilds a full codex tree from `BASE_TAG` and applies
   the heavy gate; `rust-release.yml` for releases), plus the composite actions
   they share. The fork keeps upstream's workflow names and narrows their
   content to Linux + Windows, so upgrades see a modify rather than a
-  delete-plus-add.
+  delete-plus-add. Only the three entrypoints (`blocking-ci.yml`,
+  `postmerge-ci.yml`, `rust-release.yml`) set `concurrency`: a *called*
+  reusable workflow sees the caller's `github.workflow`, so a group built from
+  it collides with the caller's own group and GitHub refuses to start the child
+  (every dependent job reports `failure` with no jobs).
 - `README.md` / `README.zh.md` — English/Chinese docs
 
 Rust sources exist only after bootstrapping, under `tree/` (or

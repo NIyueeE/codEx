@@ -25,10 +25,6 @@ on:
       # branch asks for the whole heavy tier before a merge.
       - "**full-ci**"
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
   tree:
     name: Tree checks

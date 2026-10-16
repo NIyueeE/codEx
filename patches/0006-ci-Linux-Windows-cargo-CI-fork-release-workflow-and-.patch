@@ -1,4 +1,4 @@
-From c90379c7c48d049b953b0a81e758d3867c9f9f38 Mon Sep 17 00:00:00 2001
+From 639a2b680ae350778a1b8b9359941f9b6e8db43f Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -9,10 +9,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
  .github/workflows/bazel.yml                   |  550 ----
- .github/workflows/blob-size-policy.yml        |   49 +-
+ .github/workflows/blob-size-policy.yml        |   45 +-
  .github/workflows/blocking-ci.yml             |   54 +-
- .github/workflows/cargo-deny.yml              |   32 +-
- .github/workflows/codespell.yml               |   31 +-
+ .github/workflows/cargo-deny.yml              |   28 +-
+ .github/workflows/codespell.yml               |   27 +-
  .github/workflows/postmerge-ci.yml            |   36 +-
  .github/workflows/python-runtime-build.yml    |  114 -
  .github/workflows/python-runtime-release.yml  |   63 -
@@ -20,10 +20,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/python-sdk-cli-release.yml  |  156 --
  .github/workflows/python-sdk-release.yml      |  172 --
  .github/workflows/r2-release.yml              |   59 -
- .github/workflows/repo-checks.yml             |  104 +-
+ .github/workflows/repo-checks.yml             |  100 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ---
- .github/workflows/rust-ci-full.yml            |  665 +----
- .github/workflows/rust-ci.yml                 |  290 +-
+ .github/workflows/rust-ci-full.yml            |  661 +----
+ .github/workflows/rust-ci.yml                 |  288 +-
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  214 --
  .github/workflows/rust-release-windows.yml    |  701 -----
@@ -52,7 +52,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 48 files changed, 1031 insertions(+), 8609 deletions(-)
+ 48 files changed, 1008 insertions(+), 8610 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -816,10 +816,10 @@ index 2f4b09d..0000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
-index f80fb0e..0fa93de 100644
+index f80fb0e..9995bd0 100644
 --- a/.github/workflows/blob-size-policy.yml
 +++ b/.github/workflows/blob-size-policy.yml
-@@ -1,31 +1,48 @@
+@@ -1,5 +1,18 @@
  name: blob-size-policy
  
 +# Upstream's changed-blob budget, narrowed to the fork and kept in the merge
@@ -838,11 +838,7 @@ index f80fb0e..0fa93de 100644
  on:
    workflow_call:
  
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
-+
- jobs:
+@@ -7,25 +20,25 @@ jobs:
    check:
      name: Blob size policy
      runs-on: ubuntu-24.04
@@ -873,7 +869,7 @@ index f80fb0e..0fa93de 100644
            if [[ "${{ github.event_name }}" == "pull_request" ]]; then
              base='${{ github.event.pull_request.base.sha }}'
              head='${{ github.event.pull_request.head.sha }}'
-@@ -34,19 +51,21 @@ jobs:
+@@ -34,19 +47,21 @@ jobs:
              head='${{ github.sha }}'
            fi
  
@@ -1005,10 +1001,10 @@ index c6f0055..a40475a 100644
  
        - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-index 0f8ebae..6415e5e 100644
+index 0f8ebae..9146017 100644
 --- a/.github/workflows/cargo-deny.yml
 +++ b/.github/workflows/cargo-deny.yml
-@@ -1,30 +1,36 @@
+@@ -1,30 +1,32 @@
  name: cargo-deny
  
 +# Licence, ban, and advisory drift. The fork's patches rewrite Cargo.lock at
@@ -1022,10 +1018,6 @@ index 0f8ebae..6415e5e 100644
  on:
    workflow_call:
  
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
-+
  jobs:
    cargo-deny:
 -    runs-on: ubuntu-latest
@@ -1059,10 +1051,10 @@ index 0f8ebae..6415e5e 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
-index 996b3de..5bdd558 100644
+index 996b3de..e17f099 100644
 --- a/.github/workflows/codespell.yml
 +++ b/.github/workflows/codespell.yml
-@@ -1,29 +1,40 @@
+@@ -1,7 +1,12 @@
 -# Codespell configuration is within .codespellrc
 +# Codespell configuration is within .codespellignore / .codespellrc.
  ---
@@ -1076,13 +1068,7 @@ index 996b3de..5bdd558 100644
  on:
    workflow_call:
  
- permissions:
-   contents: read
- 
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
-+
+@@ -11,19 +16,21 @@ permissions:
  jobs:
    codespell:
      name: Check for spelling errors
@@ -1839,10 +1825,10 @@ index d1783bb..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 4f05cd0..4547e4f 100644
+index 4f05cd0..8c9fe00 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
-@@ -1,77 +1,59 @@
+@@ -1,77 +1,55 @@
  name: repo-checks
  
 +# The fork's light gate: everything that can be checked without applying the
@@ -1867,10 +1853,6 @@ index 4f05cd0..4547e4f 100644
  on:
    workflow_call:
  
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
-+
  jobs:
 -  build-test:
 -    runs-on: ubuntu-latest
@@ -2409,10 +2391,10 @@ index 4745352..0000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 4a61b6b..62c4e52 100644
+index 4a61b6b..147f810 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
-@@ -1,574 +1,189 @@
+@@ -1,574 +1,185 @@
  name: rust-ci-full
 +
 +# The second half of the fork's heavy gate: the release CLI build and the full
@@ -2438,10 +2420,6 @@ index 4a61b6b..62c4e52 100644
 -      # for developers who want the full suite before merging.
        - "**full-ci**"
 -  workflow_dispatch:
-+
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
  
  jobs:
 -  # --- CI that doesn't need specific targets ---------------------------------
@@ -2921,8 +2899,11 @@ index 4a61b6b..62c4e52 100644
 -
 -      - name: Pre-warm dependency cache (cargo-chef)
 -        if: ${{ matrix.profile == 'release' }}
--        shell: bash
--        run: |
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
++      - name: Type-check the TUI for Windows
+         shell: bash
+         run: |
 -          set -euo pipefail
 -          RECIPE="${RUNNER_TEMP}/chef-recipe.json"
 -          cargo chef prepare --recipe-path "$RECIPE"
@@ -2938,7 +2919,12 @@ index 4a61b6b..62c4e52 100644
 -          name: cargo-timings-rust-ci-clippy-${{ matrix.target }}-${{ matrix.profile }}
 -          path: ${{ env.CARGO_TARGET_DIR }}/**/cargo-timings/cargo-timing.html
 -          if-no-files-found: warn
--
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-tui
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -      # Save caches explicitly; make non-fatal so cache packaging
 -      # never fails the overall job. Only save when key wasn't hit.
 -      - name: Save cargo home cache
@@ -2972,11 +2958,8 @@ index 4a61b6b..62c4e52 100644
 -
 -      - name: sccache summary
 -        if: always() && env.USE_SCCACHE == 'true'
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
-+      - name: Type-check the TUI for Windows
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          {
 -            echo "### sccache stats — ${{ matrix.target }} (${{ matrix.profile }})";
 -            echo;
@@ -3004,12 +2987,7 @@ index 4a61b6b..62c4e52 100644
 -      artifact_id: macos-aarch64
 -      use_sccache: true
 -    secrets: inherit
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-tui
-+      - name: Check for a clean worktree
-+        if: always() && !cancelled()
-+        uses: ./.github/actions/check-clean-worktree
- 
+-
 -  tests_linux_x64_remote:
 -    name: Tests — ubuntu-24.04 - x86_64-unknown-linux-gnu (remote)
 -    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
@@ -3128,10 +3106,10 @@ index 4a61b6b..62c4e52 100644
 +          NEEDS: ${{ toJSON(needs) }}
 +        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-index 48bee97..4382c5d 100644
+index 48bee97..d5f5f5d 100644
 --- a/.github/workflows/rust-ci.yml
 +++ b/.github/workflows/rust-ci.yml
-@@ -1,263 +1,65 @@
+@@ -1,263 +1,61 @@
  name: rust-ci
 +
 +# The first half of the fork's heavy gate: every check that needs the patch
@@ -3159,7 +3137,7 @@ index 48bee97..4382c5d 100644
 +      # branch asks for the whole heavy tier before a merge.
 +      - "**full-ci**"
  
--jobs:
+ jobs:
 -  # --- Detect changed paths so the fast PR workflow only runs relevant jobs ---
 -  changed:
 -    name: Detect changed areas
@@ -3211,14 +3189,10 @@ index 48bee97..4382c5d 100644
 -      - name: Check for a clean worktree
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
-+concurrency:
-+  group: ${{ github.workflow }}-${{ github.ref }}
-+  cancel-in-progress: true
- 
+-
 -  # --- Fast Cargo-native PR checks -------------------------------------------
 -  general:
 -    name: Format / etc
-+jobs:
 +  tree:
 +    name: Tree checks
      runs-on: ubuntu-24.04
@@ -3241,31 +3215,8 @@ index 48bee97..4382c5d 100644
 -        run: cargo fmt -- --config imports_granularity=Item --check
 -      - name: Rust benchmark smoke test
 -        run: just bench-smoke
--
--      - name: Check for a clean worktree
--        if: always() && !cancelled()
--        uses: ./.github/actions/check-clean-worktree
--
--  cargo_shear:
--    name: cargo shear
--    runs-on: ubuntu-24.04
--    needs: changed
--    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' }}
--    defaults:
--      run:
--        working-directory: codex-rs
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
 +      - uses: ./.github/actions/cargo-cache
-         with:
--          persist-credentials: false
--      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
--      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
--        with:
--          tool: cargo-shear@1.11.2
--      - name: cargo shear
--        run: cargo shear --deny-warnings
++        with:
 +          key: rust-ci-tree
 +
 +      # The tree tier of scripts/gates.sh: the same commands the local
@@ -3285,6 +3236,30 @@ index 48bee97..4382c5d 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
          uses: ./.github/actions/check-clean-worktree
+-
+-  cargo_shear:
+-    name: cargo shear
+-    runs-on: ubuntu-24.04
+-    needs: changed
+-    if: ${{ needs.changed.outputs.codex == 'true' || needs.changed.outputs.workflows == 'true' }}
+-    defaults:
+-      run:
+-        working-directory: codex-rs
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-      - uses: ./.github/actions/setup-ci
+-      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
+-        with:
+-          tool: cargo-shear@1.11.2
+-      - name: cargo shear
+-        run: cargo shear --deny-warnings
+-
+-      - name: Check for a clean worktree
+-        if: always() && !cancelled()
+-        uses: ./.github/actions/check-clean-worktree
 -
 -  argument_comment_lint_package:
 -    name: Argument comment lint package
