@@ -1,5 +1,12 @@
 # codEx
 
+[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.164.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.164.0)
+[![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
+[![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
+[![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
+[![patch queue](https://img.shields.io/badge/patch%20queue-7%20modules-6f42c1?style=flat-square)](#patch-queue-model)
+[![CI](https://img.shields.io/github/actions/workflow/status/NIyueeE/codEx/blocking-ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NIyueeE/codEx/actions/workflows/blocking-ci.yml)
+
 codEx is a community fork of [openai/codex](https://github.com/openai/codex)
 that keeps the CLI happy-path for standalone Linux and Windows users: fewer
 moving parts, no phone-home update checks, and a built-in `codex update` that
@@ -9,7 +16,7 @@ This repository follows a **patch-queue model**: instead of vendoring the
 upstream tree, it stores only the fork's changes as a `git format-patch`
 series plus the scripts that rebuild a full codex tree from an upstream tag.
 The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
-patch queue applies to (currently `rust-v0.160.0`).
+patch queue applies to (currently `rust-v0.164.0`).
 
 ## Installing from a release
 
@@ -27,8 +34,11 @@ under `~/.codex/packages/standalone/releases/<version>-<target>/` so
 `~/.local/bin` (or `CODEX_INSTALL_DIR`).
 
 The archive is the same canonical package upstream publishes: a
-`codex-package.json` manifest next to `bin/codex`, `codex-path/rg`, and
-`codex-resources/` (the bwrap sandbox helper on Linux). That layout is what
+`codex-package.json` manifest next to `bin/`, `codex-path/rg`, and
+`codex-resources/`. `bin/` carries the `codex` entrypoint plus the
+`codex-code-mode-host` helper, and `codex-resources/` carries the sandbox
+helper for the platform (`bwrap` on Linux, `codex-command-runner` and
+`codex-windows-sandbox-setup` on Windows). That layout is what
 `InstallContext` recognizes and what `codex app-server daemon` copies when it
 installs the shared background server.
 
@@ -54,7 +64,7 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 Environment overrides:
 
-- `CODEX_RELEASE` - version to install, e.g. `0.160.0` (default: `latest`)
+- `CODEX_RELEASE` - version to install, e.g. `0.164.0` (default: `latest`)
 - `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 - `CODEX_HOME` - codex home (default: `~/.codex`)
 
@@ -279,11 +289,11 @@ authorize sandbox IPC on the same machine.
 ### Branding
 
 - `codex --version` prints
-  `codEx 0.160.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
+  `codEx 0.164.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
   bar shows `codEx <version>`.
 - The TUI welcome screen, session header, and status header display `codEx`;
   tips reference `codEx` as well.
-- The version number itself **matches the upstream base tag** (e.g. `0.160.0`),
+- The version number itself **matches the upstream base tag** (e.g. `0.164.0`),
   so version parsing stays plain semver and fork release tags stay clean.
 
 ### Release & CI (Linux CI + Windows check)
@@ -358,7 +368,7 @@ per commit):
 
 | Piece | Purpose |
 | --- | --- |
-| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.160.0`) |
+| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.164.0`) |
 | `patches/` | one `git format-patch` per feature module, in fixed order |
 | `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
 | `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
@@ -408,20 +418,20 @@ cargo build --release --bin codex
 ## Upgrading to a new upstream tag
 
 ```sh
-bash scripts/update.sh rust-v0.160.0
+bash scripts/update.sh rust-v0.164.0
 ```
 
 `update.sh` clones the new tag into `update-work/`, applies the patch queue
 with `git am --3way`, then runs the same checks as CI (build, `cargo fmt
 --check`, and the `codex-tui`/`codex-core` nextest runs) from the `codex-rs`
 workspace. It accepts the tag with or without the `rust-v` prefix
-(`rust-v0.160.0` or `0.160.0`). If a patch conflicts, resolve it in
+(`rust-v0.164.0` or `0.164.0`). If a patch conflicts, resolve it in
 `update-work/` (`git am --continue`), then regenerate with
-`bash scripts/gen-patches.sh rust-v0.160.0` from inside the bootstrapped tree
+`bash scripts/gen-patches.sh rust-v0.164.0` from inside the bootstrapped tree
 (the slim repo has no upstream history, so the script refuses to run there).
 The patch queue never changes version numbers; fork releases keep the
 upstream semver and are tagged `rust-v<version>` (for example
-`rust-v0.160.0`), and the release workflow publishes
+`rust-v0.164.0`), and the release workflow publishes
 `codex-<target>.tar.gz` + sha256 checksums.
 
 ## License

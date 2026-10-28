@@ -1,5 +1,12 @@
 # codEx
 
+[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.164.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.164.0)
+[![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
+[![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
+[![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
+[![patch queue](https://img.shields.io/badge/patch%20queue-7%20modules-6f42c1?style=flat-square)](#patch-queue-模型)
+[![CI](https://img.shields.io/github/actions/workflow/status/NIyueeE/codEx/blocking-ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NIyueeE/codEx/actions/workflows/blocking-ci.yml)
+
 codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向 Linux
 与 Windows 独立用户保持 CLI 的顺滑体验:更少的组件、默认不进行联网更新检查,
 内置的 `codex update` 会从本分支的 release 下载经过校验的二进制。
@@ -7,7 +14,7 @@ codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向
 本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
 `git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
 真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.160.0`)。
+`rust-v0.164.0`)。
 
 ## 从 Release 安装
 
@@ -23,10 +30,12 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 这样之后 `codex update` 仍能正常工作。随后将 `codex` 链接到
 `~/.local/bin`(或 `CODEX_INSTALL_DIR`)。
 
-归档就是上游发布的那种规范 Codex 包:`codex-package.json` 清单与
-`bin/codex`、`codex-path/rg`、`codex-resources/`(Linux 上是 bwrap 沙箱
-辅助程序)并列。`InstallContext` 识别的正是这个布局,`codex app-server daemon`
-安装共享后台服务时复制的也是它。
+归档就是上游发布的那种规范 Codex 包:`codex-package.json` 清单与 `bin/`、
+`codex-path/rg`、`codex-resources/` 并列。`bin/` 下是 `codex` 入口与
+`codex-code-mode-host` 辅助程序,`codex-resources/` 下是当前平台的沙箱辅助
+程序(Linux 上为 `bwrap`,Windows 上为 `codex-command-runner` 与
+`codex-windows-sandbox-setup`)。`InstallContext` 识别的正是这个布局,
+`codex app-server daemon` 安装共享后台服务时复制的也是它。
 
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
 对照随附的 `.sha256` 校验后,将该包解压到
@@ -47,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.160.0`(默认:`latest`)
+- `CODEX_RELEASE` - 要安装的版本,如 `0.164.0`(默认:`latest`)
 - `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
 
@@ -227,10 +236,10 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.160.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.164.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.160.0`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.164.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
 ### 发布与 CI(Linux CI + Windows 检查)
@@ -298,7 +307,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.160.0`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.164.0`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -345,17 +354,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.160.0
+bash scripts/update.sh rust-v0.164.0
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.160.0` 或 `0.160.0`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.164.0` 或 `0.164.0`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.160.0` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.164.0` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.160.0`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.164.0`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证
