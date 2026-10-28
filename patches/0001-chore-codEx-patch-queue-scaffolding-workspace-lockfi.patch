@@ -1,4 +1,4 @@
-From 8bb491d0077a639ea55a2471aec13d1133f57a6b Mon Sep 17 00:00:00 2001
+From da7d724764af263da58074ee2356442349def264 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -17,10 +17,10 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/bootstrap.sh                          |  55 ++
  scripts/check-patch-modules.sh                | 244 ++++++++
  scripts/gates.sh                              | 530 ++++++++++++++++++
- scripts/gen-patches.sh                        | 111 ++++
+ scripts/gen-patches.sh                        | 114 ++++
  scripts/patch-modules.conf                    | 263 +++++++++
  scripts/update.sh                             | 128 +++++
- 16 files changed, 1984 insertions(+), 352 deletions(-)
+ 16 files changed, 1987 insertions(+), 352 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -3365,10 +3365,10 @@ index 0000000000000000000000000000000000000000..c00e42c561dc6dfce277b8291b4b52b5
 +printf '\nAll %s checks passed.\n' "${mode}"
 diff --git a/scripts/gen-patches.sh b/scripts/gen-patches.sh
 new file mode 100644
-index 0000000000000000000000000000000000000000..07be847acab47143c0c2005274fa466562620fcc
+index 0000000000000000000000000000000000000000..38faa7ad7fa8e93d4cc115aa4e094a9de5bfa758
 --- /dev/null
 +++ b/scripts/gen-patches.sh
-@@ -0,0 +1,111 @@
+@@ -0,0 +1,114 @@
 +#!/usr/bin/env bash
 +# Regenerates patches/ as a modular series (one patch per feature module)
 +# from a bootstrapped tree's commit history.
@@ -3462,9 +3462,12 @@ index 0000000000000000000000000000000000000000..07be847acab47143c0c2005274fa4665
 +mkdir -p "${output_dir}"
 +# --no-signature keeps the patches free of the local git version, so the
 +# export is byte-identical whatever git produced it (CI bootstraps with a
-+# newer git than a developer workstation).
++# newer git than a developer workstation). --abbrev=40 pins the other
++# git-version-dependent part: the `index <old>..<new>` lines carry abbreviated
++# object names whose length git picks from the repository's object count, so a
++# 2.47 workstation and a 2.55 runner otherwise disagree on every hunk header.
 +git -C "${worktree}" format-patch "${base_tag}"..HEAD \
-+  --output-directory "${output_dir}" --keep-subject --no-signature
++  --output-directory "${output_dir}" --keep-subject --no-signature --abbrev=40
 +
 +patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
 +if [[ "${patch_count}" -ne "${commit_count}" ]]; then
