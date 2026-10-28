@@ -490,9 +490,12 @@ full_gate() {
     # workspace through a nextest archive with the same setup; doing that here
     # would add a ~100 MB download to every run for three upstream tests in code
     # the fork never touches, so they are excluded like suite::* is.
+    # code_mode_tracing is the same prerequisite under a different test binary:
+    # upstream 0.164.0 added core/tests/code_mode_tracing.rs, whose only case
+    # resolves the codex-code-mode-host helper binary before doing any tracing.
     RUST_MIN_STACK=${RUST_MIN_STACK} NEXTEST_PROFILE=${NEXTEST_PROFILE} \
       cargo nextest run -j \"${NEXTEST_JOBS}\" --no-fail-fast \
-      -p codex-core -E 'not test(suite) and not test(code_mode_host)'
+      -p codex-core -E 'not test(suite) and not test(code_mode_host) and not binary(=code_mode_tracing)'
   "
 }
 

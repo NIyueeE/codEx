@@ -1,4 +1,4 @@
-From 18cd7692b68e3592e247c746728d1d45119595cf Mon Sep 17 00:00:00 2001
+From 31f405c73df01052e33ee17827251f24d287e79d Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -23,7 +23,7 @@ Subject: config: disable update checks and announcement fetches by default
 
 diff --git a/announcement_tip.toml b/announcement_tip.toml
 deleted file mode 100644
-index 79c0dae..0000000
+index 79c0daea..00000000
 --- a/announcement_tip.toml
 +++ /dev/null
 @@ -1,17 +0,0 @@
@@ -45,7 +45,7 @@ index 79c0dae..0000000
 -version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
 -to_date = "2026-05-08"
 diff --git a/codex-rs/app-server/src/request_processors/plugins.rs b/codex-rs/app-server/src/request_processors/plugins.rs
-index b5adda3..7daa837 100644
+index 159641f0..97dd78ff 100644
 --- a/codex-rs/app-server/src/request_processors/plugins.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins.rs
 @@ -49,6 +49,15 @@ mod local;
@@ -77,7 +77,7 @@ index b5adda3..7daa837 100644
                  &remote_plugin_service_config,
                  auth.as_ref(),
 diff --git a/codex-rs/app-server/src/request_processors/plugins/search.rs b/codex-rs/app-server/src/request_processors/plugins/search.rs
-index b3d3de9..4e57eb6 100644
+index b3d3de93..4e57eb65 100644
 --- a/codex-rs/app-server/src/request_processors/plugins/search.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins/search.rs
 @@ -12,6 +12,14 @@ const MAX_PLUGIN_SEARCH_LIMIT: u32 = 1_000;
@@ -106,7 +106,7 @@ index b3d3de9..4e57eb6 100644
              remote_plugin_enabled && auth_mode.is_some_and(DomainAuthMode::uses_codex_backend);
          let remote_scope = if remote_plugin_enabled {
 diff --git a/codex-rs/core-plugins/src/marketplace_context.rs b/codex-rs/core-plugins/src/marketplace_context.rs
-index bab5781..b43e551 100644
+index bab57817..b43e5511 100644
 --- a/codex-rs/core-plugins/src/marketplace_context.rs
 +++ b/codex-rs/core-plugins/src/marketplace_context.rs
 @@ -5,6 +5,15 @@
@@ -137,7 +137,7 @@ index bab5781..b43e551 100644
  
      pub(super) fn list_marketplaces(
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 69f2aeb..83055f0 100644
+index 13daf6a7..91ebf1cf 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;
@@ -166,7 +166,7 @@ index 69f2aeb..83055f0 100644
                  .await
 diff --git a/codex-rs/tui/src/npm_registry.rs b/codex-rs/tui/src/npm_registry.rs
 deleted file mode 100644
-index 61ff242..0000000
+index 61ff2425..00000000
 --- a/codex-rs/tui/src/npm_registry.rs
 +++ /dev/null
 @@ -1,130 +0,0 @@
@@ -302,7 +302,7 @@ index 61ff242..0000000
 -}
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
 deleted file mode 100644
-index 2a904cd..0000000
+index 506513a5..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
 +++ /dev/null
 @@ -1,8 +0,0 @@
@@ -310,13 +310,13 @@ index 2a904cd..0000000
 -source: tui/src/tooltips.rs
 -expression: rendered
 ----
--Line::from_iter([Span::from("Tip:").bold(), Span::from(" Use the "), Span::from("desktop app").bold(), Span::from(". Install it")]) []
+-Line::from_iter([Span::from("Tip:").fg(Color::Reset).bold(), Span::from(" Use the "), Span::from("desktop app").fg(Color::Reset).bold(), Span::from(". Install it")]) []
 -Line::from("from") []
 -Line::from(Span::from("https://learn.chatgpt.com/docs/linux/linux-app").fg(Color::Reset).underlined()) [TerminalHyperlink { columns: 0..46, destination: "https://learn.chatgpt.com/docs/linux/linux-app", destination_kind: Web }]
 -Line::from_iter([Span::from("and run "), Span::from("chatgpt").fg(Color::Rgb(166, 227, 161)), Span::from(".")]) []
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap
 deleted file mode 100644
-index 2a5ac3c..0000000
+index 401dbfea..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap
 +++ /dev/null
 @@ -1,7 +0,0 @@
@@ -324,12 +324,12 @@ index 2a5ac3c..0000000
 -source: tui/src/tooltips.rs
 -expression: rendered
 ----
--Line::from_iter([Span::from("Tip:").bold(), Span::from(" Use the "), Span::from("desktop app").bold(), Span::from(". Run "), Span::from("codex app").fg(Color::Rgb(166, 227, 161))]) []
+-Line::from_iter([Span::from("Tip:").fg(Color::Reset).bold(), Span::from(" Use the "), Span::from("desktop app").fg(Color::Reset).bold(), Span::from(". Run "), Span::from("codex app").fg(Color::Rgb(166, 227, 161))]) []
 -Line::from("to open it. It installs automatically if") []
 -Line::from("needed.") []
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap b/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 deleted file mode 100644
-index ed74940..0000000
+index 5bd73ec2..00000000
 --- a/codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 +++ /dev/null
 @@ -1,8 +0,0 @@
@@ -337,15 +337,15 @@ index ed74940..0000000
 -source: tui/src/tooltips.rs
 -expression: rendered
 ----
--Line::from_iter([Span::from("Tip:").bold(), Span::from(" Use the "), Span::from("desktop app").bold(), Span::from(". Install it")]) []
+-Line::from_iter([Span::from("Tip:").fg(Color::Reset).bold(), Span::from(" Use the "), Span::from("desktop app").fg(Color::Reset).bold(), Span::from(". Install it")]) []
 -Line::from("from") []
 -Line::from(Span::from("https://chatgpt.com/codex?app-landing-page=true").fg(Color::Reset).underlined()) [TerminalHyperlink { columns: 0..47, destination: "https://chatgpt.com/codex?app-landing-page=true", destination_kind: Web }]
 -Line::from_iter([Span::from("and run "), Span::from("codex app").fg(Color::Rgb(166, 227, 161)), Span::from(".")]) []
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 5f3b318..47041ca 100644
+index 4319a098..d5bd9caa 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
-@@ -15,16 +15,11 @@ use std::path::Path;
+@@ -13,16 +13,11 @@ use std::path::Path;
  #[path = "tooltips/keybinding_tests.rs"]
  mod keybinding_tests;
  
@@ -367,7 +367,7 @@ index 5f3b318..47041ca 100644
  
  const RAW_TOOLTIPS: &str = include_str!("../assets/tooltips.txt");
  
-@@ -33,7 +28,6 @@ lazy_static! {
+@@ -31,7 +26,6 @@ lazy_static! {
          .lines()
          .map(str::trim)
          .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -375,7 +375,7 @@ index 5f3b318..47041ca 100644
          .collect();
      static ref ALL_TOOLTIPS: Vec<&'static str> = {
          let mut tips = Vec::new();
-@@ -63,62 +57,45 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<
+@@ -51,62 +45,45 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<
      preferred_tooltip(&mut rng, plan).or_else(|| pick_tooltip(&mut rng, keymap))
  }
  
@@ -464,7 +464,7 @@ index 5f3b318..47041ca 100644
  }
  
  fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R, keymap: &TuiKeymap) -> Option<String> {
-@@ -172,217 +149,9 @@ pub(crate) fn render_tooltip(mut template: &str, keymap: Option<&RuntimeKeymap>)
+@@ -160,217 +137,9 @@ pub(crate) fn render_tooltip(mut template: &str, keymap: Option<&RuntimeKeymap>)
      Some(rendered)
  }
  
@@ -682,7 +682,7 @@ index 5f3b318..47041ca 100644
      use rand::SeedableRng;
      use rand::rngs::StdRng;
  
-@@ -441,290 +210,26 @@ mod tests {
+@@ -392,290 +161,26 @@ mod tests {
      }
  
      #[test]
@@ -699,17 +699,10 @@ index 5f3b318..47041ca 100644
 -                .collect::<Vec<_>>()
 -                .join("\n");
 -            insta::assert_snapshot!(format!("desktop_app_tip_{platform}"), rendered);
-+    fn no_tooltip_advertises_the_closed_source_desktop_app() {
-+        // codEx is TUI/CLI-only: no tip may promote `codex app` or the vendor
-+        // Desktop app, on any platform.
-+        for tip in ALL_TOOLTIPS.iter() {
-+            assert!(!tip.contains("Desktop app"), "{tip}");
-+            assert!(!tip.contains("codex app"), "{tip}");
-+            assert!(!tip.contains("chatgpt.com/codex"), "{tip}");
-         }
-     }
- 
-     #[test]
+-        }
+-    }
+-
+-    #[test]
 -    fn desktop_app_tooltip_uses_supported_platform_launcher() {
 -        let tooltip = TOOLTIPS
 -            .iter()
@@ -728,10 +721,17 @@ index 5f3b318..47041ca 100644
 -        } else {
 -            assert_eq!(tooltip, None);
 -            assert_eq!(app_tooltip(), None);
--        }
--    }
--
--    #[test]
++    fn no_tooltip_advertises_the_closed_source_desktop_app() {
++        // codEx is TUI/CLI-only: no tip may promote `codex app` or the vendor
++        // Desktop app, on any platform.
++        for tip in ALL_TOOLTIPS.iter() {
++            assert!(!tip.contains("Desktop app"), "{tip}");
++            assert!(!tip.contains("codex app"), "{tip}");
++            assert!(!tip.contains("chatgpt.com/codex"), "{tip}");
+         }
+     }
+ 
+     #[test]
 -    fn linux_desktop_app_tooltip_requires_graphical_native_session() {
 -        assert_eq!(
 -            linux_app_tooltip(LinuxDesktopSession {
@@ -862,7 +862,7 @@ index 5f3b318..47041ca 100644
 -            AnnouncementTips::parse(toml).and_then(|tips| tips.select(/*plan*/ None))
 -        );
 -    }
--
+ 
 -    #[test]
 -    fn announcement_tip_toml_parse_comments() {
 -        let toml = r#"
@@ -880,7 +880,7 @@ index 5f3b318..47041ca 100644
 -to_date = "2024-10-15"
 -target_app = "cli"
 -version_regex = "^0\\.0\\.0$"
- 
+-
 -[[announcements]]
 -content = "This is a test announcement"
 -        "#;

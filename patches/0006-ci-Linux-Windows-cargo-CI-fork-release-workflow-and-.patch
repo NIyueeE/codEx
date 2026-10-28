@@ -1,4 +1,4 @@
-From 596a33e5b80cc82d993784f8c493c4d675f1a6ac Mon Sep 17 00:00:00 2001
+From 1609d594b466b6cfabb56888b59410bf2916304b Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -8,10 +8,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/actions/cargo-cache/action.yml        |   43 +
  .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
- .github/workflows/bazel.yml                   |  550 ----
+ .github/workflows/bazel.yml                   |  576 ----
  .github/workflows/blob-size-policy.yml        |   45 +-
  .github/workflows/blocking-ci.yml             |   54 +-
- .github/workflows/cargo-deny.yml              |   28 +-
+ .github/workflows/cargo-deny.yml              |   30 +-
  .github/workflows/codespell.yml               |   27 +-
  .github/workflows/postmerge-ci.yml            |   36 +-
  .github/workflows/python-runtime-build.yml    |  114 -
@@ -22,17 +22,17 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/r2-release.yml              |   59 -
  .github/workflows/repo-checks.yml             |  100 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ---
- .github/workflows/rust-ci-full.yml            |  677 ++---
+ .github/workflows/rust-ci-full.yml            |  647 ++---
  .github/workflows/rust-ci.yml                 |  288 +-
  .../rust-release-argument-comment-lint.yml    |  113 -
- .../rust-release-provisioned-macos.yml        |  214 --
- .github/workflows/rust-release-windows.yml    |  701 -----
- .github/workflows/rust-release.yml            | 2375 +++--------------
- .github/workflows/rusty-v8-release.yml        |  479 ----
+ .../rust-release-provisioned-macos.yml        |  218 --
+ .github/workflows/rust-release-windows.yml    |  704 -----
+ .github/workflows/rust-release.yml            | 2398 +++--------------
+ .github/workflows/rusty-v8-release.yml        |  495 ----
  .github/workflows/sdk.yml                     |  161 --
- .github/workflows/v8-canary.yml               |  444 ---
+ .github/workflows/v8-canary.yml               |  460 ----
  install.sh                                    |  215 ++
- patches/BUILD.bazel                           |   37 -
+ patches/BUILD.bazel                           |   38 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
  patches/llvm_rusty_v8_custom_libcxx.patch     |  108 -
@@ -45,14 +45,14 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  ...s_rust_windows_msvc_direct_link_args.patch |  109 -
  ...ws_process_wrapper_skip_temp_outputs.patch |   15 -
  patches/rusty_v8_prebuilt_out_dir.patch       |   74 -
- patches/v8_bazel_rules.patch                  |  509 ----
- patches/v8_module_deps.patch                  |  285 --
+ patches/v8_bazel_rules.patch                  |  411 ---
+ patches/v8_module_deps.patch                  |  277 --
  patches/v8_source_portability.patch           |  316 ---
  .../webrtc-sys_hermetic_darwin_sysroot.patch  |   75 -
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 48 files changed, 1027 insertions(+), 8607 deletions(-)
+ 48 files changed, 1028 insertions(+), 8561 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -93,7 +93,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
 new file mode 100644
-index 0000000..83d9a73
+index 00000000..83d9a73f
 --- /dev/null
 +++ b/.github/actions/bootstrap-tree/action.yml
 @@ -0,0 +1,47 @@
@@ -146,7 +146,7 @@ index 0000000..83d9a73
 +        } >> "$GITHUB_ENV"
 diff --git a/.github/actions/cargo-cache/action.yml b/.github/actions/cargo-cache/action.yml
 new file mode 100644
-index 0000000..3088aec
+index 00000000..3088aec2
 --- /dev/null
 +++ b/.github/actions/cargo-cache/action.yml
 @@ -0,0 +1,43 @@
@@ -194,7 +194,7 @@ index 0000000..3088aec
 +        restore-keys: |
 +          cargo-home-${{ inputs.key }}-
 diff --git a/.github/blob-size-allowlist.txt b/.github/blob-size-allowlist.txt
-index 27d1c59..cd2ee5d 100644
+index 27d1c59e..cd2ee5d8 100644
 --- a/.github/blob-size-allowlist.txt
 +++ b/.github/blob-size-allowlist.txt
 @@ -1,6 +1,15 @@
@@ -224,7 +224,7 @@ index 27d1c59..cd2ee5d 100644
 +# own, so any change to it would otherwise trip the policy.
 +codex-rs/tui/src/bottom_pane/chat_composer.rs
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index a7d37b7..90af719 100644
+index a7d37b7f..90af7193 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -261,10 +261,10 @@ index a7d37b7..90af719 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index 2f4b09d..0000000
+index f90a7453..00000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
-@@ -1,550 +0,0 @@
+@@ -1,576 +0,0 @@
 -name: Bazel
 -
 -# Note this workflow was originally derived from:
@@ -339,8 +339,18 @@ index 2f4b09d..0000000
 -
 -      - name: Check MODULE.bazel.lock is up to date
 -        if: matrix.os == 'ubuntu-24.04' && matrix.target == 'x86_64-unknown-linux-gnu'
+-        env:
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        shell: bash
 -        run: ./scripts/check-module-bazel-lock.sh
+-
+-      - name: Resolve app-server/exec-server compatibility releases
+-        if: runner.os == 'Linux'
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+-          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
 -
 -      - name: bazel test //...
 -        env:
@@ -634,6 +644,14 @@ index 2f4b09d..0000000
 -          target: ${{ matrix.target }}
 -          cache-scope: bazel-${{ github.job }}
 -
+-      - name: Resolve app-server/exec-server compatibility releases
+-        if: runner.os == 'Linux'
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+-          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
+-
 -      - name: bazel build --config=clippy lint targets
 -        env:
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -733,6 +751,14 @@ index 2f4b09d..0000000
 -          target: ${{ matrix.target }}
 -          cache-scope: bazel-${{ github.job }}
 -
+-      - name: Resolve app-server/exec-server compatibility releases
+-        if: runner.os == 'Linux'
+-        env:
+-          GH_TOKEN: ${{ github.token }}
+-        run: |
+-          releases="$(python3 .github/scripts/resolve_exec_server_releases.py)"
+-          echo "CODEX_COMPAT_RELEASES=$releases" >> "$GITHUB_ENV"
+-
 -      - name: bazel build verify-release-build targets
 -        env:
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
@@ -816,7 +842,7 @@ index 2f4b09d..0000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
-index f80fb0e..9995bd0 100644
+index f80fb0e4..9995bd05 100644
 --- a/.github/workflows/blob-size-policy.yml
 +++ b/.github/workflows/blob-size-policy.yml
 @@ -1,5 +1,18 @@
@@ -902,7 +928,7 @@ index f80fb0e..9995bd0 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index c6f0055..a40475a 100644
+index c6f00555..a40475a5 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
 @@ -1,30 +1,45 @@
@@ -1001,7 +1027,7 @@ index c6f0055..a40475a 100644
  
        - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-index 0f8ebae..9146017 100644
+index 3ea46cc2..2ff4672d 100644
 --- a/.github/workflows/cargo-deny.yml
 +++ b/.github/workflows/cargo-deny.yml
 @@ -1,30 +1,32 @@
@@ -1037,21 +1063,22 @@ index 0f8ebae..9146017 100644
 -      - uses: ./.github/actions/setup-ci
 -
 -      - name: Install Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -
 +      - uses: ./.github/actions/bootstrap-tree
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
        - name: Run cargo-deny
          uses: EmbarkStudios/cargo-deny-action@82eb9f621fbc699dd0918f3ea06864c14cc84246 # v2
          with:
-           rust-version: 1.95.0
+-          rust-version: 1.99.1
 -          manifest-path: ./codex-rs/Cargo.toml
++          rust-version: 1.95.0
 +          manifest-path: ${{ env.CODE_DIR }}/Cargo.toml
  
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
-index 996b3de..e17f099 100644
+index 996b3ded..e17f0997 100644
 --- a/.github/workflows/codespell.yml
 +++ b/.github/workflows/codespell.yml
 @@ -1,7 +1,12 @@
@@ -1100,7 +1127,7 @@ index 996b3de..e17f099 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
-index ac2b46d..fa2cb35 100644
+index ac2b46d1..fa2cb354 100644
 --- a/.github/workflows/postmerge-ci.yml
 +++ b/.github/workflows/postmerge-ci.yml
 @@ -1,29 +1,45 @@
@@ -1161,7 +1188,7 @@ index ac2b46d..fa2cb35 100644
      steps:
 diff --git a/.github/workflows/python-runtime-build.yml b/.github/workflows/python-runtime-build.yml
 deleted file mode 100644
-index 748ff2f..0000000
+index 748ff2f1..00000000
 --- a/.github/workflows/python-runtime-build.yml
 +++ /dev/null
 @@ -1,114 +0,0 @@
@@ -1281,7 +1308,7 @@ index 748ff2f..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index f7f0b4a..0000000
+index f7f0b4af..00000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
 @@ -1,63 +0,0 @@
@@ -1350,7 +1377,7 @@ index f7f0b4a..0000000
 -            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 diff --git a/.github/workflows/python-sdk-build.yml b/.github/workflows/python-sdk-build.yml
 deleted file mode 100644
-index 66d89bc..0000000
+index 66d89bc9..00000000
 --- a/.github/workflows/python-sdk-build.yml
 +++ /dev/null
 @@ -1,65 +0,0 @@
@@ -1421,7 +1448,7 @@ index 66d89bc..0000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-sdk-cli-release.yml b/.github/workflows/python-sdk-cli-release.yml
 deleted file mode 100644
-index 2f7f6a7..0000000
+index 2f7f6a7f..00000000
 --- a/.github/workflows/python-sdk-cli-release.yml
 +++ /dev/null
 @@ -1,156 +0,0 @@
@@ -1583,7 +1610,7 @@ index 2f7f6a7..0000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 0e01f23..0000000
+index 0e01f23a..00000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
 @@ -1,172 +0,0 @@
@@ -1761,7 +1788,7 @@ index 0e01f23..0000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
-index d1783bb..0000000
+index d1783bb2..00000000
 --- a/.github/workflows/r2-release.yml
 +++ /dev/null
 @@ -1,59 +0,0 @@
@@ -1825,7 +1852,7 @@ index d1783bb..0000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 4f05cd0..8c9fe00 100644
+index 4f05cd06..8c9fe006 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -1,77 +1,55 @@
@@ -1947,7 +1974,7 @@ index 4f05cd0..8c9fe00 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index 4745352..0000000
+index 5215c99b..00000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
 @@ -1,439 +0,0 @@
@@ -2038,7 +2065,7 @@ index 4745352..0000000
 -            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev bubblewrap
 -          fi
 -
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
 -          targets: ${{ inputs.target }}
 -
@@ -2253,7 +2280,7 @@ index 4745352..0000000
 -            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev libasound2-dev bubblewrap
 -          fi
 -
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
 -          targets: ${{ inputs.target }}
 -
@@ -2391,10 +2418,10 @@ index 4745352..0000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 4a61b6b..dbd6b26 100644
+index c9885577..a90ecfc0 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
-@@ -1,574 +1,207 @@
+@@ -1,544 +1,207 @@
  name: rust-ci-full
 +
 +# The second half of the fork's heavy gate: the release CLI build and the full
@@ -2439,7 +2466,7 @@ index 4a61b6b..dbd6b26 100644
            persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 +      - uses: ./.github/actions/bootstrap-tree
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 +      - uses: ./.github/actions/cargo-cache
          with:
 -          components: rustfmt
@@ -2469,23 +2496,47 @@ index 4a61b6b..dbd6b26 100644
            persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 +      - uses: ./.github/actions/bootstrap-tree
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
--        with:
++      - uses: ./.github/actions/cargo-cache
+         with:
 -          tool: cargo-shear@1.11.2
 -      - name: cargo shear
 -        run: cargo shear --deny-warnings
 -
 -  argument_comment_lint_package:
 -    name: Argument comment lint package
--    runs-on: ubuntu-24.04
++          key: rust-ci-full-test-tui
++      - name: Install cargo-nextest
++        run: |
++          set -euo pipefail
++          # The cargo cache restores ~/.cargo/bin, and `cargo install` refuses
++          # to overwrite an existing binary ("already exists in destination"),
++          # so only install what the cache did not provide. The version is
++          # pinned because an unpinned install picks up whatever the registry
++          # published last, which is how this step first failed a rerun.
++          if command -v cargo-nextest >/dev/null 2>&1; then
++            cargo nextest --version
++            exit 0
++          fi
++          cargo install --locked cargo-nextest@0.9.146
++      - name: Run codex-tui tests
++        run: bash scripts/gates.sh full --only tui-tests --tree "${TREE_DIR}" --fast-fail
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
++
++  test-core:
++    name: Core tests
+     runs-on: ubuntu-24.04
 -    env:
 -      CARGO_DYLINT_VERSION: 6.1.0
 -      DYLINT_LINK_VERSION: 6.1.0
--    steps:
--      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
--        with:
--          persist-credentials: false
++    timeout-minutes: 180
+     steps:
+       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+         with:
+           persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 -      - uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
 -        with:
@@ -2494,6 +2545,8 @@ index 4a61b6b..dbd6b26 100644
 -      - name: Cache cargo-dylint tooling
 -        id: cargo_dylint_cache
 -        uses: actions/cache@668228422ae6a00e4ad889ee87cd7109ec5666a7 # v5.0.4
++      - uses: ./.github/actions/bootstrap-tree
++      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 +      - uses: ./.github/actions/cargo-cache
          with:
 -          path: |
@@ -2506,7 +2559,7 @@ index 4a61b6b..dbd6b26 100644
 -      - name: Install cargo-dylint tooling
 -        if: ${{ steps.cargo_dylint_cache.outputs.cache-hit != 'true' }}
 -        shell: bash
-+          key: rust-ci-full-test-tui
++          key: rust-ci-full-test-core
 +      - name: Install cargo-nextest
          run: |
 -          cargo install --locked cargo-dylint --version "$CARGO_DYLINT_VERSION"
@@ -2541,71 +2594,15 @@ index 4a61b6b..dbd6b26 100644
 -            runs_on:
 -              group: ${{ github.event.repository.name }}-runners
 -              labels: ${{ github.event.repository.name }}-windows-x64
-+          set -euo pipefail
-+          # The cargo cache restores ~/.cargo/bin, and `cargo install` refuses
-+          # to overwrite an existing binary ("already exists in destination"),
-+          # so only install what the cache did not provide. The version is
-+          # pinned because an unpinned install picks up whatever the registry
-+          # published last, which is how this step first failed a rerun.
-+          if command -v cargo-nextest >/dev/null 2>&1; then
-+            cargo nextest --version
-+            exit 0
-+          fi
-+          cargo install --locked cargo-nextest@0.9.146
-+      - name: Run codex-tui tests
-+        run: bash scripts/gates.sh full --only tui-tests --tree "${TREE_DIR}" --fast-fail
-+      - name: Check for a clean worktree
-+        if: always() && !cancelled()
-+        uses: ./.github/actions/check-clean-worktree
-+
-+  test-core:
-+    name: Core tests
-+    runs-on: ubuntu-24.04
-+    timeout-minutes: 180
-     steps:
-       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-         with:
-           persist-credentials: false
--      - uses: ./.github/actions/setup-bazel-ci
-+      - uses: ./.github/actions/bootstrap-tree
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+      - uses: ./.github/actions/cargo-cache
-         with:
+-    steps:
+-      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+-        with:
+-          persist-credentials: false
+-      - name: Run argument comment lint on codex-rs via Bazel
+-        uses: ./.github/actions/run-argument-comment-lint
+-        with:
 -          target: ${{ runner.os }}
--      - name: Install Linux sandbox build dependencies
--        if: ${{ runner.os == 'Linux' }}
--        shell: bash
--        run: |
--          sudo DEBIAN_FRONTEND=noninteractive apt-get update
--          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends pkg-config libcap-dev
--      - name: Run argument comment lint on codex-rs via Bazel
--        if: ${{ runner.os != 'Windows' }}
--        env:
--          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
--        shell: bash
-+          key: rust-ci-full-test-core
-+      - name: Install cargo-nextest
-         run: |
--          bazel_targets="$(./tools/argument-comment-lint/list-bazel-targets.sh)"
--          ./.github/scripts/run-bazel-ci.sh \
--            -- \
--            build \
--            --config=argument-comment-lint \
--            --keep_going \
--            --build_metadata=COMMIT_SHA=${GITHUB_SHA} \
--            -- \
--            ${bazel_targets}
--      - name: Run argument comment lint on codex-rs via Bazel
--        if: ${{ runner.os == 'Windows' }}
--        env:
--          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
--        shell: bash
--        run: |
--          ./.github/scripts/run-argument-comment-lint-bazel.sh \
--            --config=argument-comment-lint \
--            --platforms=//:local_windows \
--            --keep_going \
--            --build_metadata=COMMIT_SHA=${GITHUB_SHA}
+-          buildbuddy-api-key: ${{ secrets.BUILDBUDDY_API_KEY }}
 -
 -  # --- CI to validate on different os/targets --------------------------------
 -  lint_build:
@@ -2742,7 +2739,7 @@ index 4a61b6b..dbd6b26 100644
 -            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends build-essential pkg-config libcap-dev libasound2-dev
 -          fi
 +      - uses: ./.github/actions/bootstrap-tree
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
          with:
 -          targets: ${{ matrix.target }}
 -          components: clippy
@@ -2750,12 +2747,7 @@ index 4a61b6b..dbd6b26 100644
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Use hermetic Cargo home (musl)
 -        shell: bash
-+          targets: x86_64-pc-windows-msvc
-+      - name: Expose MSVC SDK environment
-+        shell: pwsh
-+        env:
-+          TARGET: x86_64-pc-windows-msvc
-         run: |
+-        run: |
 -          set -euo pipefail
 -          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
 -          mkdir -p "${cargo_home}/bin"
@@ -2767,7 +2759,12 @@ index 4a61b6b..dbd6b26 100644
 -        id: lockhash
 -        working-directory: codex-rs
 -        shell: bash
--        run: |
++          targets: x86_64-pc-windows-msvc
++      - name: Expose MSVC SDK environment
++        shell: pwsh
++        env:
++          TARGET: x86_64-pc-windows-msvc
+         run: |
 -          set -euo pipefail
 -          echo "hash=$(sha256sum Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 -          echo "toolchain_hash=$(sha256sum rust-toolchain.toml | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
@@ -3001,12 +2998,7 @@ index 4a61b6b..dbd6b26 100644
 -      artifact_id: macos-aarch64
 -      use_sccache: true
 -    secrets: inherit
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-tui
-+      - name: Check for a clean worktree
-+        if: always() && !cancelled()
-+        uses: ./.github/actions/check-clean-worktree
- 
+-
 -  tests_linux_x64_remote:
 -    name: Tests — ubuntu-24.04 - x86_64-unknown-linux-gnu (remote)
 -    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
@@ -3020,7 +3012,12 @@ index 4a61b6b..dbd6b26 100644
 -      remote_env: true
 -      use_sccache: true
 -    secrets: inherit
--
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-tui
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -  tests_linux_arm64:
 -    name: Tests — ubuntu-24.04-arm - aarch64-unknown-linux-gnu
 -    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
@@ -3125,7 +3122,7 @@ index 4a61b6b..dbd6b26 100644
 +          NEEDS: ${{ toJSON(needs) }}
 +        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-index 48bee97..d5f5f5d 100644
+index ae24051e..354998da 100644
 --- a/.github/workflows/rust-ci.yml
 +++ b/.github/workflows/rust-ci.yml
 @@ -1,263 +1,61 @@
@@ -3227,7 +3224,7 @@ index 48bee97..d5f5f5d 100644
            persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
 +      - uses: ./.github/actions/bootstrap-tree
-       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+       - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
          with:
            components: rustfmt
 -      - name: cargo fmt
@@ -3269,7 +3266,7 @@ index 48bee97..d5f5f5d 100644
 -        with:
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -      - uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
 -        with:
 -          tool: cargo-shear@1.11.2
@@ -3293,7 +3290,7 @@ index 48bee97..d5f5f5d 100644
 -        with:
 -          persist-credentials: false
 -      - uses: ./.github/actions/setup-ci
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -      - name: Install nightly argument-comment-lint toolchain
 -        shell: bash
 -        run: |
@@ -3437,7 +3434,7 @@ index 48bee97..d5f5f5d 100644
 -          NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT_PACKAGE: ${{ needs.changed.outputs.argument_comment_lint_package }}
 diff --git a/.github/workflows/rust-release-argument-comment-lint.yml b/.github/workflows/rust-release-argument-comment-lint.yml
 deleted file mode 100644
-index d49f896..0000000
+index d49f8966..00000000
 --- a/.github/workflows/rust-release-argument-comment-lint.yml
 +++ /dev/null
 @@ -1,113 +0,0 @@
@@ -3556,10 +3553,10 @@ index d49f896..0000000
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-provisioned-macos.yml b/.github/workflows/rust-release-provisioned-macos.yml
 deleted file mode 100644
-index 6d1b245..0000000
+index bbed0901..00000000
 --- a/.github/workflows/rust-release-provisioned-macos.yml
 +++ /dev/null
-@@ -1,214 +0,0 @@
+@@ -1,218 +0,0 @@
 -# Verified side packages, published by rust-release.yml when enabled.
 -# The legacy CLI, npm, installer and DMG packages are unchanged.
 -# Required secrets in the codesigning environment:
@@ -3679,7 +3676,7 @@ index 6d1b245..0000000
 -
 -  verify:
 -    needs: sign
--    runs-on: macos-15-xlarge
+-    runs-on: ${{ matrix.runner }}
 -    timeout-minutes: 30
 -    environment:
 -      name: codesigning
@@ -3691,7 +3688,11 @@ index 6d1b245..0000000
 -    strategy:
 -      fail-fast: false
 -      matrix:
--        target: [aarch64-apple-darwin, x86_64-apple-darwin]
+-        include:
+-          - target: aarch64-apple-darwin
+-            runner: macos-15-xlarge
+-          - target: x86_64-apple-darwin
+-            runner: macos-15-intel
 -    env:
 -      TARGET: ${{ matrix.target }}
 -      PROVISIONED_MACOS: "true"
@@ -3776,10 +3777,10 @@ index 6d1b245..0000000
 -          if-no-files-found: warn
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
 deleted file mode 100644
-index 0f28688..0000000
+index b91203f5..00000000
 --- a/.github/workflows/rust-release-windows.yml
 +++ /dev/null
-@@ -1,701 +0,0 @@
+@@ -1,704 +0,0 @@
 -name: rust-release-windows
 -
 -on:
@@ -3882,7 +3883,7 @@ index 0f28688..0000000
 -          Write-Host "Disk usage:"
 -          Get-PSDrive -PSProvider FileSystem | Format-Table -AutoSize Name, @{Name='Size(GB)';Expression={[math]::Round(($_.Used + $_.Free) / 1GB, 1)}}, @{Name='Free(GB)';Expression={[math]::Round($_.Free / 1GB, 1)}}
 -      - name: Set up Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
 -          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
 -
@@ -3961,6 +3962,9 @@ index 0f28688..0000000
 -  build-windows-voice:
 -    name: Build Windows voice - ${{ matrix.target }}
 -    runs-on: ${{ matrix.runs_on }}
+-    environment:
+-      name: bazel
+-      deployment: false
 -    timeout-minutes: 120
 -    permissions:
 -      contents: read
@@ -4032,7 +4036,7 @@ index 0f28688..0000000
 -        env:
 -          ARCH: ${{ matrix.arch }}
 -          VOICE_ARCH: ${{ matrix.arch }}
--          BUILDBUDDY_API_KEY: ""
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        run: |
 -          (cd codex-rs && cargo update --workspace)
 -          python .github/scripts/watch_voice_bazel.py "$(cygpath -w "$BASH")" ./.github/scripts/run-bazel-ci.sh \
@@ -4482,7 +4486,7 @@ index 0f28688..0000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 42011c6..bd011b6 100644
+index cf812760..8f4d67da 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,240 +1,251 @@
@@ -4540,7 +4544,7 @@ index 42011c6..bd011b6 100644
        - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
          with:
            persist-credentials: false
--      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 +      - name: Bootstrap tree if needed
 +        run: |
 +          if [[ ! -d codex-rs ]]; then
@@ -4725,7 +4729,7 @@ index 42011c6..bd011b6 100644
 -          sudo apt-get update -y
 -          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
 -      - name: Set up Rust toolchain
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
 -          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
  
@@ -4749,7 +4753,7 @@ index 42011c6..bd011b6 100644
  
 -      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Install Zig
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 +        with:
 +          targets: ${{ matrix.target }}
 +
@@ -4906,7 +4910,7 @@ index 42011c6..bd011b6 100644
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -250,1923 +261,233 @@ jobs:
+@@ -250,1946 +261,233 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4929,8 +4933,8 @@ index 42011c6..bd011b6 100644
 -          export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
 -
--      - name: Prepare Bazel release build
--        if: ${{ matrix.build-system == 'bazel' }}
+-      - name: Prepare Bazel for release binaries or Linux voice
+-        if: matrix.build-system == 'bazel' || (matrix.bundle == 'primary' && contains(matrix.target, 'linux'))
 -        uses: ./.github/actions/prepare-bazel-ci
 -        with:
 -          target: ${{ matrix.target }}
@@ -4984,12 +4988,6 @@ index 42011c6..bd011b6 100644
 -          name: ${{ matrix.artifact_name }}-symbols${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/symbols-dist/${{ matrix.artifact_name }}/*
 -          if-no-files-found: error
--
--      - name: Set up Bazel for Linux voice
--        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
--        uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
--        with:
--          bazelisk-version: 1.28.1
 +          cd "${CODE_DIR}"
 +          cargo build --target "${{ matrix.target }}" --release --bin codex
  
@@ -5002,6 +5000,7 @@ index 42011c6..bd011b6 100644
          shell: bash
          env:
 -          APP_TARGET: ${{ matrix.target }}
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        run: |
 -          set -euo pipefail
 -          cd "$GITHUB_WORKSPACE"
@@ -5011,7 +5010,8 @@ index 42011c6..bd011b6 100644
 -            x86_64-unknown-linux-gnu) prefix=linux_x86_64 ;;
 -            *) exit 1 ;;
 -          esac
--          bazel build --config=release //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          python3 .github/scripts/run_bazel_with_buildbuddy.py build --config=release \
+-            //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
 -          source="bazel-bin/third_party/voice/native_runtime_${prefix}"
 -          output="${RUNNER_TEMP}/signed-voice/${APP_TARGET}"
 -          mkdir -p "$output"
@@ -5263,6 +5263,9 @@ index 42011c6..bd011b6 100644
 -    needs: tag-check
 -    name: Build voice runtime - ${{ matrix.target }}
 -    runs-on: ${{ matrix.runner }}
+-    environment:
+-      name: bazel
+-      deployment: false
 -    timeout-minutes: 120
 -    permissions:
 -      contents: read
@@ -5283,20 +5286,24 @@ index 42011c6..bd011b6 100644
 -      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
 -        with:
 -          python-version: "3.12"
--      - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86 # 0.19.0
+-      - name: Prepare Bazel CI
+-        uses: ./.github/actions/prepare-bazel-ci
 -        with:
--          bazelisk-version: 1.28.1
+-          target: ${{ matrix.target }}
+-          cache-scope: bazel-release-primary
 -      - name: Build matching helper and native runtime
 -        shell: bash
 -        env:
 -          TARGET: ${{ matrix.target }}
 -          PREFIX: ${{ matrix.prefix }}
+-          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        run: |
 -          set -euo pipefail
 -          # Release tags bump Cargo.toml without rewriting the workspace lockfile.
 -          # Refresh workspace versions before Bazel reads the Cargo dependency graph.
 -          (cd codex-rs && cargo update --workspace)
--          bazel build --config=release --macos_minimum_os=14.0 //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
+-          python3 .github/scripts/run_bazel_with_buildbuddy.py build --config=release \
+-            --macos_minimum_os=14.0 //codex-rs/voice-host:codex-voice-host //third_party/voice:native_runtime
 -          runtime="bazel-bin/third_party/voice/native_runtime_${PREFIX}"
 -          PYTHONPATH=third_party/voice python3 - "$runtime" "$TARGET" <<'PY'
 -          from pathlib import Path
@@ -6739,6 +6746,9 @@ index 42011c6..bd011b6 100644
 -        env:
 -          VERSION: ${{ needs.release.outputs.version }}
 -          NPM_TAG: ${{ needs.release.outputs.npm_tag }}
+-          NPM_CONFIG_LOGLEVEL: verbose
+-          NPM_CONFIG_LOGS_DIR: ${{ runner.temp }}/npm-publish-logs
+-          NPM_CONFIG_LOGS_MAX: "100"
 -        run: |
 -          set -euo pipefail
 -          prefix=""
@@ -6830,24 +6840,41 @@ index 42011c6..bd011b6 100644
 -              publish_cmd+=(--tag "${tag}")
 -            fi
 -
--            echo "+ ${publish_cmd[*]}"
--            set +e
--            publish_output="$("${publish_cmd[@]}" 2>&1)"
--            publish_status=$?
--            set -e
+-            # A fresh npm process obtains new OIDC credentials on each attempt.
+-            for attempt in 1 2 3; do
+-              echo "+ ${publish_cmd[*]} (attempt ${attempt}/3)"
+-              set +e
+-              publish_output="$("${publish_cmd[@]}" 2>&1)"
+-              publish_status=$?
+-              set -e
 -
--            echo "${publish_output}"
--            if [[ ${publish_status} -eq 0 ]]; then
--              continue
--            fi
+-              echo "${publish_output}"
+-              if [[ ${publish_status} -eq 0 ]]; then
+-                break
+-              fi
 -
--            if grep -qiE "previously published|cannot publish over|version already exists" <<< "${publish_output}"; then
--              echo "Skipping already-published package version for ${filename}"
--              continue
--            fi
+-              if grep -qiE "previously published|cannot publish over|version already exists" <<< "${publish_output}"; then
+-                echo "Skipping already-published package version for ${filename}"
+-                break
+-              fi
 -
--            exit "${publish_status}"
+-              if [[ ${attempt} -eq 3 ]]; then
+-                exit "${publish_status}"
+-              fi
+-              delay=$((attempt * 10))
+-              echo "Publishing ${filename} failed; retrying in ${delay} seconds."
+-              sleep "${delay}"
+-            done
 -          done
+-
+-      - name: Retain npm debug logs
+-        if: always()
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: npm-publish-logs-${{ github.run_attempt }}
+-          path: ${{ runner.temp }}/npm-publish-logs/
+-          if-no-files-found: ignore
+-          retention-days: 7
 -
 -  deploy-dev-website:
 -    name: Trigger developers.openai.com deploy
@@ -7000,10 +7027,10 @@ index 42011c6..bd011b6 100644
 +          gh release edit "${tag}" --latest="${MAKE_LATEST}"
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index 32ec3af..0000000
+index 3dcdbe09..00000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
-@@ -1,479 +0,0 @@
+@@ -1,495 +0,0 @@
 -name: rusty-v8-release
 -
 -on:
@@ -7167,10 +7194,11 @@ index 32ec3af..0000000
 -        with:
 -          persist-credentials: false
 -
--      - name: Set up Bazel
--        uses: ./.github/actions/setup-bazel-ci
+-      - name: Prepare Bazel CI
+-        uses: ./.github/actions/prepare-bazel-ci
 -        with:
 -          target: ${{ matrix.target }}
+-          cache-scope: bazel-v8
 -
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -7178,9 +7206,9 @@ index 32ec3af..0000000
 -          python-version: "3.12"
 -
 -      - name: Set up Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
--          toolchain: "1.95.0"
+-          toolchain: "1.99.1"
 -
 -      - name: Build Bazel V8 release pair
 -        env:
@@ -7324,6 +7352,16 @@ index 32ec3af..0000000
 -          submodules: recursive
 -          persist-credentials: false
 -
+-      - name: Download upstream Windows build tools
+-        shell: bash
+-        working-directory: upstream-rusty-v8
+-        run: |
+-          set -euo pipefail
+-          # Upstream skips this submodule and downloads the pinned archive in CI.
+-          mkdir -p tools/win
+-          curl -fL https://chromium.googlesource.com/chromium/src/tools/win/+archive/faefd1b6fa9eeb033ad6fe60368ccb9bf908cbd0.tar.gz |
+-            tar -xz -C tools/win
+-
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
 -        with:
@@ -7331,9 +7369,9 @@ index 32ec3af..0000000
 -          architecture: x64
 -
 -      - name: Set up Codex Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
--          toolchain: "1.95.0"
+-          toolchain: "1.99.1"
 -          targets: ${{ matrix.target }}
 -
 -      - name: Install rusty_v8 Rust toolchain
@@ -7356,9 +7394,14 @@ index 32ec3af..0000000
 -          path: |
 -            upstream-rusty-v8/target/sccache
 -            upstream-rusty-v8/target/${{ matrix.target }}/release/gn_out
--          key: rusty-v8-source-${{ matrix.target }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt') }}
+-          key: rusty-v8-source-${{ matrix.target }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt', 'patches/v8_array_sort_elements_kind.patch') }}
 -          restore-keys: |
 -            rusty-v8-source-${{ matrix.target }}-sandbox-
+-
+-      - name: Apply V8 Array.sort backport
+-        shell: bash
+-        working-directory: upstream-rusty-v8/v8
+-        run: git apply -p3 "${GITHUB_WORKSPACE}/patches/v8_array_sort_elements_kind.patch"
 -
 -      - name: Install sccache
 -        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
@@ -7418,7 +7461,7 @@ index 32ec3af..0000000
 -            cd codex-rs
 -            RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/${archive}" \
 -            RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/${binding}" \
--            cargo +1.95.0 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
+-            cargo +1.99.1 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
 -          )
 -
 -      - name: Upload staged artifacts
@@ -7485,7 +7528,7 @@ index 32ec3af..0000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 3f91dd1..0000000
+index 3f91dd18..00000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
 @@ -1,161 +0,0 @@
@@ -7652,10 +7695,10 @@ index 3f91dd1..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index 94f1aa0..0000000
+index ae155133..00000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
-@@ -1,444 +0,0 @@
+@@ -1,460 +0,0 @@
 -name: v8-canary
 -
 -# Do not use trigger-level path filters here. This workflow is also called by
@@ -7832,10 +7875,11 @@ index 94f1aa0..0000000
 -        with:
 -          persist-credentials: false
 -
--      - name: Set up Bazel
--        uses: ./.github/actions/setup-bazel-ci
+-      - name: Prepare Bazel CI
+-        uses: ./.github/actions/prepare-bazel-ci
 -        with:
 -          target: ${{ matrix.target }}
+-          cache-scope: bazel-v8
 -
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
@@ -7843,9 +7887,9 @@ index 94f1aa0..0000000
 -          python-version: "3.12"
 -
 -      - name: Set up Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
--          toolchain: "1.95.0"
+-          toolchain: "1.99.1"
 -
 -      - name: Build Bazel V8 release pair
 -        env:
@@ -7994,6 +8038,16 @@ index 94f1aa0..0000000
 -          submodules: recursive
 -          persist-credentials: false
 -
+-      - name: Download upstream Windows build tools
+-        shell: bash
+-        working-directory: upstream-rusty-v8
+-        run: |
+-          set -euo pipefail
+-          # Upstream skips this submodule and downloads the pinned archive in CI.
+-          mkdir -p tools/win
+-          curl -fL https://chromium.googlesource.com/chromium/src/tools/win/+archive/faefd1b6fa9eeb033ad6fe60368ccb9bf908cbd0.tar.gz |
+-            tar -xz -C tools/win
+-
 -      - name: Set up Python
 -        uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6
 -        with:
@@ -8001,9 +8055,9 @@ index 94f1aa0..0000000
 -          architecture: x64
 -
 -      - name: Set up Codex Rust toolchain for Cargo smoke
--        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+-        uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
 -        with:
--          toolchain: "1.95.0"
+-          toolchain: "1.99.1"
 -          targets: ${{ matrix.target }}
 -
 -      - name: Install rusty_v8 Rust toolchain
@@ -8026,9 +8080,14 @@ index 94f1aa0..0000000
 -          path: |
 -            ${{ steps.setup_ci.outputs.cargo-target-dir }}/sccache
 -            ${{ steps.setup_ci.outputs.cargo-target-dir }}/${{ matrix.target }}/release/gn_out
--          key: rusty-v8-source-${{ matrix.target }}-${{ matrix.runner }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt') }}
+-          key: rusty-v8-source-${{ matrix.target }}-${{ matrix.runner }}-sandbox-${{ hashFiles('upstream-rusty-v8/Cargo.lock', 'upstream-rusty-v8/build.rs', 'upstream-rusty-v8/git_submodule_status.txt', 'patches/v8_array_sort_elements_kind.patch') }}
 -          restore-keys: |
 -            rusty-v8-source-${{ matrix.target }}-${{ matrix.runner }}-sandbox-
+-
+-      - name: Apply V8 Array.sort backport
+-        shell: bash
+-        working-directory: upstream-rusty-v8/v8
+-        run: git apply -p3 "${GITHUB_WORKSPACE}/patches/v8_array_sort_elements_kind.patch"
 -
 -      - name: Install sccache
 -        uses: taiki-e/install-action@44c6d64aa62cd779e873306675c7a58e86d6d532 # v2.62.49
@@ -8088,7 +8147,7 @@ index 94f1aa0..0000000
 -            cd codex-rs
 -            RUSTY_V8_ARCHIVE="${GITHUB_WORKSPACE}/${archive}" \
 -            RUSTY_V8_SRC_BINDING_PATH="${GITHUB_WORKSPACE}/${binding}" \
--            cargo +1.95.0 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
+-            cargo +1.99.1 test -p codex-v8-poc --target "${TARGET}" --features sandbox --no-run
 -          )
 -
 -      - name: Upload staged artifacts
@@ -8102,7 +8161,7 @@ index 94f1aa0..0000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 0000000..e807e8f
+index 00000000..e807e8f9
 --- /dev/null
 +++ b/install.sh
 @@ -0,0 +1,215 @@
@@ -8323,10 +8382,10 @@ index 0000000..e807e8f
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index e442235..0000000
+index 17410e8d..00000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
-@@ -1,37 +0,0 @@
+@@ -1,38 +0,0 @@
 -exports_files([
 -    "abseil_windows_gnullvm_thread_identity.patch",
 -    "bzip2_windows_stack_args.patch",
@@ -8354,6 +8413,7 @@ index e442235..0000000
 -    "ring_windows_msvc_include_dirs.patch",
 -    "tikv-jemalloc-sys_make_env.patch",
 -    "tikv-jemalloc-sys_dependency_flags.patch",
+-    "v8_array_sort_elements_kind.patch",
 -    "v8_bazel_rules.patch",
 -    "v8_module_deps.patch",
 -    "v8_source_portability.patch",
@@ -8366,7 +8426,7 @@ index e442235..0000000
 -])
 diff --git a/patches/abseil_windows_gnullvm_thread_identity.patch b/patches/abseil_windows_gnullvm_thread_identity.patch
 deleted file mode 100644
-index 27c4ecf..0000000
+index 27c4ecf7..00000000
 --- a/patches/abseil_windows_gnullvm_thread_identity.patch
 +++ /dev/null
 @@ -1,16 +0,0 @@
@@ -8388,7 +8448,7 @@ index 27c4ecf..0000000
 - #elif defined(__APPLE__) && defined(ABSL_HAVE_THREAD_LOCAL)
 diff --git a/patches/bzip2_windows_stack_args.patch b/patches/bzip2_windows_stack_args.patch
 deleted file mode 100644
-index 2786e90..0000000
+index 2786e908..00000000
 --- a/patches/bzip2_windows_stack_args.patch
 +++ /dev/null
 @@ -1,23 +0,0 @@
@@ -8417,7 +8477,7 @@ index 2786e90..0000000
 -+bazel_dep(name = "platforms", version = "1.0.0")
 diff --git a/patches/llvm_rusty_v8_custom_libcxx.patch b/patches/llvm_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index dc5f4e6..0000000
+index dc5f4e65..00000000
 --- a/patches/llvm_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,108 +0,0 @@
@@ -8531,7 +8591,7 @@ index dc5f4e6..0000000
 -             "@mingw//:mingw_w64_headers_crt_directory",
 diff --git a/patches/llvm_windows_arm64_powl.patch b/patches/llvm_windows_arm64_powl.patch
 deleted file mode 100644
-index 0fd33c9..0000000
+index 0fd33c97..00000000
 --- a/patches/llvm_windows_arm64_powl.patch
 +++ /dev/null
 @@ -1,25 +0,0 @@
@@ -8562,7 +8622,7 @@ index 0fd33c9..0000000
 -         # Clang will respect the user's chosen CRT variant.
 diff --git a/patches/llvm_windows_mingw_compat.patch b/patches/llvm_windows_mingw_compat.patch
 deleted file mode 100644
-index 66cf4e7..0000000
+index 66cf4e7b..00000000
 --- a/patches/llvm_windows_mingw_compat.patch
 +++ /dev/null
 @@ -1,50 +0,0 @@
@@ -8618,7 +8678,7 @@ index 66cf4e7..0000000
 -         ":winpthread",
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index 7bb49cb..0000000
+index 7bb49cbc..00000000
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,112 +0,0 @@
@@ -8736,7 +8796,7 @@ index 7bb49cb..0000000
 - 
 diff --git a/patches/rules_cc_rusty_v8_custom_libcxx.patch b/patches/rules_cc_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index 3efda03..0000000
+index 3efda035..00000000
 --- a/patches/rules_cc_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,44 +0,0 @@
@@ -8786,7 +8846,7 @@ index 3efda03..0000000
 -     _cc_library(**kwargs)
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 deleted file mode 100644
-index 2f38c2b..0000000
+index 2f38c2bf..00000000
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ /dev/null
 @@ -1,58 +0,0 @@
@@ -8850,7 +8910,7 @@ index 2f38c2b..0000000
 -     "build_script_data_select": _label_list_dict(),
 diff --git a/patches/rules_rust_build_script_tools_transition.patch b/patches/rules_rust_build_script_tools_transition.patch
 deleted file mode 100644
-index dcbc456..0000000
+index dcbc4569..00000000
 --- a/patches/rules_rust_build_script_tools_transition.patch
 +++ /dev/null
 @@ -1,19 +0,0 @@
@@ -8875,7 +8935,7 @@ index dcbc456..0000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index a8eba2b..0000000
+index a8eba2ba..00000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
 @@ -1,109 +0,0 @@
@@ -8990,7 +9050,7 @@ index a8eba2b..0000000
 -     """A helper function for `_add_native_link_flags`.
 diff --git a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch b/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 deleted file mode 100644
-index 52c5ae8..0000000
+index 52c5ae86..00000000
 --- a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 +++ /dev/null
 @@ -1,15 +0,0 @@
@@ -9011,7 +9071,7 @@ index 52c5ae8..0000000
 -             }
 diff --git a/patches/rusty_v8_prebuilt_out_dir.patch b/patches/rusty_v8_prebuilt_out_dir.patch
 deleted file mode 100644
-index 4242a29..0000000
+index 4242a29b..00000000
 --- a/patches/rusty_v8_prebuilt_out_dir.patch
 +++ /dev/null
 @@ -1,74 +0,0 @@
@@ -9091,29 +9151,32 @@ index 4242a29..0000000
 -       } else if target.contains("apple")
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 deleted file mode 100644
-index dde0efd..0000000
+index c2d557ad..00000000
 --- a/patches/v8_bazel_rules.patch
 +++ /dev/null
-@@ -1,509 +0,0 @@
+@@ -1,411 +0,0 @@
 -# What: adapt upstream V8 Bazel rules to this workspace's hermetic toolchains
 -# and externally provided dependencies.
--# Scope: Bazel BUILD/defs/BUILD.icu integration only, including dependency
+-# Scope: Bazel BUILD/defs integration only, including dependency
 -# wiring, generated sources, and visibility; no standalone V8 source patching.
 -
--diff --git a/orig/v8-15.0.245.2/bazel/defs.bzl b/mod/v8-15.0.245.2/bazel/defs.bzl
--index bbe1495..6673518 100644
----- a/orig/v8-15.0.245.2/bazel/defs.bzl
--+++ b/mod/v8-15.0.245.2/bazel/defs.bzl
--@@ -33,9 +33,25 @@ _create_option_int = rule(
+-diff --git a/orig/v8-15.2.124.1/bazel/defs.bzl b/mod/v8-15.2.124.1/bazel/defs.bzl
+---- a/orig/v8-15.2.124.1/bazel/defs.bzl
+-+++ b/mod/v8-15.2.124.1/bazel/defs.bzl
+-@@ -42,12 +42,30 @@
 - )
-- 
+-
 - def v8_flag(name, default = False):
---    _create_option_flag(name = name, build_setting_default = default)
+--    _create_option_flag(name = name, build_setting_default = default, scope = "universal")
 --    native.config_setting(name = "is_" + name, flag_values = {name: "True"})
 --    native.config_setting(name = "is_not_" + name, flag_values = {name: "False"})
+--
+--def v8_string(name, default = ""):
+--    _create_option_string(name = name, build_setting_default = default, scope = "universal")
 -+    _create_option_flag(
 -+        name = name,
 -+        build_setting_default = default,
+-+        scope = "universal",
 -+        visibility = ["//visibility:public"],
 -+    )
 -+    native.config_setting(
@@ -9126,17 +9189,19 @@ index dde0efd..0000000
 -+        flag_values = {name: "False"},
 -+        visibility = ["//visibility:public"],
 -+    )
-- 
---def v8_string(name, default = ""):
---    _create_option_string(name = name, build_setting_default = default)
+-+
 -+def v8_string(name, default = "", visibility = None):
 -+    _create_option_string(
 -+        name = name,
 -+        build_setting_default = default,
+-+        scope = "universal",
 -+        visibility = visibility,
 -+    )
--@@ -97,7 +109,13 @@ v8_config = rule(
-- 
+-
+- def v8_int(name, default = 0):
+-     _create_option_int(name = name, build_setting_default = default, scope = "universal")
+-@@ -106,7 +124,13 @@
+-
 - def _default_args():
 -     return struct(
 --        deps = [":define_flags", "@libcxx//:libc++"],
@@ -9150,7 +9215,7 @@ index dde0efd..0000000
 -         defines = select({
 -             "@v8//bazel/config:is_windows": [
 -                 "UNICODE",
--@@ -127,12 +145,15 @@ def _default_args():
+-@@ -136,12 +160,15 @@
 -             ],
 -             "//conditions:default": [],
 -         }) + select({
@@ -9159,23 +9224,26 @@ index dde0efd..0000000
 --                "-Wno-deprecated-this-capture",
 --                "-Wno-deprecated-declarations",
 --                "-std=c++20",
+--            ],
 -+            "@v8//:is_v8_use_rusty_v8_custom_libcxx": [
 -+                "-nostdinc++",
 -+                "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
 -+                "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE",
 -+                "-D_LIBCPP_INSTRUMENTED_WITH_ASAN=0",
 -+                "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
--             ],
+-+            ],
 -+            "//conditions:default": [],
 -+        }) + select({
 -             "@v8//bazel/config:is_gcc": [
 -                 "-Wno-extra",
 -                 "-Wno-array-bounds",
--@@ -152,9 +173,17 @@ def _default_args():
+-@@ -161,9 +188,17 @@
 -                 "-std=gnu++2a",
 -             ],
 -             "@v8//bazel/config:is_windows": [
 --                "/std:c++20",
+--            ],
+--            "//conditions:default": [],
 -+                "-Wno-invalid-offsetof",
 -+                "-Wno-deprecated-this-capture",
 -+                "-Wno-deprecated-declarations",
@@ -9186,12 +9254,11 @@ index dde0efd..0000000
 -+                "-Wno-deprecated-this-capture",
 -+                "-Wno-deprecated-declarations",
 -+                "-std=c++20",
--             ],
---            "//conditions:default": [],
+-+            ],
 -         }) + select({
 -             "@v8//bazel/config:is_gcc_fastbuild": [
 -                 # Non-debug builds without optimizations fail because
--@@ -178,12 +207,12 @@ def _default_args():
+-@@ -187,12 +222,12 @@
 -         includes = ["include"],
 -         linkopts = select({
 -             "@v8//bazel/config:is_windows": [
@@ -9208,7 +9275,7 @@ index dde0efd..0000000
 -         }) + select({
 -             ":should_add_rdynamic": ["-rdynamic"],
 -             "//conditions:default": [],
--@@ -459,6 +488,11 @@
+-@@ -466,6 +501,11 @@
 - def _mksnapshot(ctx):
 -     prefix = ctx.attr.prefix
 -     suffix = ctx.attr.suffix
@@ -9220,7 +9287,8 @@ index dde0efd..0000000
 -     outs = [
 -         ctx.actions.declare_file(prefix + "/snapshot" + suffix + ".cc"),
 -         ctx.actions.declare_file(prefix + "/embedded" + suffix + ".S"),
--@@ -477,6 +511,6 @@
+-@@ -483,7 +523,7 @@
+-             "--embedded_src",
 -             outs[1].path,
 -         ] + ctx.attr.args,
 --        executable = ctx.executable.tool,
@@ -9228,7 +9296,7 @@ index dde0efd..0000000
 -         progress_message = "Running mksnapshot",
 -     )
 -     return [DefaultInfo(files = depset(outs))]
--@@ -491,6 +525,12 @@
+-@@ -498,6 +538,12 @@
 -             executable = True,
 -             cfg = "exec",
 -         ),
@@ -9241,7 +9309,7 @@ index dde0efd..0000000
 -         "target_os": attr.string(mandatory = True),
 -         "prefix": attr.string(mandatory = True),
 -         "suffix": attr.string(mandatory = True),
--@@ -504,6 +544,7 @@
+-@@ -511,6 +557,7 @@
 -         args = args,
 -         prefix = "noicu",
 -         tool = ":noicu/mksnapshot" + suffix,
@@ -9249,7 +9317,7 @@ index dde0efd..0000000
 -         suffix = suffix,
 -         target_os = select({
 -             "@v8//bazel/config:is_macos": "mac",
--@@ -516,6 +557,7 @@
+-@@ -523,6 +570,7 @@
 -         args = args,
 -         prefix = "icu",
 -         tool = ":icu/mksnapshot" + suffix,
@@ -9257,22 +9325,21 @@ index dde0efd..0000000
 -         suffix = suffix,
 -         target_os = select({
 -             "@v8//bazel/config:is_macos": "mac",
--diff --git a/orig/v8-15.0.245.2/BUILD.bazel b/mod/v8-15.0.245.2/BUILD.bazel
--index b432f86..28c567b 100644
----- a/orig/v8-15.0.245.2/BUILD.bazel
--+++ b/mod/v8-15.0.245.2/BUILD.bazel
--@@ -148,6 +148,10 @@ v8_flag(name = "v8_enable_trace_maps")
-- 
+-diff --git a/orig/v8-15.2.124.1/BUILD.bazel b/mod/v8-15.2.124.1/BUILD.bazel
+---- a/orig/v8-15.2.124.1/BUILD.bazel
+-+++ b/mod/v8-15.2.124.1/BUILD.bazel
+-@@ -154,6 +154,10 @@
+-
 - v8_flag(name = "v8_enable_v8_checks")
-- 
+-
 -+v8_flag(name = "v8_enable_sandbox")
 -+
 -+v8_flag(name = "v8_use_rusty_v8_custom_libcxx")
 -+
 - v8_flag(name = "v8_enable_verify_csa")
-- 
+-
 - v8_flag(name = "v8_enable_verify_heap")
--@@ -313,7 +317,8 @@ v8_int(
+-@@ -319,7 +323,8 @@
 - # If no explicit value for v8_enable_pointer_compression, we set it to 'none'.
 - v8_string(
 -     name = "v8_enable_pointer_compression",
@@ -9280,9 +9347,9 @@ index dde0efd..0000000
 -+    default = "False",
 -+    visibility = ["//visibility:public"],
 - )
-- 
+-
 - # Default setting for v8_enable_pointer_compression.
--@@ -513,6 +517,7 @@ v8_config(
+-@@ -520,6 +525,7 @@
 -         "v8_enable_slow_dchecks": "ENABLE_SLOW_DCHECKS",
 -         "v8_enable_runtime_call_stats": "V8_RUNTIME_CALL_STATS",
 -         "v8_enable_snapshot_native_code_counters": "V8_SNAPSHOT_NATIVE_CODE_COUNTERS",
@@ -9290,10 +9357,10 @@ index dde0efd..0000000
 -         "v8_enable_trace_maps": "V8_TRACE_MAPS",
 -         "v8_enable_turbofan": "V8_ENABLE_TURBOFAN",
 -         "v8_enable_v8_checks": "V8_ENABLE_CHECKS",
--@@ -4125,28 +4130,14 @@ filegroup(
+-@@ -4170,28 +4176,14 @@
 -     }),
 - )
-- 
+-
 --v8_library(
 --  name = "lib_dragonbox",
 --  srcs = ["third_party/dragonbox/src/include/dragonbox/dragonbox.h"],
@@ -9303,11 +9370,8 @@ index dde0efd..0000000
 --  includes = [
 --    "third_party/dragonbox/src/include",
 --  ],
--+alias(
--+    name = "lib_dragonbox",
--+    actual = "@dragonbox//:dragonbox",
-- )
-- 
+--)
+--
 --v8_library(
 --  name = "lib_fp16",
 --  srcs = ["third_party/fp16/src/include/fp16.h"],
@@ -9320,12 +9384,17 @@ index dde0efd..0000000
 --    "third_party/fp16/src/include",
 --  ],
 -+alias(
+-+    name = "lib_dragonbox",
+-+    actual = "@dragonbox//:dragonbox",
+-+)
+-+
+-+alias(
 -+    name = "lib_fp16",
 -+    actual = "@fp16//:fp16",
 - )
-- 
+-
 - filegroup(
--@@ -4441,6 +4432,20 @@ genrule(
+-@@ -4486,6 +4478,20 @@
 -     srcs = [
 -         "include/js_protocol.pdl",
 -         "src/inspector/inspector_protocol_config.json",
@@ -9346,7 +9415,7 @@ index dde0efd..0000000
 -     ],
 -     outs = [
 -         "include/inspector/Debugger.h",
--@@ -4462,15 +4467,19 @@ genrule(
+-@@ -4507,15 +4513,19 @@
 -         "src/inspector/protocol/Schema.cpp",
 -         "src/inspector/protocol/Schema.h",
 -     ],
@@ -9369,11 +9438,13 @@ index dde0efd..0000000
 -+        requirement("markupsafe"),
 -     ],
 - )
-- 
--@@ -4484,6 +4493,35 @@ filegroup(
+-
+-@@ -4527,6 +4537,35 @@
+-         ":v8_libsampler_files",
+-         ":v8_shared_internal_headers",
 -     ],
-- )
-- 
+-+)
+-+
 -+cc_library(
 -+    name = "rusty_v8_internal_headers",
 -+    hdrs = [
@@ -9401,34 +9472,27 @@ index dde0efd..0000000
 -+    ],
 -+    strip_include_prefix = "",
 -+    visibility = ["//visibility:public"],
--+)
--+
+- )
+-
 - filegroup(
--     name = "d8_files",
--     srcs = [
--@@ -4576,12 +4614,10 @@ cc_library(
+-@@ -4609,11 +4648,9 @@
 -     strip_include_prefix = "noicu",
 - )
---
--+
+-
 --cc_library(
---    name = "llvm_libc_headers",
+-+alias(
+-     name = "llvm_libc_headers",
 --    hdrs = glob(["third_party/llvm-libc/src/shared/**/*.h"]),
 --    includes = ["third_party/llvm-libc/src"],
 --    defines = ["LIBC_NAMESPACE=__llvm_libc_cr"],
---)
--+alias(
--+    name = "llvm_libc_headers",
 -+    actual = "@@//third_party/v8:rusty_v8_llvm_libc_headers",
--+)
---
--+
+- )
+-
 - v8_library(
--     name = "v8_libbase",
--@@ -4603,16 +4641,9 @@ cc_library(
+-@@ -4660,16 +4697,9 @@
 -     ],
 - )
-- 
+-
 --cc_library(
 --  name = "simdutf",
 --  srcs = ["third_party/simdutf/simdutf.cpp"],
@@ -9443,9 +9507,9 @@ index dde0efd..0000000
 -+    name = "simdutf",
 -+    actual = "@simdutf//:simdutf",
 - )
-- 
+-
 - v8_library(
--@@ -4629,7 +4660,7 @@ v8_library(
+-@@ -4686,7 +4716,7 @@
 -     copts = ["-Wno-implicit-fallthrough"],
 -     icu_deps = [
 -         ":icu/generated_torque_definitions_headers",
@@ -9454,7 +9518,7 @@ index dde0efd..0000000
 -     ],
 -     icu_srcs = [
 -         ":generated_regexp_special_case",
--@@ -4644,7 +4675,7 @@ v8_library(
+-@@ -4701,7 +4731,7 @@
 -     ],
 -     deps = [
 -         ":lib_dragonbox",
@@ -9463,15 +9527,15 @@ index dde0efd..0000000
 -         ":lib_fp16",
 -         ":simdutf",
 -         ":v8_libbase",
--@@ -4700,6 +4731,7 @@ alias(
+-@@ -4757,6 +4787,7 @@
 - alias(
 -     name = "core_lib_icu",
 -     actual = "icu/v8",
 -+    visibility = ["//visibility:public"],
 - )
-- 
+-
 - v8_library(
--@@ -4751,7 +4783,7 @@ v8_binary(
+-@@ -4808,7 +4839,7 @@
 -     ],
 -     deps = [
 -         ":v8_libbase",
@@ -9479,8 +9543,8 @@ index dde0efd..0000000
 -+        "@icu//:icu",
 -     ],
 - )
-- 
--@@ -4791,9 +4823,20 @@ v8_binary(
+-
+-@@ -4852,9 +4883,20 @@
 -         ":icu/generated_torque_initializers",
 -         ":icu/v8_initializers_files",
 -     ],
@@ -9502,138 +9566,25 @@ index dde0efd..0000000
 -     }),
 -     noicu_deps = [":v8_libshared_noicu"],
 -     noicu_srcs = [
--diff --git a/orig/v8-15.0.245.2/bazel/BUILD.icu b/mod/v8-15.0.245.2/bazel/BUILD.icu
--index 5fda2f4..8c3c372 100644
----- a/orig/v8-15.0.245.2/bazel/BUILD.icu
--+++ b/mod/v8-15.0.245.2/bazel/BUILD.icu
--@@ -1,3 +1,24 @@
--+load("@rules_cc//cc:defs.bzl", "cc_library")
--+
--+CUSTOM_LIBCXX_COPTS = select({
--+    "@v8//:is_v8_use_rusty_v8_custom_libcxx": [
--+        "-nostdinc++",
--+        "-D_LIBCPP_DISABLE_VISIBILITY_ANNOTATIONS",
--+        "-D_LIBCPP_HARDENING_MODE=_LIBCPP_HARDENING_MODE_EXTENSIVE",
--+        "-D_LIBCPP_INSTRUMENTED_WITH_ASAN=0",
--+        "-D_LIBCXXABI_DISABLE_VISIBILITY_ANNOTATIONS",
--+    ],
--+    "//conditions:default": [],
--+})
--+
--+CUSTOM_LIBCXX_DEPS = select({
--+    "@v8//:is_v8_use_rusty_v8_custom_libcxx": [
--+        "@@//third_party/v8:rusty_v8_custom_libcxx_headers",
--+        "@@//third_party/v8:rusty_v8_custom_libcxx_runtime",
--+    ],
--+    "//conditions:default": [],
--+})
--+
-- # Copyright 2021 the V8 project authors. All rights reserved.
-- # Use of this source code is governed by a BSD-style license that can be
-- # found in the LICENSE file.
--@@ -16,15 +37,12 @@ cc_library(
--     ]),
--     copts = select({
--         "@platforms//os:windows": [
---            "/wd4005",  # Macro redefinition.
---            "/wd4068",  # Unknown pragmas.
---            "/wd4267",  # Conversion from size_t on 64-bits.
---            "/utf-8",  # ICU source files are in UTF-8.
--+            "-Wno-deprecated-declarations",
--         ],
--         "//conditions:default": [
--             "-Wno-deprecated-declarations",
--         ],
---    }),
--+    }) + CUSTOM_LIBCXX_COPTS,
--     data = [":icudata"],
--     defines = [
--         "HAVE_DLOPEN=0",
--@@ -54,6 +72,7 @@ cc_library(
--         "U_ICUDATAENTRY_IN_COMMON",
--     ],
--     tags = ["requires-rtti"],
--+    deps = CUSTOM_LIBCXX_DEPS,
--     alwayslink = 1,
-- )
-- 
--@@ -65,19 +84,16 @@ cc_library(
--     ]),
--     copts = select({
--         "@platforms//os:windows": [
---            "/wd4005",  # Macro redefinition.
---            "/wd4068",  # Unknown pragmas.
---            "/wd4267",  # Conversion from size_t on 64-bits.
---            "/utf-8",  # ICU source files are in UTF-8.
--+            "-Wno-deprecated-declarations",
--         ],
--         "//conditions:default": [
--             "-Wno-deprecated-declarations",
--         ],
---    }),
--+    }) + CUSTOM_LIBCXX_COPTS,
--     local_defines = [
--         "U_I18N_IMPLEMENTATION",
--     ],
---    deps = [":icuuc"],
--+    deps = [":icuuc"] + CUSTOM_LIBCXX_DEPS,
--     alwayslink = 1,
-- )
-- 
--@@ -93,13 +109,10 @@ cc_library(
--     ]),
--     copts = select({
--         "@platforms//os:windows": [
---            "/wd4005",  # Macro redefinition.
---            "/wd4068",  # Unknown pragmas.
---            "/wd4267",  # Conversion from size_t on 64-bits.
---            "/utf-8",  # ICU source files are in UTF-8.
--+            "-Wno-deprecated-declarations",
--         ],
--         "//conditions:default": [],
---    }),
--+    }) + CUSTOM_LIBCXX_COPTS,
--     include_prefix = "third_party/icu",
--     local_defines = [
--         "U_COMMON_IMPLEMENTATION",
--@@ -108,6 +121,6 @@ cc_library(
--     deps = [
--         ":icui18n",
--         ":icuuc",
---    ],
--+    ] + CUSTOM_LIBCXX_DEPS,
--     alwayslink = 1,
-- )
 diff --git a/patches/v8_module_deps.patch b/patches/v8_module_deps.patch
 deleted file mode 100644
-index d179617..0000000
+index 3bd5008a..00000000
 --- a/patches/v8_module_deps.patch
 +++ /dev/null
-@@ -1,285 +0,0 @@
+@@ -1,277 +0,0 @@
 -# What: replace upstream V8 module dependency bootstrapping with repository
 -# declarations and dependency setup that match this Bazel workspace.
 -# Scope: upstream MODULE.bazel only; affects external repo resolution and Bazel
 -# module wiring, not V8 source files.
 -
--diff --git a/orig/v8-15.0.245.2/MODULE.bazel b/mod/v8-15.0.245.2/MODULE.bazel
--index b8bf8bd..573f463 100644
----- a/orig/v8-15.0.245.2/MODULE.bazel
--+++ b/mod/v8-15.0.245.2/MODULE.bazel
--@@ -8,193 +8,67 @@ bazel_dep(name = "rules_cc", version = "0.2.0")
-- bazel_dep(name = "rules_python", version = "1.0.0")
+-diff --git a/orig/v8-15.2.124.1/MODULE.bazel b/mod/v8-15.2.124.1/MODULE.bazel
+---- a/orig/v8-15.2.124.1/MODULE.bazel
+-+++ b/mod/v8-15.2.124.1/MODULE.bazel
+-@@ -8,12 +8,65 @@
+- bazel_dep(name = "rules_python", version = "1.7.0")
 - bazel_dep(name = "platforms", version = "1.0.0")
-- bazel_dep(name = "abseil-cpp", version = "20250814.0")
+- bazel_dep(name = "abseil-cpp", version = "20250814.1")
 --bazel_dep(name = "highway", version = "1.2.0")
---
---pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
---pip.parse(
---    hub_name = "v8_python_deps",
---    python_version = "3.11",
---    requirements_lock = "//:bazel/requirements.txt",
---    extra_pip_args = [
---        "--require-hashes",
---        "--index-url=https://pypi.org/simple",
---    ],
 -+bazel_dep(name = "rules_license", version = "0.0.4")
 -+
 -+git_repository = use_repo_rule("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
@@ -9643,11 +9594,63 @@ index d179617..0000000
 -+    name = "highway",
 -+    patch_args = ["-p1"],
 -+    patches = ["@v8//:bazel/highway.patch"],
--+    sha256 = "7e0be78b8318e8bdbf6fa545d2ecb4c90f947df03f7aadc42c1967f019e63343",
--+    strip_prefix = "highway-1.2.0",
--+    urls = ["https://github.com/google/highway/archive/refs/tags/1.2.0.tar.gz"],
+-+    sha256 = "741d705781e0b3e406beda8f1f994fbae01321237ce8023a1ad90fbaf7940c25",
+-+    strip_prefix = "highway-2607d3b5b0113992fe84d3848859eae13b3b52c1",
+-+    urls = ["https://github.com/google/highway/archive/2607d3b5b0113992fe84d3848859eae13b3b52c1.tar.gz"],
+-+)
+-+
+-+git_repository(
+-+    name = "icu",
+-+    build_file = "@@//third_party/v8:icu.BUILD.bazel",
+-+    commit = "d578f2e8b7bd5938e21cfb6bf15c079e0aa5b738",
+-+    patch_cmds = ["find source -name BUILD.bazel | xargs rm"],
+-+    patch_cmds_win = ["Get-ChildItem -Path source -File -Include BUILD.bazel -Recurse | Remove-Item"],
+-+    remote = "https://chromium.googlesource.com/chromium/deps/icu.git",
+-+)
+-+
+-+http_archive(
+-+    name = "fast_float",
+-+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "fast_float",\n    hdrs = glob(["include/fast_float/*.h"]),\n    include_prefix = "third_party/fast_float/src/include",\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
+-+    sha256 = "76f958dd97b1cf4d8862d1f0986a47d4bdfa8845252bae15ef0f40de3b95961f",
+-+    strip_prefix = "fast_float-8.2.10",
+-+    urls = ["https://github.com/fastfloat/fast_float/archive/refs/tags/v8.2.10.tar.gz"],
+-+)
+-+
+-+http_archive(
+-+    name = "simdutf",
+-+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "simdutf",\n    srcs = ["src/simdutf.cpp"],\n    hdrs = glob(["include/**/*.h"]),\n    textual_hdrs = glob(["src/**/*.h", "src/**/*.cpp"], exclude = ["src/simdutf.cpp"]),\n    copts = ["-std=c++20"],\n    include_prefix = "third_party/simdutf",\n    includes = ["include", "src"],\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
+-+    sha256 = "0180de81a1dd48a87b8c0442ffa81734f3db91a7350914107a449935124e3c6f",
+-+    strip_prefix = "simdutf-7.7.0",
+-+    urls = ["https://github.com/simdutf/simdutf/archive/refs/tags/v7.7.0.tar.gz"],
+-+)
+-+
+-+git_repository(
+-+    name = "dragonbox",
+-+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "dragonbox",\n    hdrs = ["include/dragonbox/dragonbox.h"],\n    include_prefix = "third_party/dragonbox/src/include",\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
+-+    commit = "beeeef91cf6fef89a4d4ba5e95d47ca64ccb3a44",
+-+    remote = "https://chromium.googlesource.com/external/github.com/jk-jeon/dragonbox.git",
+-+)
+-+
+-+git_repository(
+-+    name = "fp16",
+-+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "fp16",\n    hdrs = glob(["include/**/*.h"]),\n    include_prefix = "third_party/fp16/src/include",\n    includes = ["include"],\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
+-+    commit = "782eea126dc5c755827be751a099eb01826175cf",
+-+    remote = "https://chromium.googlesource.com/external/github.com/Maratyszcza/FP16.git",
+-+)
+-
+- pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
+- pip.parse(
+-     hub_name = "v8_python_deps",
+-     python_version = "3.11",
+-+    # Use the pip resolver to preserve V8's hashes and repository names.
+-+    simpleapi_skip = ["jinja2", "markupsafe"],
+-     requirements_lock = "//:bazel/requirements.txt",
+-     extra_pip_args = [
+-         "--require-hashes",
+-@@ -21,180 +74,3 @@
+-     ],
 - )
---use_repo(pip, "v8_python_deps")
+- use_repo(pip, "v8_python_deps")
 --
 --# Define the local LLVM toolchain repository
 --llvm_toolchain_repository = use_repo_rule("//bazel/toolchain:llvm_repository.bzl", "llvm_toolchain_repository")
@@ -9658,7 +9661,7 @@ index d179617..0000000
 --    config_file_content = """
 --load("@rules_cc//cc:defs.bzl", "CcToolchainConfigInfo", "cc_common")
 --load("@bazel_tools//tools/cpp:cc_toolchain_config_lib.bzl", "feature", "flag_group", "flag_set", "tool_path")
--
+--
 --def _impl(ctx):
 --    tool_paths = [
 --        tool_path(name = "gcc", path = "bin/clang"),
@@ -9764,32 +9767,19 @@ index d179617..0000000
 --    implementation = _impl,
 --    attrs = {},
 --    provides = [CcToolchainConfigInfo],
--+git_repository(
--+    name = "icu",
--+    build_file = "@v8//:bazel/BUILD.icu",
--+    commit = "a86a32e67b8d1384b33f8fa48c83a6079b86f8cd",
--+    patch_cmds = ["find source -name BUILD.bazel | xargs rm"],
--+    patch_cmds_win = ["Get-ChildItem -Path source -File -Include BUILD.bazel -Recurse | Remove-Item"],
--+    remote = "https://chromium.googlesource.com/chromium/deps/icu.git",
-- )
+--)
 --""",
 --    build_file_content = """
 --load("@rules_cc//cc:defs.bzl", "cc_toolchain")
 --load(":cc_toolchain_config.bzl", "cc_toolchain_config")
 --
 --package(default_visibility = ["//visibility:public"])
--
+--
 --filegroup(
 --    name = "all_files",
 --    srcs = glob(["**/*"]),
--+http_archive(
--+    name = "fast_float",
--+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "fast_float",\n    hdrs = glob(["include/fast_float/*.h"]),\n    include_prefix = "third_party/fast_float/src/include",\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
--+    sha256 = "e14a33089712b681d74d94e2a11362643bd7d769ae8f7e7caefe955f57f7eacd",
--+    strip_prefix = "fast_float-8.0.2",
--+    urls = ["https://github.com/fastfloat/fast_float/archive/refs/tags/v8.0.2.tar.gz"],
-- )
--
+--)
+--
 --filegroup(name = "empty")
 --
 --cc_toolchain_config(name = "k8_toolchain_config")
@@ -9806,14 +9796,8 @@ index d179617..0000000
 --    supports_param_files = 0,
 --    toolchain_config = ":k8_toolchain_config",
 --    toolchain_identifier = "local_clang",
--+http_archive(
--+    name = "simdutf",
--+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "simdutf",\n    srcs = ["src/simdutf.cpp"],\n    hdrs = glob(["include/**/*.h"]),\n    textual_hdrs = glob(["src/**/*.h", "src/**/*.cpp"], exclude = ["src/simdutf.cpp"]),\n    copts = ["-std=c++20"],\n    include_prefix = "third_party/simdutf",\n    includes = ["include", "src"],\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
--+    sha256 = "0180de81a1dd48a87b8c0442ffa81734f3db91a7350914107a449935124e3c6f",
--+    strip_prefix = "simdutf-7.7.0",
--+    urls = ["https://github.com/simdutf/simdutf/archive/refs/tags/v7.7.0.tar.gz"],
-- )
--
+--)
+--
 --toolchain(
 --    name = "cc_toolchain_k8",
 --    exec_compatible_with = [
@@ -9828,13 +9812,8 @@ index d179617..0000000
 --    toolchain_type = "@bazel_tools//tools/cpp:toolchain_type",
 --)
 --""",
--+git_repository(
--+    name = "dragonbox",
--+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "dragonbox",\n    hdrs = ["include/dragonbox/dragonbox.h"],\n    include_prefix = "third_party/dragonbox/src/include",\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
--+    commit = "beeeef91cf6fef89a4d4ba5e95d47ca64ccb3a44",
--+    remote = "https://chromium.googlesource.com/external/github.com/jk-jeon/dragonbox.git",
-- )
--
+--)
+--
 --register_toolchains("@llvm_toolchain//:cc_toolchain_k8")
 --
 --# Define local repository for libc++ from third_party sources
@@ -9842,47 +9821,22 @@ index d179617..0000000
 --
 --libcxx_repository(
 --    name = "libcxx",
--+git_repository(
--+    name = "fp16",
--+    build_file_content = 'load("@rules_cc//cc:defs.bzl", "cc_library")\n\ncc_library(\n    name = "fp16",\n    hdrs = glob(["include/**/*.h"]),\n    include_prefix = "third_party/fp16/src/include",\n    includes = ["include"],\n    strip_include_prefix = "include",\n    visibility = ["//visibility:public"],\n)\n',
--+    commit = "3d2de1816307bac63c16a297e8c4dc501b4076df",
--+    remote = "https://chromium.googlesource.com/external/github.com/Maratyszcza/FP16.git",
-- )
--
+--)
+--
 --single_version_override(
 --    module_name = "highway",
 --    patches = ["//bazel/patches:highway_rules_cc.patch"],
 --    patch_strip = 1,
--+pip = use_extension("@rules_python//python/extensions:pip.bzl", "pip")
--+pip.parse(
--+    hub_name = "v8_python_deps",
--+    python_version = "3.11",
--+    requirements_lock = "//:bazel/requirements.txt",
--+    extra_pip_args = [
--+        "--require-hashes",
--+        "--index-url=https://pypi.org/simple",
--+    ],
-- )
--+use_repo(pip, "v8_python_deps")
--diff --git a/mod/v8-15.0.245.2/bazel/highway.patch b/mod/v8-15.0.245.2/bazel/highway.patch
+--)
+-diff --git a/orig/v8-15.2.124.1/bazel/highway.patch b/mod/v8-15.2.124.1/bazel/highway.patch
 -new file mode 100644
--index 0000000..5a13dd0
 ---- /dev/null
--+++ b/mod/v8-15.0.245.2/bazel/highway.patch
--@@ -0,0 +1,25 @@
+-+++ b/mod/v8-15.2.124.1/bazel/highway.patch
+-@@ -0,0 +1,16 @@
 -+diff --git a/BUILD b/BUILD
 -+--- a/BUILD
 -++++ b/BUILD
--+@@ -2,7 +2,7 @@
--+ load("@bazel_skylib//lib:selects.bzl", "selects")
--+ load("@rules_license//rules:license.bzl", "license")
--+
--+-load("@rules_cc//cc:defs.bzl", "cc_test")
--++load("@rules_cc//cc:defs.bzl", "cc_binary", "cc_library", "cc_test")
--+ # Placeholder#2 for Guitar, do not remove
--+
--+ package(
--+@@ -134,11 +134,7 @@ COPTS = select({
+-+@@ -118,11 +118,7 @@
 -+     ],
 -+ })
 -+
@@ -9897,7 +9851,7 @@ index d179617..0000000
 -+ # usages with an empty list.
 diff --git a/patches/v8_source_portability.patch b/patches/v8_source_portability.patch
 deleted file mode 100644
-index 6b6537c..0000000
+index 6b6537cb..00000000
 --- a/patches/v8_source_portability.patch
 +++ /dev/null
 @@ -1,316 +0,0 @@
@@ -10219,7 +10173,7 @@ index 6b6537c..0000000
 -   // A fix is also included in the 5.4.182 and 5.10.103 versions ("x86/fpu:
 diff --git a/patches/webrtc-sys_hermetic_darwin_sysroot.patch b/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 deleted file mode 100644
-index c90edbd..0000000
+index c90edbd0..00000000
 --- a/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 +++ /dev/null
 @@ -1,75 +0,0 @@
@@ -10300,7 +10254,7 @@ index c90edbd..0000000
 -+        .unwrap();
 diff --git a/patches/windows-link.patch b/patches/windows-link.patch
 deleted file mode 100644
-index 92423d1..0000000
+index 92423d1f..00000000
 --- a/patches/windows-link.patch
 +++ /dev/null
 @@ -1,10 +0,0 @@
@@ -10316,7 +10270,7 @@ index 92423d1..0000000
 - /// Defines an external function to import.
 diff --git a/patches/xz_windows_stack_args.patch b/patches/xz_windows_stack_args.patch
 deleted file mode 100644
-index 926fb0a..0000000
+index 926fb0a6..00000000
 --- a/patches/xz_windows_stack_args.patch
 +++ /dev/null
 @@ -1,14 +0,0 @@
@@ -10336,7 +10290,7 @@ index 926fb0a..0000000
 -     defines = select({
 diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index c45a360..0000000
+index c45a360a..00000000
 --- a/patches/zstd-sys_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,41 +0,0 @@
