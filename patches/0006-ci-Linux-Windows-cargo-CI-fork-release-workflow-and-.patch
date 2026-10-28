@@ -1,4 +1,4 @@
-From ac2d0e7f4672157e346f3ffe11c4c4aff15564b1 Mon Sep 17 00:00:00 2001
+From 3cceeaf7824c535931b7ed271849919a203ea9ec Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer

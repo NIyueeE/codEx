@@ -1,4 +1,4 @@
-From f69d4b27433f21ee859a03ef8b9a790c2d9373c5 Mon Sep 17 00:00:00 2001
+From a8e8b4b1932bf8ec13221bcc1c3d15d18468bfd7 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -7,7 +7,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/app-server-daemon/src/lib.rs         |   72 +-
  .../app-server-daemon/src/manual_update.rs    |  284 ----
  codex-rs/app-server-daemon/src/migration.rs   |  193 ---
- .../app-server-daemon/src/prepare_install.rs  |    2 +-
+ .../app-server-daemon/src/prepare_install.rs  |    4 +-
  codex-rs/app-server-daemon/src/update_loop.rs |  768 +---------
  .../src/update_loop_tests.rs                  | 1362 +----------------
  codex-rs/cli/Cargo.toml                       |    4 +
@@ -32,7 +32,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  859 -----------
- codex-rs/cli/src/self_update.rs               |  682 +++++++++
+ codex-rs/cli/src/self_update.rs               |  875 +++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
@@ -65,7 +65,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1459 insertions(+), 6719 deletions(-)
+ 61 files changed, 1653 insertions(+), 6720 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -690,7 +690,7 @@ index b73dff0d6ac8e54fd9ceae429ddc7039df6d1c0a..00000000000000000000000000000000
 -    })
 -}
 diff --git a/codex-rs/app-server-daemon/src/prepare_install.rs b/codex-rs/app-server-daemon/src/prepare_install.rs
-index ef09b6dab12e4edeefdf0b3ac90dced9d63e8405..df2c872f3767bb79a93ca399979382dd08ed4ed7 100644
+index ef09b6dab12e4edeefdf0b3ac90dced9d63e8405..0c7e3f28e1aa3e7c2c355983e8f4dc2294cc124f 100644
 --- a/codex-rs/app-server-daemon/src/prepare_install.rs
 +++ b/codex-rs/app-server-daemon/src/prepare_install.rs
 @@ -74,7 +74,7 @@ pub async fn update_from_cli(
@@ -702,6 +702,15 @@ index ef09b6dab12e4edeefdf0b3ac90dced9d63e8405..df2c872f3767bb79a93ca399979382dd
      }))
  }
  
+@@ -294,7 +294,7 @@ async fn prepare_from_package(
+         managed_install::managed_codex_version(&stage.path().join(entrypoint)).await?;
+     anyhow::ensure!(
+         !stable || version == binary_version,
+-        "the CLI package version does not match its executable"
++        "the CLI package version does not match its executable; reinstall from https://github.com/NIyueeE/codEx/releases"
+     );
+     let name = if stable && mode == InstallMode::Missing {
+         format!("{version}-{target}")
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
 index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11f503df02 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
@@ -7649,10 +7658,10 @@ index 21cff3a7a6731c557ceed99b3edc34505f4cd1bc..00000000000000000000000000000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445f7a7e081
+index 0000000000000000000000000000000000000000..c85d837277d9e997619ade26f9dba9c72a195ef6
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,682 @@
+@@ -0,0 +1,875 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -7691,8 +7700,6 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +const CODEX_BINARY_NAME: &str = "codex";
 +/// Directory beside the running binary that holds a pending update.
 +const STAGING_DIR_NAME: &str = "codex-update-staging";
-+/// Bubblewrap binary name inside the release archive (Unix sandbox helper).
-+const BWRAP_BINARY_NAME: &str = "bwrap";
 +/// HTTP timeout for a single release asset download.
 +const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 +
@@ -7752,14 +7759,23 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +    let context = InstallContext::current();
 +    let InstallMethod::Standalone {
 +        release_dir,
-+        resources_dir,
 +        platform: _,
++        ..
 +    } = &context.method
 +    else {
 +        anyhow::bail!(
 +            "codEx update only supports standalone installs. Please update manually from https://github.com/{FORK_REPO}/releases"
 +        );
 +    };
++    let Some(package_layout) = context.package_layout.as_ref() else {
++        anyhow::bail!(
++            "this codEx install is not a complete package; re-run the installer from https://github.com/{FORK_REPO}/releases"
++        );
++    };
++    anyhow::ensure!(
++        package_layout.package_dir.as_path() == release_dir.as_path(),
++        "the running codEx package location is inconsistent; re-run the installer from https://github.com/{FORK_REPO}/releases"
++    );
 +
 +    let client = RouteAwareClientPool::new(
 +        HttpClientFactory::new(OutboundProxyPolicy::RespectSystemProxy),
@@ -7811,41 +7827,28 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +        return Err(err).context("failed to extract release archive");
 +    }
 +
++    let staged = StagedPackage::read(&staging_dir, target).inspect_err(|_| {
++        let _ = std::fs::remove_dir_all(&staging_dir);
++    })?;
++    let (version, package_target) = (&staged.version, &staged.target);
++    println!("Installing the codEx {version} package ({package_target})...");
++
 +    #[cfg(target_os = "windows")]
 +    {
-+        // Windows stages beside the running binary and resolves every write
-+        // from its own location, so the install-context directories the Unix
-+        // path needs are intentionally unused here.
-+        let _ = (release_dir, resources_dir);
-+        return stage_windows_update(&staging_dir).await;
++        // Windows cannot replace its own running executable, so the staged
++        // package hands the swap to a detached copy and exits.
++        stage_windows_update(&staging_dir).await
 +    }
 +
 +    #[cfg(not(target_os = "windows"))]
 +    {
-+        let staged = StagedPackage::read(&staging_dir)?;
-+        let new_codex = staged.entrypoint_in(&staging_dir);
-+        let new_bwrap = staged.resources_in(&staging_dir).join(BWRAP_BINARY_NAME);
-+        let Some(resources_dir) = resources_dir else {
-+            anyhow::bail!(
-+                "standalone install has no resources directory; cannot replace bundled bwrap. Please update manually from https://github.com/{FORK_REPO}/releases"
-+            );
-+        };
-+
-+        // Keep a copy of the current codex so a failed bwrap swap can roll codex
-+        // back: the binary embeds the digest of the bundled bwrap, and a mismatched
-+        // pair would break sandbox startup until the next update.
-+        let codex_backup = staging_dir.join("codex.previous");
-+        std::fs::copy(&current_exe, &codex_backup)
-+            .context("failed to back up the current codex binary")?;
-+
-+        replace_binary(&new_codex, &current_exe)?;
-+        if let Err(err) = replace_binary(&new_bwrap, &resources_dir.join(BWRAP_BINARY_NAME)) {
-+            let _ = replace_binary(&codex_backup, &current_exe);
-+            return Err(err);
-+        }
++        // The daemon copies this package to install its managed server and
++        // rejects it unless the manifest version matches the executable. Swap
++        // the complete package, not just the binary: the manifest, the helper
++        // binaries, and the resources must describe the same release.
++        let result = install_package(&staging_dir, package_layout.package_dir.as_path(), &staged);
 +        let _ = std::fs::remove_dir_all(&staging_dir);
-+        let _ = release_dir;
-+        return Ok(());
++        result
 +    }
 +}
 +
@@ -7857,16 +7860,22 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +/// assuming a fixed set of files at the archive root.
 +#[derive(Debug)]
 +struct StagedPackage {
++    /// The manifest's `version`, used only for the install message.
++    version: String,
++    /// The manifest's `target`, checked against the host target.
++    target: String,
 +    /// The manifest's `entrypoint`, relative to the package root.
 +    entrypoint: PathBuf,
 +    /// The manifest's `resourcesDir`, relative to the package root.
 +    resources_dir: PathBuf,
++    /// The manifest's `pathDir`, relative to the package root.
++    path_dir: PathBuf,
 +}
 +
 +impl StagedPackage {
 +    /// Parse a freshly extracted release archive, rejecting anything that is
-+    /// not a canonical package.
-+    fn read(staging_dir: &Path) -> anyhow::Result<Self> {
++    /// not a complete canonical package.
++    fn read(staging_dir: &Path, target: &str) -> anyhow::Result<Self> {
 +        let manifest_path = staging_dir.join(PACKAGE_MANIFEST_NAME);
 +        let manifest: PackageManifest = serde_json::from_slice(
 +            &std::fs::read(&manifest_path).with_context(|| {
@@ -7883,22 +7892,64 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +            "release archive uses unsupported package layout {}",
 +            manifest.layout_version
 +        );
-+        let entrypoint = PathBuf::from(&manifest.entrypoint);
-+        let resources_dir = PathBuf::from(&manifest.resources_dir);
 +        anyhow::ensure!(
-+            staging_dir.join(&entrypoint).is_file(),
-+            "release archive is missing its entrypoint {}",
-+            manifest.entrypoint
++            manifest.target == target,
++            "release archive targets {}, but this host is {target}",
++            manifest.target
 +        );
++        let package = Self {
++            version: manifest.version,
++            target: manifest.target,
++            entrypoint: PathBuf::from(&manifest.entrypoint),
++            resources_dir: PathBuf::from(&manifest.resources_dir),
++            path_dir: PathBuf::from(&manifest.path_dir),
++        };
++        package.validate(staging_dir)?;
++        Ok(package)
++    }
++
++    /// Reject an archive that the daemon would refuse to copy, so `codex
++    /// update` never replaces a working install with one the shared server
++    /// cannot install from.
++    fn validate(&self, package_root: &Path) -> anyhow::Result<()> {
 +        anyhow::ensure!(
-+            staging_dir.join(&resources_dir).is_dir(),
-+            "release archive is missing its resources directory {}",
-+            manifest.resources_dir
++            !self.version.is_empty(),
++            "release archive has an empty version in {PACKAGE_MANIFEST_NAME}"
 +        );
-+        Ok(Self {
-+            entrypoint,
-+            resources_dir,
-+        })
++        let suffix = if cfg!(windows) { ".exe" } else { "" };
++        let bin_dir = self
++            .entrypoint
++            .parent()
++            .context("release archive entrypoint has no parent directory")?;
++        let mut required = vec![
++            self.entrypoint.clone(),
++            bin_dir.join(format!("codex-code-mode-host{suffix}")),
++            self.path_dir.join(format!("rg{suffix}")),
++        ];
++        if cfg!(windows) {
++            required.push(self.resources_dir.join("codex-command-runner.exe"));
++            required.push(self.resources_dir.join("codex-windows-sandbox-setup.exe"));
++        } else {
++            required.push(self.resources_dir.join("bwrap"));
++        }
++        for relative in required {
++            let path = package_root.join(&relative);
++            anyhow::ensure!(
++                path.is_file(),
++                "release archive is missing {}; reinstall from https://github.com/{FORK_REPO}/releases",
++                relative.display()
++            );
++            #[cfg(unix)]
++            {
++                use std::os::unix::fs::PermissionsExt;
++                anyhow::ensure!(
++                    std::fs::metadata(&path)?.permissions().mode() & 0o111 != 0,
++                    "release archive file {} is not executable; reinstall from https://github.com/{FORK_REPO}/releases",
++                    relative.display()
++                );
++            }
++        }
++        Ok(())
 +    }
 +
 +    /// Resolve the entrypoint inside a directory that holds this package's
@@ -7906,11 +7957,81 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +    fn entrypoint_in(&self, package_root: &Path) -> PathBuf {
 +        package_root.join(&self.entrypoint)
 +    }
++}
 +
-+    /// Resolve the bundled resources directory inside a package root.
-+    fn resources_in(&self, package_root: &Path) -> PathBuf {
-+        package_root.join(&self.resources_dir)
++/// Replace a package's files in place from a staged archive.
++///
++/// Helpers and resources go first, the entrypoint next, and
++/// `codex-package.json` last. The manifest is the daemon's version marker, so
++/// a crash mid-swap leaves the install claiming its previous version instead
++/// of a version whose executable and helpers do not match.
++fn install_package(
++    staging_dir: &Path,
++    package_root: &Path,
++    staged: &StagedPackage,
++) -> anyhow::Result<()> {
++    let manifest_name = Path::new(PACKAGE_MANIFEST_NAME);
++    let mut files = Vec::new();
++    collect_package_files(staging_dir, &mut files)?;
++    for source in files {
++        let relative = source.strip_prefix(staging_dir)?;
++        if relative == manifest_name || relative == staged.entrypoint.as_path() {
++            continue;
++        }
++        replace_package_file(&source, &package_root.join(relative))?;
 +    }
++    replace_binary(
++        &staged.entrypoint_in(staging_dir),
++        &staged.entrypoint_in(package_root),
++    )?;
++    replace_package_file(
++        &staging_dir.join(manifest_name),
++        &package_root.join(manifest_name),
++    )?;
++    Ok(())
++}
++
++/// Collect regular files from a staged package, rejecting links and other
++/// entries the canonical package layout does not contain.
++fn collect_package_files(directory: &Path, files: &mut Vec<PathBuf>) -> anyhow::Result<()> {
++    let mut entries = std::fs::read_dir(directory)
++        .with_context(|| format!("failed to read {}", directory.display()))?
++        .collect::<std::io::Result<Vec<_>>>()?;
++    entries.sort_by_key(std::fs::DirEntry::file_name);
++    for entry in entries {
++        let path = entry.path();
++        let file_type = entry
++            .file_type()
++            .with_context(|| format!("failed to inspect {}", path.display()))?;
++        if file_type.is_dir() {
++            collect_package_files(&path, files)?;
++        } else if file_type.is_file() {
++            files.push(path);
++        } else {
++            anyhow::bail!(
++                "release archive contains an unsupported entry {}; reinstall from https://github.com/{FORK_REPO}/releases",
++                path.display()
++            );
++        }
++    }
++    Ok(())
++}
++
++/// Atomically replace one package file, preserving the mode copied from the
++/// staged archive.
++fn replace_package_file(source: &Path, target: &Path) -> anyhow::Result<()> {
++    if let Some(parent) = target.parent() {
++        std::fs::create_dir_all(parent)
++            .with_context(|| format!("failed to create {}", parent.display()))?;
++    }
++    let staged = target.with_extension("new");
++    std::fs::copy(source, &staged)
++        .with_context(|| format!("failed to stage {}", target.display()))?;
++    if let Err(err) = replace_file(&staged, target) {
++        let _ = std::fs::remove_file(&staged);
++        return Err(err).with_context(|| format!("failed to replace {}", target.display()));
++    }
++    Ok(())
 +}
 +
 +/// The subset of `codex-package.json` that the updater needs.
@@ -7918,8 +8039,11 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +#[serde(rename_all = "camelCase")]
 +struct PackageManifest {
 +    layout_version: u32,
++    version: String,
++    target: String,
 +    entrypoint: String,
 +    resources_dir: String,
++    path_dir: String,
 +}
 +
 +/// Staging directory that holds the extracted release until it is swapped in.
@@ -8016,9 +8140,9 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +        .to_path_buf();
 +    // The staged tree is a canonical package, so the install keeps the same
 +    // layout: `bin/codex.exe` with `codex-resources/` beside it.
-+    let staged = StagedPackage::read(&staging_dir)?;
-+    let new_codex = staged.entrypoint_in(&staging_dir);
-+    let target = staged.entrypoint_in(&target_dir);
++    let target = target_triple().map_err(anyhow::Error::msg)?;
++    let staged = StagedPackage::read(&staging_dir, target)?;
++    let relaunch = staged.entrypoint_in(&target_dir);
 +
 +    // Wait on the process handle rather than polling so a slow shutdown cannot
 +    // race the swap; the handle closes on exit even when the process fails.
@@ -8033,33 +8157,16 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +        }
 +    }
 +
-+    // Bundled helper binaries ship under the package's resources directory and
-+    // must keep living beside the swapped entrypoint.
-+    let staged_resources = staged.resources_in(&staging_dir);
-+    if staged_resources.is_dir() {
-+        let target_resources = staged.resources_in(&target_dir);
-+        std::fs::create_dir_all(&target_resources)
-+            .with_context(|| format!("failed to create {}", target_resources.display()))?;
-+        for entry in std::fs::read_dir(&staged_resources)
-+            .context("failed to list the staged resources directory")?
-+        {
-+            let entry = entry.context("failed to read a staged resource entry")?;
-+            if entry.file_type().is_ok_and(|kind| kind.is_file()) {
-+                replace_binary(&entry.path(), &target_resources.join(entry.file_name()))?;
-+            }
-+        }
-+    }
-+
-+    // Swap the entrypoint last: a partially applied update then still runs the
-+    // previous codEx, which can retry, instead of a new binary with stale
-+    // helpers.
-+    replace_binary(&new_codex, &target).context("failed to replace the installed codEx binary")?;
++    // Swap the complete package: helpers and resources first, the entrypoint
++    // next, and the manifest last, so the shared background server can install
++    // from a package whose manifest matches its executable.
++    install_package(&staging_dir, &target_dir, &staged)?;
 +    let _ = std::fs::remove_dir_all(&staging_dir);
 +
-+    std::process::Command::new(&target)
++    std::process::Command::new(&relaunch)
 +        .creation_flags(CREATE_NO_WINDOW)
 +        .spawn()
-+        .with_context(|| format!("failed to relaunch {}", target.display()))?;
++        .with_context(|| format!("failed to relaunch {}", relaunch.display()))?;
 +    Ok(())
 +}
 +
@@ -8282,9 +8389,21 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +        let temp = tempfile::tempdir().expect("temp dir");
 +        let source_dir = temp.path().join("src");
 +        std::fs::create_dir_all(source_dir.join("bin")).expect("create src");
++        std::fs::create_dir_all(source_dir.join("codex-path")).expect("create src");
 +        std::fs::create_dir_all(source_dir.join("codex-resources")).expect("create src");
 +        std::fs::write(source_dir.join("bin/codex"), b"codex").expect("write codex");
++        std::fs::write(source_dir.join("bin/codex-code-mode-host"), b"host")
++            .expect("write code-mode host");
++        std::fs::write(source_dir.join("codex-path/rg"), b"rg").expect("write rg");
 +        std::fs::write(source_dir.join("codex-resources/bwrap"), b"bwrap").expect("write bwrap");
++        for path in [
++            "bin/codex",
++            "bin/codex-code-mode-host",
++            "codex-path/rg",
++            "codex-resources/bwrap",
++        ] {
++            set_executable(&source_dir.join(path)).expect("mark executable");
++        }
 +        std::fs::write(source_dir.join(PACKAGE_MANIFEST_NAME), package_manifest())
 +            .expect("write manifest");
 +
@@ -8304,35 +8423,118 @@ index 0000000000000000000000000000000000000000..f759aedbd1f71df7818cd6070ca09445
 +        assert!(dest.join("bin/codex").is_file());
 +        assert!(dest.join("codex-resources/bwrap").is_file());
 +
-+        let staged = StagedPackage::read(&dest).expect("read package");
++        let staged = StagedPackage::read(&dest, host_target()).expect("read package");
 +        assert_eq!(
 +            staged.entrypoint_in(&dest),
 +            dest.join("bin").join(CODEX_BINARY_NAME)
 +        );
-+        assert_eq!(staged.resources_in(&dest), dest.join("codex-resources"));
 +    }
 +
 +    #[test]
 +    fn rejects_archives_that_are_not_packages() {
 +        let temp = tempfile::tempdir().expect("temp dir");
 +        std::fs::write(temp.path().join(CODEX_BINARY_NAME), b"codex").expect("write codex");
-+        let error = StagedPackage::read(temp.path()).expect_err("flat archive must be rejected");
++        let error = StagedPackage::read(temp.path(), host_target())
++            .expect_err("flat archive must be rejected");
 +        assert!(
 +            error.to_string().contains("not a Codex package"),
 +            "{error:#}"
 +        );
 +    }
 +
-+    fn package_manifest() -> &'static [u8] {
-+        br#"{
++    #[test]
++    fn install_package_replaces_manifest_and_helpers() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let staging = temp.path().join("staging");
++        let target = temp.path().join("target");
++        write_package(&staging, "0.161.0", b"new");
++        write_package(&target, "0.160.0", b"old");
++        #[cfg(unix)]
++        std::os::unix::fs::symlink("bin/codex", target.join("codex")).expect("create alias");
++
++        let staged = StagedPackage::read(&staging, host_target()).expect("read package");
++        install_package(&staging, &target, &staged).expect("install package");
++
++        let manifest =
++            std::fs::read_to_string(target.join(PACKAGE_MANIFEST_NAME)).expect("read manifest");
++        assert!(manifest.contains("\"0.161.0\""), "{manifest}");
++        assert_eq!(
++            std::fs::read(staged.entrypoint_in(&target)).expect("read entrypoint"),
++            b"new"
++        );
++        let host = staged
++            .entrypoint_in(&target)
++            .with_file_name(if cfg!(windows) {
++                "codex-code-mode-host.exe"
++            } else {
++                "codex-code-mode-host"
++            });
++        assert_eq!(std::fs::read(host).expect("read host"), b"new");
++        #[cfg(unix)]
++        assert!(
++            target
++                .join("codex")
++                .symlink_metadata()
++                .expect("alias")
++                .file_type()
++                .is_symlink()
++        );
++    }
++
++    fn write_package(root: &Path, version: &str, body: &[u8]) {
++        let suffix = if cfg!(windows) { ".exe" } else { "" };
++        std::fs::create_dir_all(root.join("bin")).expect("create bin");
++        std::fs::create_dir_all(root.join("codex-path")).expect("create path dir");
++        std::fs::create_dir_all(root.join("codex-resources")).expect("create resources");
++        let mut files = vec![
++            format!("bin/codex{suffix}"),
++            format!("bin/codex-code-mode-host{suffix}"),
++            format!("codex-path/rg{suffix}"),
++        ];
++        if cfg!(windows) {
++            files.push("codex-resources/codex-command-runner.exe".to_string());
++            files.push("codex-resources/codex-windows-sandbox-setup.exe".to_string());
++        } else {
++            files.push("codex-resources/bwrap".to_string());
++        }
++        for relative in files {
++            let path = root.join(relative);
++            std::fs::write(&path, body).expect("write package file");
++            set_executable(&path).expect("mark executable");
++        }
++        std::fs::write(
++            root.join(PACKAGE_MANIFEST_NAME),
++            package_manifest_with(version),
++        )
++        .expect("write manifest");
++    }
++
++    fn host_target() -> &'static str {
++        if cfg!(windows) {
++            "x86_64-pc-windows-msvc"
++        } else {
++            "x86_64-unknown-linux-musl"
++        }
++    }
++
++    fn package_manifest() -> String {
++        package_manifest_with("0.160.0")
++    }
++
++    fn package_manifest_with(version: &str) -> String {
++        let suffix = if cfg!(windows) { ".exe" } else { "" };
++        format!(
++            r#"{{
 +  "layoutVersion": 1,
-+  "version": "0.160.0",
-+  "target": "x86_64-unknown-linux-musl",
++  "version": "{version}",
++  "target": "{}",
 +  "variant": "codex",
-+  "entrypoint": "bin/codex",
++  "entrypoint": "bin/codex{suffix}",
 +  "resourcesDir": "codex-resources",
 +  "pathDir": "codex-path"
-+}"#
++}}"#,
++            host_target()
++        )
 +    }
 +}
 diff --git a/codex-rs/cli/src/wsl_paths.rs b/codex-rs/cli/src/wsl_paths.rs

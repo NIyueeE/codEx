@@ -37,6 +37,17 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 `codex-windows-sandbox-setup`)。`InstallContext` 识别的正是这个布局,
 `codex app-server daemon` 安装共享后台服务时复制的也是它。
 
+安装脚本只创建 CLI 包。共享后台服务自己的包
+(`~/.codex/packages/app-server-daemon/`)由第一次 `codex` 启动时复制 CLI 包
+创建,并不是单独的发布资产;因此在首次启动前只看到 `packages/standalone/`
+是正常的。
+
+如果 `codex` 以 `the CLI package version does not match its executable` 退出,
+说明安装的清单与二进制版本不一致(较旧的 `codex update` 只替换了二进制)。
+重新运行一次安装脚本即可:它会替换整个 release 目录。截至 `0.164.0`(含)的
+版本仍只带旧的更新器,所以包含修复的第一个版本也要用安装脚本装一次;此后
+`codex update` 就会保持整个包完整。
+
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
 对照随附的 `.sha256` 校验后,将该包解压到
 [`codex update`](#codex-update-pure-rust-self-update)一节所述的独立安装目录。
@@ -187,14 +198,16 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
   2. 从本分支最新的 GitHub release 下载 `codex-<target>.tar.gz` 及其
      `.sha256` 资产。
   3. 在改动任何内容**之前**校验 sha256 校验和。
-  4. 从归档的 `codex-package.json` 读取入口与资源目录,然后替换正在运行的
-     `codex` 二进制及其捆绑资源(`bwrap`,Windows 上还有
-     `codex-resources/*`),替换期间保留 `.old` 备份。没有清单的归档会被拒绝,
-     并提示重新运行 `install.sh` —— 那是一次性迁移到包布局的方式。
+  4. 读取归档的 `codex-package.json`,确认该包对当前目标平台是完整的,然后把
+     **整个包**覆盖安装到当前 release:先写辅助程序与资源,再换 `codex`
+     入口,最后写清单;替换二进制期间保留 `.old` 备份。清单与可执行文件保持
+     同一版本,`codex app-server daemon` 才能从这个包安装共享后台服务。没有
+     清单的归档会被拒绝,并提示重新运行 `install.sh` —— 那是一次性迁移到包
+     布局的方式。
 - 由于归档由分支的 release 工作流构建,新二进制内嵌的 bwrap 摘要始终与
   随附的新 bwrap 匹配。
 - Windows 无法替换正在运行的可执行文件,因此更新会先暂存到安装目录旁,再交给
-  新二进制的分离副本:它等待 codEx 退出后完成替换并重新启动 codEx。
+  新二进制的分离副本:它等待 codEx 退出后替换整个包并重新启动 codEx。
 - 非独立安装(npm/brew/...)会得到明确提示,指向分支 release 供手动下载。
 - 后台 daemon 同样不会从远程脚本安装:其更新循环只负责看守受管安装,并在外部
   更新替换了二进制后重新执行;`codex app-server daemon update` 必须带

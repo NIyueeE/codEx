@@ -42,6 +42,19 @@ helper for the platform (`bwrap` on Linux, `codex-command-runner` and
 `InstallContext` recognizes and what `codex app-server daemon` copies when it
 installs the shared background server.
 
+The installer creates only the CLI package. The shared background server's
+own package under `~/.codex/packages/app-server-daemon/` is created by the
+first `codex` launch, which copies the CLI package; it is not a separate
+release asset, so seeing only `packages/standalone/` before that first launch
+is expected.
+
+If `codex` exits with `the CLI package version does not match its executable`,
+the install's manifest is out of sync with the binary (older `codex update`
+releases replaced only the binary). Re-run the installer once; it replaces the
+whole release directory. Releases up to and including `0.164.0` still ship the
+binary-only updater, so install the first fixed release with the installer
+too; after that, `codex update` keeps the package complete.
+
 Windows users install from the release archive directly: download
 `codex-x86_64-pc-windows-msvc.tar.gz`, verify it against the published
 `.sha256`, and unpack the package into the standalone release directory
@@ -230,17 +243,20 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
   2. Downloads `codex-<target>.tar.gz` and its `.sha256` asset from this
      fork's latest GitHub release.
   3. Verifies the sha256 checksum **before** touching anything.
-  4. Reads the archive's `codex-package.json` for its entrypoint and resources
-     directory, then replaces the running `codex` binary and its bundled
-     resources (`bwrap`, `codex-resources/*` on Windows), keeping a `.old`
-     backup during the swap. An archive without a manifest is rejected with a
-     pointer to a fresh `install.sh` run, which performs the one-time move to
-     the package layout.
+  4. Reads the archive's `codex-package.json`, checks that the package is
+     complete for this target, then installs the **complete package** over the
+     current release: helper binaries and resources first, the `codex`
+     entrypoint next, and the manifest last, keeping a `.old` backup during the
+     binary swap. Keeping the manifest in sync with the executable is what
+     lets `codex app-server daemon` install the shared background server from
+     this package. An archive without a manifest is rejected with a pointer to
+     a fresh `install.sh` run, which performs the one-time move to the package
+     layout.
 - Because the archive is built by the fork's release workflow, the new
   binary's embedded bwrap digest always matches the new bwrap it ships with.
 - Windows cannot replace a running executable, so the update is staged beside
   the install and handed to a detached copy of the new binary. That helper
-  waits for codEx to exit, swaps the binaries, and relaunches codEx.
+  waits for codEx to exit, swaps the complete package, and relaunches codEx.
 - Non-standalone installs (npm/brew/... ) get a clear message pointing at the
   fork releases for manual download.
 - The background daemon never installs from a remote script either: its updater
