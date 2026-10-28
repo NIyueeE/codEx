@@ -91,9 +91,12 @@ rm -rf "${output_dir}"
 mkdir -p "${output_dir}"
 # --no-signature keeps the patches free of the local git version, so the
 # export is byte-identical whatever git produced it (CI bootstraps with a
-# newer git than a developer workstation).
+# newer git than a developer workstation). --abbrev=40 pins the other
+# git-version-dependent part: the `index <old>..<new>` lines carry abbreviated
+# object names whose length git picks from the repository's object count, so a
+# 2.47 workstation and a 2.55 runner otherwise disagree on every hunk header.
 git -C "${worktree}" format-patch "${base_tag}"..HEAD \
-  --output-directory "${output_dir}" --keep-subject --no-signature
+  --output-directory "${output_dir}" --keep-subject --no-signature --abbrev=40
 
 patch_count="$(find "${output_dir}" -name '*.patch' | wc -l)"
 if [[ "${patch_count}" -ne "${commit_count}" ]]; then

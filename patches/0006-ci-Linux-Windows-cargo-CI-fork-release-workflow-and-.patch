@@ -1,4 +1,4 @@
-From 1609d594b466b6cfabb56888b59410bf2916304b Mon Sep 17 00:00:00 2001
+From 7d36f48c12579d01d10a33b47fd2f9dd86a6a5fa Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -93,7 +93,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
 new file mode 100644
-index 00000000..83d9a73f
+index 0000000000000000000000000000000000000000..83d9a73f5d88218e90a01ddb12f76b8b7c31e088
 --- /dev/null
 +++ b/.github/actions/bootstrap-tree/action.yml
 @@ -0,0 +1,47 @@
@@ -146,7 +146,7 @@ index 00000000..83d9a73f
 +        } >> "$GITHUB_ENV"
 diff --git a/.github/actions/cargo-cache/action.yml b/.github/actions/cargo-cache/action.yml
 new file mode 100644
-index 00000000..3088aec2
+index 0000000000000000000000000000000000000000..3088aec2849a6d990423e618bab648539b0896d1
 --- /dev/null
 +++ b/.github/actions/cargo-cache/action.yml
 @@ -0,0 +1,43 @@
@@ -194,7 +194,7 @@ index 00000000..3088aec2
 +        restore-keys: |
 +          cargo-home-${{ inputs.key }}-
 diff --git a/.github/blob-size-allowlist.txt b/.github/blob-size-allowlist.txt
-index 27d1c59e..cd2ee5d8 100644
+index 27d1c59e87bedc248d78672cd5b9ae0a7d70a577..cd2ee5d8870d9e08eb04af748321decfd6fb7c67 100644
 --- a/.github/blob-size-allowlist.txt
 +++ b/.github/blob-size-allowlist.txt
 @@ -1,6 +1,15 @@
@@ -224,7 +224,7 @@ index 27d1c59e..cd2ee5d8 100644
 +# own, so any change to it would otherwise trip the policy.
 +codex-rs/tui/src/bottom_pane/chat_composer.rs
 diff --git a/.github/scripts/install-musl-build-tools.sh b/.github/scripts/install-musl-build-tools.sh
-index a7d37b7f..90af7193 100644
+index a7d37b7ff907ff96a82eeca88124fed251ccae6a..90af71936a41f3fab8dfa080b0f559f63aafe1a9 100644
 --- a/.github/scripts/install-musl-build-tools.sh
 +++ b/.github/scripts/install-musl-build-tools.sh
 @@ -17,7 +17,7 @@ if [[ -n "${APT_INSTALL_ARGS:-}" ]]; then
@@ -261,7 +261,7 @@ index a7d37b7f..90af7193 100644
  libcap_prefix="${libcap_root}/prefix"
 diff --git a/.github/workflows/bazel.yml b/.github/workflows/bazel.yml
 deleted file mode 100644
-index f90a7453..00000000
+index f90a7453b13072118058e155fa28bdd69714ccd7..0000000000000000000000000000000000000000
 --- a/.github/workflows/bazel.yml
 +++ /dev/null
 @@ -1,576 +0,0 @@
@@ -842,7 +842,7 @@ index f90a7453..00000000
 -        if: always() && !cancelled()
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/blob-size-policy.yml b/.github/workflows/blob-size-policy.yml
-index f80fb0e4..9995bd05 100644
+index f80fb0e4b30f8f946f48b803d12d81adf3e51dcf..9995bd051943de2343ba2d50e2abe39df7d9dee0 100644
 --- a/.github/workflows/blob-size-policy.yml
 +++ b/.github/workflows/blob-size-policy.yml
 @@ -1,5 +1,18 @@
@@ -928,7 +928,7 @@ index f80fb0e4..9995bd05 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/blocking-ci.yml b/.github/workflows/blocking-ci.yml
-index c6f00555..a40475a5 100644
+index c6f00555a35559216e222e2ec129a9e927dd57c2..a40475a5804b7528344c24e69eb2093938a4e0ca 100644
 --- a/.github/workflows/blocking-ci.yml
 +++ b/.github/workflows/blocking-ci.yml
 @@ -1,30 +1,45 @@
@@ -1027,7 +1027,7 @@ index c6f00555..a40475a5 100644
  
        - name: Require successful dependencies
 diff --git a/.github/workflows/cargo-deny.yml b/.github/workflows/cargo-deny.yml
-index 3ea46cc2..2ff4672d 100644
+index 3ea46cc20d15ad3bd1034bef5e548bcde377dc05..2ff4672d081943d5bbb1ca958f892b161e98a31f 100644
 --- a/.github/workflows/cargo-deny.yml
 +++ b/.github/workflows/cargo-deny.yml
 @@ -1,30 +1,32 @@
@@ -1078,7 +1078,7 @@ index 3ea46cc2..2ff4672d 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/codespell.yml b/.github/workflows/codespell.yml
-index 996b3ded..e17f0997 100644
+index 996b3deddb58fb12791647aec1e390d2a0f01fdb..e17f0997327cdff877ef94d5894cad8d4062a713 100644
 --- a/.github/workflows/codespell.yml
 +++ b/.github/workflows/codespell.yml
 @@ -1,7 +1,12 @@
@@ -1127,7 +1127,7 @@ index 996b3ded..e17f0997 100644
        - name: Check for a clean worktree
          if: always() && !cancelled()
 diff --git a/.github/workflows/postmerge-ci.yml b/.github/workflows/postmerge-ci.yml
-index ac2b46d1..fa2cb354 100644
+index ac2b46d1db4cffb80cd5ef047c7b98b99090e91d..fa2cb35464c5f02dd310f100b8de1388da035dab 100644
 --- a/.github/workflows/postmerge-ci.yml
 +++ b/.github/workflows/postmerge-ci.yml
 @@ -1,29 +1,45 @@
@@ -1188,7 +1188,7 @@ index ac2b46d1..fa2cb354 100644
      steps:
 diff --git a/.github/workflows/python-runtime-build.yml b/.github/workflows/python-runtime-build.yml
 deleted file mode 100644
-index 748ff2f1..00000000
+index 748ff2f1131b7b41cd63fea4343f92d6d0385dfa..0000000000000000000000000000000000000000
 --- a/.github/workflows/python-runtime-build.yml
 +++ /dev/null
 @@ -1,114 +0,0 @@
@@ -1308,7 +1308,7 @@ index 748ff2f1..00000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-runtime-release.yml b/.github/workflows/python-runtime-release.yml
 deleted file mode 100644
-index f7f0b4af..00000000
+index f7f0b4af235ed0a7709b2d291f8533d27dbf7782..0000000000000000000000000000000000000000
 --- a/.github/workflows/python-runtime-release.yml
 +++ /dev/null
 @@ -1,63 +0,0 @@
@@ -1377,7 +1377,7 @@ index f7f0b4af..00000000
 -            openai-codex-cli-bin "$PYTHON_RUNTIME_VERSION"
 diff --git a/.github/workflows/python-sdk-build.yml b/.github/workflows/python-sdk-build.yml
 deleted file mode 100644
-index 66d89bc9..00000000
+index 66d89bc96cdfe59492fe352c959815896abbe26b..0000000000000000000000000000000000000000
 --- a/.github/workflows/python-sdk-build.yml
 +++ /dev/null
 @@ -1,65 +0,0 @@
@@ -1448,7 +1448,7 @@ index 66d89bc9..00000000
 -          if-no-files-found: error
 diff --git a/.github/workflows/python-sdk-cli-release.yml b/.github/workflows/python-sdk-cli-release.yml
 deleted file mode 100644
-index 2f7f6a7f..00000000
+index 2f7f6a7f1985bdcdd5bb17347b85f27b1e113160..0000000000000000000000000000000000000000
 --- a/.github/workflows/python-sdk-cli-release.yml
 +++ /dev/null
 @@ -1,156 +0,0 @@
@@ -1610,7 +1610,7 @@ index 2f7f6a7f..00000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/python-sdk-release.yml b/.github/workflows/python-sdk-release.yml
 deleted file mode 100644
-index 0e01f23a..00000000
+index 0e01f23a8458fdcc30fc8c679e46a1d5d86ede60..0000000000000000000000000000000000000000
 --- a/.github/workflows/python-sdk-release.yml
 +++ /dev/null
 @@ -1,172 +0,0 @@
@@ -1788,7 +1788,7 @@ index 0e01f23a..00000000
 -        run: uv run --no-project --with packaging==26.2 python .github/scripts/verify_pypi_release.py openai-codex "$SDK_VERSION"
 diff --git a/.github/workflows/r2-release.yml b/.github/workflows/r2-release.yml
 deleted file mode 100644
-index d1783bb2..00000000
+index d1783bb2d39f2cde87be1c03076c026a9f035841..0000000000000000000000000000000000000000
 --- a/.github/workflows/r2-release.yml
 +++ /dev/null
 @@ -1,59 +0,0 @@
@@ -1852,7 +1852,7 @@ index d1783bb2..00000000
 -            --prerelease "${RELEASE_PRERELEASE}" \
 -            --stage "${RELEASE_STAGE}"
 diff --git a/.github/workflows/repo-checks.yml b/.github/workflows/repo-checks.yml
-index 4f05cd06..8c9fe006 100644
+index 4f05cd06046ba95a0903cd807ff3b47d93ee1744..8c9fe0064a9d8222d73de14c8a3060eb9ee141ec 100644
 --- a/.github/workflows/repo-checks.yml
 +++ b/.github/workflows/repo-checks.yml
 @@ -1,77 +1,55 @@
@@ -1974,7 +1974,7 @@ index 4f05cd06..8c9fe006 100644
          if: always() && !cancelled()
 diff --git a/.github/workflows/rust-ci-full-nextest-platform.yml b/.github/workflows/rust-ci-full-nextest-platform.yml
 deleted file mode 100644
-index 5215c99b..00000000
+index 5215c99bf2b441f779730fa5a40eae2464160c33..0000000000000000000000000000000000000000
 --- a/.github/workflows/rust-ci-full-nextest-platform.yml
 +++ /dev/null
 @@ -1,439 +0,0 @@
@@ -2418,7 +2418,7 @@ index 5215c99b..00000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index c9885577..a90ecfc0 100644
+index c98855776d5a27ce636b7061aba23ba4de168432..a90ecfc0d84c1b0015af606744a55d7589a4f6a3 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
 @@ -1,544 +1,207 @@
@@ -3122,7 +3122,7 @@ index c9885577..a90ecfc0 100644
 +          NEEDS: ${{ toJSON(needs) }}
 +        run: python3 .github/scripts/check_ci_results.py
 diff --git a/.github/workflows/rust-ci.yml b/.github/workflows/rust-ci.yml
-index ae24051e..354998da 100644
+index ae24051e9c64ebfac101d4f83edd646dd9edfae8..354998da919a169bf046d7f6548eda095dbc67bb 100644
 --- a/.github/workflows/rust-ci.yml
 +++ b/.github/workflows/rust-ci.yml
 @@ -1,263 +1,61 @@
@@ -3434,7 +3434,7 @@ index ae24051e..354998da 100644
 -          NEEDS_CHANGED_OUTPUTS_ARGUMENT_COMMENT_LINT_PACKAGE: ${{ needs.changed.outputs.argument_comment_lint_package }}
 diff --git a/.github/workflows/rust-release-argument-comment-lint.yml b/.github/workflows/rust-release-argument-comment-lint.yml
 deleted file mode 100644
-index d49f8966..00000000
+index d49f8966488c85e04d1d7e3729d117b0932ac3f4..0000000000000000000000000000000000000000
 --- a/.github/workflows/rust-release-argument-comment-lint.yml
 +++ /dev/null
 @@ -1,113 +0,0 @@
@@ -3553,7 +3553,7 @@ index d49f8966..00000000
 -          path: dist/argument-comment-lint/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release-provisioned-macos.yml b/.github/workflows/rust-release-provisioned-macos.yml
 deleted file mode 100644
-index bbed0901..00000000
+index bbed09018768aeb20a59eef009db6683a538cc9f..0000000000000000000000000000000000000000
 --- a/.github/workflows/rust-release-provisioned-macos.yml
 +++ /dev/null
 @@ -1,218 +0,0 @@
@@ -3777,7 +3777,7 @@ index bbed0901..00000000
 -          if-no-files-found: warn
 diff --git a/.github/workflows/rust-release-windows.yml b/.github/workflows/rust-release-windows.yml
 deleted file mode 100644
-index b91203f5..00000000
+index b91203f5d861231c3553a2cbafa11d4b6e15a3ca..0000000000000000000000000000000000000000
 --- a/.github/workflows/rust-release-windows.yml
 +++ /dev/null
 @@ -1,704 +0,0 @@
@@ -4486,7 +4486,7 @@ index b91203f5..00000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index cf812760..8f4d67da 100644
+index cf8127602b50820fc6c1f81709ac9f8ba304e4da..8f4d67dac562cdc0d1a00c66910ecb86f29983be 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,240 +1,251 @@
@@ -7027,7 +7027,7 @@ index cf812760..8f4d67da 100644
 +          gh release edit "${tag}" --latest="${MAKE_LATEST}"
 diff --git a/.github/workflows/rusty-v8-release.yml b/.github/workflows/rusty-v8-release.yml
 deleted file mode 100644
-index 3dcdbe09..00000000
+index 3dcdbe09859d1d626cedb78a4ad19e11f11c1082..0000000000000000000000000000000000000000
 --- a/.github/workflows/rusty-v8-release.yml
 +++ /dev/null
 @@ -1,495 +0,0 @@
@@ -7528,7 +7528,7 @@ index 3dcdbe09..00000000
 -            "${assets[@]}"
 diff --git a/.github/workflows/sdk.yml b/.github/workflows/sdk.yml
 deleted file mode 100644
-index 3f91dd18..00000000
+index 3f91dd18fa8efdfec28321d1b304550982b956bf..0000000000000000000000000000000000000000
 --- a/.github/workflows/sdk.yml
 +++ /dev/null
 @@ -1,161 +0,0 @@
@@ -7695,7 +7695,7 @@ index 3f91dd18..00000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/.github/workflows/v8-canary.yml b/.github/workflows/v8-canary.yml
 deleted file mode 100644
-index ae155133..00000000
+index ae155133ed9ccbea5d60c0dd654696a5c6b9075a..0000000000000000000000000000000000000000
 --- a/.github/workflows/v8-canary.yml
 +++ /dev/null
 @@ -1,460 +0,0 @@
@@ -8161,7 +8161,7 @@ index ae155133..00000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 00000000..e807e8f9
+index 0000000000000000000000000000000000000000..e807e8f92344336f2afd3c5dc926cc81a2750876
 --- /dev/null
 +++ b/install.sh
 @@ -0,0 +1,215 @@
@@ -8382,7 +8382,7 @@ index 00000000..e807e8f9
 +install
 diff --git a/patches/BUILD.bazel b/patches/BUILD.bazel
 deleted file mode 100644
-index 17410e8d..00000000
+index 17410e8d402d713226d1f881dbc135a97dd3caaa..0000000000000000000000000000000000000000
 --- a/patches/BUILD.bazel
 +++ /dev/null
 @@ -1,38 +0,0 @@
@@ -8426,7 +8426,7 @@ index 17410e8d..00000000
 -])
 diff --git a/patches/abseil_windows_gnullvm_thread_identity.patch b/patches/abseil_windows_gnullvm_thread_identity.patch
 deleted file mode 100644
-index 27c4ecf7..00000000
+index 27c4ecf71f788897115405cf38d0d218695a0efc..0000000000000000000000000000000000000000
 --- a/patches/abseil_windows_gnullvm_thread_identity.patch
 +++ /dev/null
 @@ -1,16 +0,0 @@
@@ -8448,7 +8448,7 @@ index 27c4ecf7..00000000
 - #elif defined(__APPLE__) && defined(ABSL_HAVE_THREAD_LOCAL)
 diff --git a/patches/bzip2_windows_stack_args.patch b/patches/bzip2_windows_stack_args.patch
 deleted file mode 100644
-index 2786e908..00000000
+index 2786e908be38fc96d884885585c9f3a87973d400..0000000000000000000000000000000000000000
 --- a/patches/bzip2_windows_stack_args.patch
 +++ /dev/null
 @@ -1,23 +0,0 @@
@@ -8477,7 +8477,7 @@ index 2786e908..00000000
 -+bazel_dep(name = "platforms", version = "1.0.0")
 diff --git a/patches/llvm_rusty_v8_custom_libcxx.patch b/patches/llvm_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index dc5f4e65..00000000
+index dc5f4e652da38c4eceae1296b5ce55a6b13255b9..0000000000000000000000000000000000000000
 --- a/patches/llvm_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,108 +0,0 @@
@@ -8591,7 +8591,7 @@ index dc5f4e65..00000000
 -             "@mingw//:mingw_w64_headers_crt_directory",
 diff --git a/patches/llvm_windows_arm64_powl.patch b/patches/llvm_windows_arm64_powl.patch
 deleted file mode 100644
-index 0fd33c97..00000000
+index 0fd33c97667bcb2300330f6b4f980d4971c47071..0000000000000000000000000000000000000000
 --- a/patches/llvm_windows_arm64_powl.patch
 +++ /dev/null
 @@ -1,25 +0,0 @@
@@ -8622,7 +8622,7 @@ index 0fd33c97..00000000
 -         # Clang will respect the user's chosen CRT variant.
 diff --git a/patches/llvm_windows_mingw_compat.patch b/patches/llvm_windows_mingw_compat.patch
 deleted file mode 100644
-index 66cf4e7b..00000000
+index 66cf4e7b3446c99838eafd856a63d9047ae35aa1..0000000000000000000000000000000000000000
 --- a/patches/llvm_windows_mingw_compat.patch
 +++ /dev/null
 @@ -1,50 +0,0 @@
@@ -8678,7 +8678,7 @@ index 66cf4e7b..00000000
 -         ":winpthread",
 diff --git a/patches/ring_windows_msvc_include_dirs.patch b/patches/ring_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index 7bb49cbc..00000000
+index 7bb49cbc2c212f0341df6f55230fd340b061ae0a..0000000000000000000000000000000000000000
 --- a/patches/ring_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,112 +0,0 @@
@@ -8796,7 +8796,7 @@ index 7bb49cbc..00000000
 - 
 diff --git a/patches/rules_cc_rusty_v8_custom_libcxx.patch b/patches/rules_cc_rusty_v8_custom_libcxx.patch
 deleted file mode 100644
-index 3efda035..00000000
+index 3efda03525fd4b5e1dd8d1805baa3bce1bc01366..0000000000000000000000000000000000000000
 --- a/patches/rules_cc_rusty_v8_custom_libcxx.patch
 +++ /dev/null
 @@ -1,44 +0,0 @@
@@ -8846,7 +8846,7 @@ index 3efda035..00000000
 -     _cc_library(**kwargs)
 diff --git a/patches/rules_rs_build_script_deps_annotation.patch b/patches/rules_rs_build_script_deps_annotation.patch
 deleted file mode 100644
-index 2f38c2bf..00000000
+index 2f38c2bfedd63184cea5d4842a4c14567e8c4226..0000000000000000000000000000000000000000
 --- a/patches/rules_rs_build_script_deps_annotation.patch
 +++ /dev/null
 @@ -1,58 +0,0 @@
@@ -8910,7 +8910,7 @@ index 2f38c2bf..00000000
 -     "build_script_data_select": _label_list_dict(),
 diff --git a/patches/rules_rust_build_script_tools_transition.patch b/patches/rules_rust_build_script_tools_transition.patch
 deleted file mode 100644
-index dcbc4569..00000000
+index dcbc45699274280169c1f9e15d3bc3c8de9dddbc..0000000000000000000000000000000000000000
 --- a/patches/rules_rust_build_script_tools_transition.patch
 +++ /dev/null
 @@ -1,19 +0,0 @@
@@ -8935,7 +8935,7 @@ index dcbc4569..00000000
 -     )
 diff --git a/patches/rules_rust_windows_msvc_direct_link_args.patch b/patches/rules_rust_windows_msvc_direct_link_args.patch
 deleted file mode 100644
-index a8eba2ba..00000000
+index a8eba2ba6e7b8e6e709693e1b7f6e2a91e6dd5f2..0000000000000000000000000000000000000000
 --- a/patches/rules_rust_windows_msvc_direct_link_args.patch
 +++ /dev/null
 @@ -1,109 +0,0 @@
@@ -9050,7 +9050,7 @@ index a8eba2ba..00000000
 -     """A helper function for `_add_native_link_flags`.
 diff --git a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch b/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 deleted file mode 100644
-index 52c5ae86..00000000
+index 52c5ae8652c7f19181928899941f9d35f750214f..0000000000000000000000000000000000000000
 --- a/patches/rules_rust_windows_process_wrapper_skip_temp_outputs.patch
 +++ /dev/null
 @@ -1,15 +0,0 @@
@@ -9071,7 +9071,7 @@ index 52c5ae86..00000000
 -             }
 diff --git a/patches/rusty_v8_prebuilt_out_dir.patch b/patches/rusty_v8_prebuilt_out_dir.patch
 deleted file mode 100644
-index 4242a29b..00000000
+index 4242a29beb81bc1ce64c061822e8f6257114d1e0..0000000000000000000000000000000000000000
 --- a/patches/rusty_v8_prebuilt_out_dir.patch
 +++ /dev/null
 @@ -1,74 +0,0 @@
@@ -9151,7 +9151,7 @@ index 4242a29b..00000000
 -       } else if target.contains("apple")
 diff --git a/patches/v8_bazel_rules.patch b/patches/v8_bazel_rules.patch
 deleted file mode 100644
-index c2d557ad..00000000
+index c2d557ad3d4f6fe5f647fb4d75d38848fad67530..0000000000000000000000000000000000000000
 --- a/patches/v8_bazel_rules.patch
 +++ /dev/null
 @@ -1,411 +0,0 @@
@@ -9568,7 +9568,7 @@ index c2d557ad..00000000
 -     noicu_srcs = [
 diff --git a/patches/v8_module_deps.patch b/patches/v8_module_deps.patch
 deleted file mode 100644
-index 3bd5008a..00000000
+index 3bd5008abdb5336c2d90dfbe392dee2e7e881892..0000000000000000000000000000000000000000
 --- a/patches/v8_module_deps.patch
 +++ /dev/null
 @@ -1,277 +0,0 @@
@@ -9851,7 +9851,7 @@ index 3bd5008a..00000000
 -+ # usages with an empty list.
 diff --git a/patches/v8_source_portability.patch b/patches/v8_source_portability.patch
 deleted file mode 100644
-index 6b6537cb..00000000
+index 6b6537cb9cd7696a0e3402f644c9ef6404a1c08b..0000000000000000000000000000000000000000
 --- a/patches/v8_source_portability.patch
 +++ /dev/null
 @@ -1,316 +0,0 @@
@@ -10173,7 +10173,7 @@ index 6b6537cb..00000000
 -   // A fix is also included in the 5.4.182 and 5.10.103 versions ("x86/fpu:
 diff --git a/patches/webrtc-sys_hermetic_darwin_sysroot.patch b/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 deleted file mode 100644
-index c90edbd0..00000000
+index c90edbd08e9a8cd0bb063e4795da9fbe36fc2518..0000000000000000000000000000000000000000
 --- a/patches/webrtc-sys_hermetic_darwin_sysroot.patch
 +++ /dev/null
 @@ -1,75 +0,0 @@
@@ -10254,7 +10254,7 @@ index c90edbd0..00000000
 -+        .unwrap();
 diff --git a/patches/windows-link.patch b/patches/windows-link.patch
 deleted file mode 100644
-index 92423d1f..00000000
+index 92423d1fe857d95ed6f6cd791c38e367ae0c7c8b..0000000000000000000000000000000000000000
 --- a/patches/windows-link.patch
 +++ /dev/null
 @@ -1,10 +0,0 @@
@@ -10270,7 +10270,7 @@ index 92423d1f..00000000
 - /// Defines an external function to import.
 diff --git a/patches/xz_windows_stack_args.patch b/patches/xz_windows_stack_args.patch
 deleted file mode 100644
-index 926fb0a6..00000000
+index 926fb0a6dc90f310730659f44d16dfe0c2937a2c..0000000000000000000000000000000000000000
 --- a/patches/xz_windows_stack_args.patch
 +++ /dev/null
 @@ -1,14 +0,0 @@
@@ -10290,7 +10290,7 @@ index 926fb0a6..00000000
 -     defines = select({
 diff --git a/patches/zstd-sys_windows_msvc_include_dirs.patch b/patches/zstd-sys_windows_msvc_include_dirs.patch
 deleted file mode 100644
-index c45a360a..00000000
+index c45a360a46c283b78bc42a8157c6d9c49aea4e3b..0000000000000000000000000000000000000000
 --- a/patches/zstd-sys_windows_msvc_include_dirs.patch
 +++ /dev/null
 @@ -1,41 +0,0 @@

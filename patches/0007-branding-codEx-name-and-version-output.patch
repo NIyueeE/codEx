@@ -1,4 +1,4 @@
-From 0442417c561bbd0ec60734cec9dcb73fa86b9cf1 Mon Sep 17 00:00:00 2001
+From 23650dd1a91d714f266d06a5b1fe52d824aee9e3 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:34 +0000
 Subject: branding: codEx name and version output
@@ -50,7 +50,7 @@ Subject: branding: codEx name and version output
  43 files changed, 405 insertions(+), 218 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
-index 81fbf07c..f43276f0 100644
+index 81fbf07cf35c5016a3dc8542dbddee1c29f2b51b..f43276f064fa420d85de35145ed5fda5c3800f5a 100644
 --- a/codex-rs/cli/tests/sandbox_cloud_config.rs
 +++ b/codex-rs/cli/tests/sandbox_cloud_config.rs
 @@ -140,7 +140,9 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
@@ -65,7 +65,7 @@ index 81fbf07c..f43276f0 100644
          );
      }
 diff --git a/codex-rs/exec/src/event_processor_with_human_output.rs b/codex-rs/exec/src/event_processor_with_human_output.rs
-index 37f1a047..aa5a90cf 100644
+index 37f1a0479520a189ceaf4364ada9825a9da8dd1d..aa5a90cfa6ae86013771d4a99c673dd216935a6a 100644
 --- a/codex-rs/exec/src/event_processor_with_human_output.rs
 +++ b/codex-rs/exec/src/event_processor_with_human_output.rs
 @@ -218,7 +218,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
@@ -78,7 +78,7 @@ index 37f1a047..aa5a90cf 100644
              eprintln!("{} {}", format!("{key}:").style(self.bold), value);
          }
 diff --git a/codex-rs/login/src/device_code_auth.rs b/codex-rs/login/src/device_code_auth.rs
-index 14a8e57c..d4ee3383 100644
+index 14a8e57c2cb5c2a24aa6fe8df003a6e3e8b438e1..d4ee3383e03477f0eed013d2b51cb8d37059dd25 100644
 --- a/codex-rs/login/src/device_code_auth.rs
 +++ b/codex-rs/login/src/device_code_auth.rs
 @@ -149,11 +149,11 @@ async fn poll_for_token(
@@ -96,7 +96,7 @@ index 14a8e57c..d4ee3383 100644
  }
  
 diff --git a/codex-rs/login/src/device_code_auth_tests.rs b/codex-rs/login/src/device_code_auth_tests.rs
-index ba6071ba..5ee62104 100644
+index ba6071ba88d4e15632d9ff42702bdbf42bd38afb..5ee621043e5ff6afd41df4799fca990656a0011e 100644
 --- a/codex-rs/login/src/device_code_auth_tests.rs
 +++ b/codex-rs/login/src/device_code_auth_tests.rs
 @@ -5,6 +5,6 @@ fn device_code_prompt_renders_phishing_warning() {
@@ -108,7 +108,7 @@ index ba6071ba..5ee62104 100644
      ));
  }
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
-index 789d6e4b..6106c04f 100644
+index 789d6e4bda5306a29a152bb46f1b450ca822fede..6106c04fe828d30f54989e74f7129aa3b0e25663 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 @@ -3,12 +3,12 @@ source: tui/src/app/empty_state_animation_tests.rs
@@ -150,7 +150,7 @@ index 789d6e4b..6106c04f 100644
  
  
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
-index 8aa1bca7..7162746a 100644
+index 8aa1bca71b37199ea5aa9956871c68de2b0c1dc5..7162746ad295fb526e7daf4a04902e27d930e721 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 @@ -1,11 +1,13 @@
@@ -172,7 +172,7 @@ index 8aa1bca7..7162746a 100644
  
  › Next thread prompt
 diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 970e55ef..d359648b 100644
+index 970e55ef724dc5ab3bb8518291b1767a9e10cc7e..d359648b6b38325515f297d7bd9ee5a5c6761040 100644
 --- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 @@ -79,13 +79,23 @@ async fn command_center_new_keeps_startup_draft_visible_through_handoff() -> Res
@@ -209,7 +209,7 @@ index 970e55ef..d359648b 100644
          let final_frame = last_rendered_buffer(&tui.terminal);
          let footer = |buffer: &ratatui::buffer::Buffer| {
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 787c7e08..6da54f9d 100644
+index 787c7e086aff7e57309411d35250f265b0ca04c1..6da54f9d0e0fbd6ef07204d1992f04ac4bf57ccd 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 @@ -3244,7 +3244,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
@@ -222,7 +222,7 @@ index 787c7e08..6da54f9d 100644
      } else {
          panic!("expected transcript overlay");
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
-index 79073491..e4e3f5c1 100644
+index 790734914a53838feab662e9f8e4d76a8a2d63d2..e4e3f5c1fd308982eeaee1c62ef9ccc756277e41 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__background_task_defaults_tests__command_center_new_draft_handoff.snap
 @@ -1,6 +1,6 @@
@@ -252,7 +252,7 @@ index 79073491..e4e3f5c1 100644
  attached:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
-index a8997b37..af12ff75 100644
+index a8997b370eeb543ee849f29f437c6144a1439f82..af12ff75ee934fe2ae3066475875192eb7793aac 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__navigation_reconnect__daemon_command_center_vanished_rename.snap
 @@ -25,4 +25,4 @@ expression: "render_bottom_popup(&app.chat_widget, 100)"
@@ -262,7 +262,7 @@ index a8997b37..af12ff75 100644
 -  Service v2.0.0 ≠ Codex CLI v0.0.0 · /daemon
 +  ? help  esc back  ↑/↓ move  enter open  n new
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
-index ab3a8c84..55f2061c 100644
+index ab3a8c84c9889e61267bb7d72e9963311b8e434f..55f2061c64161d08980398e6eb784f7cdd38c1e8 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 @@ -1,11 +1,13 @@
@@ -284,7 +284,7 @@ index ab3a8c84..55f2061c 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
-index 2ecde209..96e2e3f0 100644
+index 2ecde209a27287959623a364d840c412cc3b3022..96e2e3f0afc790c7d4e74ab55de4d466709c56ae 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 @@ -1,11 +1,13 @@
@@ -306,7 +306,7 @@ index 2ecde209..96e2e3f0 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
-index bfd8b46a..2227e319 100644
+index bfd8b46a632e628f017928a98d33e3f55df05b8a..2227e319aed89aa7bfea51e4342a661a57df725d 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 @@ -13,9 +13,12 @@ Restored owner:
@@ -326,7 +326,7 @@ index bfd8b46a..2227e319 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
-index 0dfd7333..030b95bc 100644
+index 0dfd7333b6acd684d1881dd432fc4f137126b7b0..030b95bcdfa184096f39691fcc803132037a3439 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 @@ -1,11 +1,13 @@
@@ -348,7 +348,7 @@ index 0dfd7333..030b95bc 100644
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
-index 6a47bf2b..9410c3d8 100644
+index 6a47bf2b72c15db36e55aa7f626b9ad94828bbbd..9410c3d8effc5eb2d6597e2d6aafec6f4d226fe5 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
 @@ -2,8 +2,12 @@
@@ -367,7 +367,7 @@ index 6a47bf2b..9410c3d8 100644
  
  › status   [Skill]
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
-index d45000ee..56cd2318 100644
+index d45000ee78fe1ae9bfea05d87a800f17d436103a..56cd2318436a7cb56b82db2f68faa8712f5cc204 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 @@ -3,9 +3,12 @@ source: tui/src/app/tests/startup_frame_tests.rs
@@ -422,7 +422,7 @@ index d45000ee..56cd2318 100644
  
    GPT-5.6-Sol default · /tmp/pr…
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index 2c6adf43..88b315a2 100644
+index 2c6adf43c188ed0346ca387d2beab10befe73b30..88b315a22b227174185a77b51a2d58b0e48275b5 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 @@ -74,8 +74,10 @@ async fn owned_startup_hides_tip_in_transcript() -> Result<()> {
@@ -448,7 +448,7 @@ index 2c6adf43..88b315a2 100644
          tui.set_owned_screen(/*owned*/ false)?;
          app_server.shutdown().await?;
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 4129eca7..443a02d4 100644
+index 4129eca7be4147961197913fbf30b46e2c93d726..443a02d4773468ac33784cd2cc2e0f6ce099b761 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 @@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
@@ -481,7 +481,7 @@ index 4129eca7..443a02d4 100644
  }
  
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
-index 915041d8..bf04308c 100644
+index 915041d85fa6112b9727d6ce497358398d49cdc0..bf04308c55c210e1e73b05bf0fed74b6cfd7be83 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_resume.snap
 @@ -1,8 +1,7 @@
@@ -495,7 +495,7 @@ index 915041d8..bf04308c 100644
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-index 65f90350..2243d254 100644
+index 65f90350893b96fd6ad73a61eb83da074d0ee0bc..2243d254c907f8461fab6b83758b7724aa249d20 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 @@ -1,9 +1,8 @@
@@ -510,7 +510,7 @@ index 65f90350..2243d254 100644
  directory: /tmp/thread-settings
  
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
-index 147a544c..05ddff5f 100644
+index 147a544c9485f429f0e9ac058ee0ebd0389b265c..05ddff5f9eb166950f9ba11307932a57b55e63d3 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 @@ -1,8 +1,7 @@
@@ -524,7 +524,7 @@ index 147a544c..05ddff5f 100644
  model: us.openai.gpt-5.6-luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
-index b2801213..4caac753 100644
+index b28012136e1fb5e155386c4fca77ae7283b282c6..4caac7533f9e8489dd9dfb1d01b5f70e6e579390 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_picker_status_fields.snap
 @@ -5,7 +5,7 @@ expression: "render_bottom_popup(&chat,\n100).replace(&directory,\n\"[[workspace
@@ -537,7 +537,7 @@ index b2801213..4caac753 100644
    3. Directory     [[workspace]]
    4. Thread name   Clipboard example
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
-index a8631ab1..403cecd2 100644
+index a8631ab1a581454c29ba87a9c4c8980f42a3c3f4..403cecd25e6a2abdff8f54c974313fabb3f02079 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__slash_copy_whole_status.snap
 @@ -2,11 +2,12 @@
@@ -555,7 +555,7 @@ index a8631ab1..403cecd2 100644
    Model provider:      openai
    Directory:           [[workspace]]
 diff --git a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__history_replay__resumed_daybreak_banner.snap b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__history_replay__resumed_daybreak_banner.snap
-index 5e78664e..5b92d929 100644
+index 5e78664e4a80d82ff90f15dc0608ee3a8ece15ea..5b92d92939aba7d083268d835fdbcaa1ad2e850b 100644
 --- a/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__history_replay__resumed_daybreak_banner.snap
 +++ b/codex-rs/tui/src/chatwidget/tests/snapshots/codex_tui__chatwidget__tests__history_replay__resumed_daybreak_banner.snap
 @@ -1,11 +1,13 @@
@@ -577,7 +577,7 @@ index 5e78664e..5b92d929 100644
  • Daybreak is on for new turns.
  
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 237ef9ec..bc79d9c9 100644
+index 237ef9ec9699bc895011750b749aa6edcc1dae11..bc79d9c94dccaa3f5294bcbf34a6204d3bb601b6 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -6,6 +6,21 @@ use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
@@ -779,7 +779,7 @@ index 237ef9ec..bc79d9c9 100644
                  "model: {}{}",
                  self.model,
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
-index 13e70b5d..0fb03749 100644
+index 13e70b5d2dead047ac28496972d6c46860fca068..0fb03749c701103744d12686a8185363c8478e81 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_clamps_to_narrow_width.snap
 @@ -1,9 +1,11 @@
@@ -800,7 +800,7 @@ index 13e70b5d..0fb03749 100644
 +│ permissions: YOLO mode                   │
 +╰──────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
-index fa464a0b..f23bfd05 100644
+index fa464a0b7d72ff16e4472e7b2aea6bd98d3b5558..f23bfd05370400ead4d720d89d8388bc66715f93 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_halfwidth_directory.snap
 @@ -1,48 +1,26 @@
@@ -868,7 +868,7 @@ index fa464a0b..f23bfd05 100644
      ]
  }
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
-index ab195e3d..3669f3ca 100644
+index ab195e3d1aea7bbd4b3bd68b2eab569a43c2f0cb..3669f3ca5fc463f8e4d3f22a1d3bd2e5f0753d0c 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_header_indicates_yolo_mode.snap
 @@ -1,9 +1,11 @@
@@ -889,7 +889,7 @@ index ab195e3d..3669f3ca 100644
 +│ permissions: YOLO mode                │
 +╰───────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap b/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
-index b4f744e2..2af14a3d 100644
+index b4f744e2d013e52a1e126790073ee0fb4ebd4477..2af14a3d52a249ba3ee6ae83c8ca32e42991c969 100644
 --- a/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
 +++ b/codex-rs/tui/src/onboarding/snapshots/codex_tui__onboarding__welcome__tests__welcome_logo_160x48.snap
 @@ -2,6 +2,8 @@
@@ -908,7 +908,7 @@ index b4f744e2..2af14a3d 100644
 -  Welcome to Codex, OpenAI's command-line coding agent
 +  Welcome to codEx, a community fork of OpenAI's command-line coding agent
 diff --git a/codex-rs/tui/src/onboarding/welcome.rs b/codex-rs/tui/src/onboarding/welcome.rs
-index 9c9e7b8f..fe2f5329 100644
+index 9c9e7b8f1df80f81bc5c3cf7b43e4d926b721ada..fe2f532953821afd6a0ca38bc1b814a41cf47f36 100644
 --- a/codex-rs/tui/src/onboarding/welcome.rs
 +++ b/codex-rs/tui/src/onboarding/welcome.rs
 @@ -126,8 +126,8 @@ impl WidgetRef for &WelcomeWidget {
@@ -923,7 +923,7 @@ index 9c9e7b8f..fe2f5329 100644
  
          Paragraph::new(lines)
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
-index b11e54d2..5ca1295b 100644
+index b11e54d20fcee9f6ec770ca650ade40b2fac6661..5ca1295b0f98de4427fefd6166350f5e47a16af7 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__app__tests__clear_ui_after_long_transcript_fresh_header_only.snap
 @@ -1,8 +1,10 @@
@@ -942,7 +942,7 @@ index b11e54d2..5ca1295b 100644
 +│ directory: /tmp/project                     │
 +╰─────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
-index 6065eb84..30fee030 100644
+index 6065eb84068867616a4cfdc9b7739b489aa93aad..30fee030c4ab4e89f6abdf3a301c307a1c86e2ab 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__layout__tests__owned_startup_layout.snap
 @@ -3,12 +3,12 @@ source: tui/src/startup_draft_layout_tests.rs
@@ -965,7 +965,7 @@ index 6065eb84..30fee030 100644
                                                  
                                                  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
-index a01b3b6d..d5474c72 100644
+index a01b3b6d9d2128952028bce3fe75544fde11a557..d5474c728d3eba6bdf015de08c35ca26708a589d 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_fresh_session_transitions.snap
 @@ -4,18 +4,24 @@ expression: "snapshots.join(\"\\n---\\n\")"
@@ -1063,7 +1063,7 @@ index a01b3b6d..d5474c72 100644
  
  › Ask Codex to do anything
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
-index 9ca3c37d..b69007bd 100644
+index 9ca3c37df81a69c7fc8e44a61b3f4cf3217e0d56..b69007bd67dcf9e2759ef8052a77348055ecae88 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_full_frames.snap
 @@ -1,12 +1,14 @@
@@ -1166,7 +1166,7 @@ index 9ca3c37d..b69007bd 100644
  
  › first startup
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
-index 74e7b7d1..edeaf031 100644
+index 74e7b7d1f08c1ebaee26766e72b188d3c5551e7b..edeaf031e8555be205afc24d4bf04a152d928123 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__startup_draft_onboarding_transition.snap
 @@ -5,9 +5,12 @@ expression: frames
@@ -1186,7 +1186,7 @@ index 74e7b7d1..edeaf031 100644
  
  › Ask Codex to do anything
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
-index ae2fe614..06b34ee4 100644
+index ae2fe6147157e32222fadfa8fd6ba125ba590073..06b34ee42fceb345260832e9124a165778c08d40 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__startup_draft__tests__terminal_app_ssh_startup.snap
 @@ -3,12 +3,12 @@ source: tui/src/startup_draft_tests.rs
@@ -1225,7 +1225,7 @@ index ae2fe614..06b34ee4 100644
  
  › Ask Codex to do anything
 diff --git a/codex-rs/tui/src/startup_draft_layout_tests.rs b/codex-rs/tui/src/startup_draft_layout_tests.rs
-index c9e1dab5..71f62730 100644
+index c9e1dab58ee3fcc40330d6525a8abcb0d78d0f20..71f62730dc68ac79deb550bea72a0cc1d9ac3ab7 100644
 --- a/codex-rs/tui/src/startup_draft_layout_tests.rs
 +++ b/codex-rs/tui/src/startup_draft_layout_tests.rs
 @@ -36,8 +36,10 @@ fn owned_startup_keeps_the_live_bottom_geometry() {
@@ -1241,7 +1241,7 @@ index c9e1dab5..71f62730 100644
      let mut blossom_visible = Vec::new();
      for (draft, action, pending) in [
 diff --git a/codex-rs/tui/src/startup_draft_tests.rs b/codex-rs/tui/src/startup_draft_tests.rs
-index 03a76ab4..e2f27b50 100644
+index 03a76ab4306b09fc61c359b157267c1d26c3a41f..e2f27b5018bbb6c04972324af11f1ed10f6e06ad 100644
 --- a/codex-rs/tui/src/startup_draft_tests.rs
 +++ b/codex-rs/tui/src/startup_draft_tests.rs
 @@ -304,7 +304,23 @@ async fn startup_draft_hydrates_its_header_without_moving_the_composer() {
@@ -1282,7 +1282,7 @@ index 03a76ab4..e2f27b50 100644
          startup_draft_renderable(&pump.header, &pump.bottom_pane, pump.session_action)
              .desired_height(width),
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 65ef9f65..45dfadcd 100644
+index 65ef9f651d7e71ea94f8b9e135226818cdda5c5b..45dfadcd2ac6ccf8cb8fcf3b549a49b02399c976 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
 @@ -735,7 +735,13 @@ impl StatusHistoryCell {
@@ -1301,7 +1301,7 @@ index 65ef9f65..45dfadcd 100644
          let account_value = self.account.as_ref().map(|account| match account {
              StatusAccountDisplay::ChatGpt { email, plan } => match (email, plan) {
 diff --git a/codex-rs/tui/tests/suite/external_editor_tests.rs b/codex-rs/tui/tests/suite/external_editor_tests.rs
-index fe5f019f..869ff829 100644
+index fe5f019f844db87fd3394c61837d96517c7998a5..869ff82990b727b23d26183e151fbeba92495840 100644
 --- a/codex-rs/tui/tests/suite/external_editor_tests.rs
 +++ b/codex-rs/tui/tests/suite/external_editor_tests.rs
 @@ -66,7 +66,7 @@ fn external_editors_keep_the_screen_and_return_the_draft() -> Result<()> {
@@ -1314,7 +1314,7 @@ index fe5f019f..869ff829 100644
              }
              ensure!(
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index 645f115c..3bd6ab6c 100644
+index 645f115c35e5103fb64dd3ce3ed1b9d3af82c512..3bd6ab6cc1d01693f7b8b4736686543a01ad2a98 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
 @@ -210,8 +210,7 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
@@ -1337,7 +1337,7 @@ index 645f115c..3bd6ab6c 100644
              }
  
 diff --git a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
-index ee79c7ca..d0a7d35b 100644
+index ee79c7ca58f065ccb509cd1d0209e1080d155361..d0a7d35bfa0852510e7af98189bbcb3325c05d26 100644
 --- a/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
 +++ b/codex-rs/tui/tests/suite/gov_cloud_guidance_tests.rs
 @@ -36,7 +36,7 @@ fn gov_cloud_startup_persists_only_acknowledgment() -> Result<()> {
@@ -1350,7 +1350,7 @@ index ee79c7ca..d0a7d35b 100644
              }
              ensure!(Instant::now() < deadline, "{action} did not complete");
 diff --git a/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap b/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
-index 0d40a847..f3566b4c 100644
+index 0d40a8478292495aaae3d410ae4523a5a5121288..f3566b4c874458eeb6ad76eb439821c02c409614 100644
 --- a/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
 +++ b/codex-rs/tui/tests/suite/snapshots/all__suite__focus_palette__daemon_auto_start_failure.snap
 @@ -1,7 +1,13 @@
