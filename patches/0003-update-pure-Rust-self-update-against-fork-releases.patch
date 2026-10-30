@@ -1,4 +1,4 @@
-From a8e8b4b1932bf8ec13221bcc1c3d15d18468bfd7 Mon Sep 17 00:00:00 2001
+From 1655ffd91640dc4ef564edc33bdad14c269455c2 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -8,14 +8,14 @@ Subject: update: pure-Rust self-update against fork releases
  .../app-server-daemon/src/manual_update.rs    |  284 ----
  codex-rs/app-server-daemon/src/migration.rs   |  193 ---
  .../app-server-daemon/src/prepare_install.rs  |    4 +-
- codex-rs/app-server-daemon/src/update_loop.rs |  768 +---------
- .../src/update_loop_tests.rs                  | 1362 +----------------
+ codex-rs/app-server-daemon/src/update_loop.rs |  770 +--------
+ .../src/update_loop_tests.rs                  | 1385 +----------------
  codex-rs/cli/Cargo.toml                       |    4 +
  codex-rs/cli/src/app_cmd.rs                   |   25 -
  codex-rs/cli/src/daemon_install.rs            |    2 +-
  codex-rs/cli/src/daemon_install_tests.rs      |    2 +-
  codex-rs/cli/src/daemon_update_tests.rs       |   29 +-
- codex-rs/cli/src/desktop_app/mac.rs           |  513 -------
+ codex-rs/cli/src/desktop_app/mac.rs           |  513 ------
  codex-rs/cli/src/desktop_app/mod.rs           |   22 -
  codex-rs/cli/src/desktop_app/windows.rs       |  133 --
  codex-rs/cli/src/doctor.rs                    |   16 -
@@ -31,7 +31,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/main.rs                      |  480 ++----
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
- codex-rs/cli/src/remote_control_cmd.rs        |  859 -----------
+ codex-rs/cli/src/remote_control_cmd.rs        |  859 ----------
  codex-rs/cli/src/self_update.rs               |  875 +++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
@@ -52,20 +52,20 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/tui/src/history_cell/notices.rs      |   25 +-
  ...pdate_available_history_cell_snapshot.snap |   11 -
  ...nfo_availability_nux_tooltip_snapshot.snap |   10 +-
- ...pdate_available_history_cell_snapshot.snap |   14 +-
+ ...pdate_available_history_cell_snapshot.snap |   15 +-
  ...pdate_available_history_cell_snapshot.snap |   12 -
  codex-rs/tui/src/history_cell/tests.rs        |   18 -
  ...__tests__update_picker_selected_28x12.snap |    8 +-
  ...te_prompt__tests__update_prompt_modal.snap |    6 +-
  codex-rs/tui/src/startup_orchestration.rs     |    1 -
- codex-rs/tui/src/update_action.rs             |  117 +-
+ codex-rs/tui/src/update_action.rs             |  124 +-
  codex-rs/tui/src/update_prompt.rs             |    7 +-
  codex-rs/tui/src/update_versions.rs           |   23 +-
  codex-rs/tui/src/updates.rs                   |   82 +-
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1653 insertions(+), 6720 deletions(-)
+ 61 files changed, 1664 insertions(+), 6742 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -90,10 +90,10 @@ Subject: update: pure-Rust self-update against fork releases
  create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index 0c4f95ff2fce3ad7322253148c63f2ddf4ce41b2..aeacee85dc636b16d221718b63a12eb5631e149f 100644
+index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01c605f74e 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
-@@ -313,15 +313,6 @@ pub fn maintain_stderr_log() -> Result<()> {
+@@ -314,15 +314,6 @@ pub fn maintain_stderr_log() -> Result<()> {
      Ok(())
  }
  
@@ -109,7 +109,7 @@ index 0c4f95ff2fce3ad7322253148c63f2ddf4ce41b2..aeacee85dc636b16d221718b63a12eb5
  #[cfg(any(unix, windows))]
  fn ensure_supported_platform() -> Result<()> {
      Ok(())
-@@ -873,19 +864,6 @@ impl Daemon {
+@@ -876,19 +867,6 @@ impl Daemon {
          backend::pid_update_loop_backend(self.backend_paths(&settings))
              .stop()
              .await?;
@@ -129,7 +129,7 @@ index 0c4f95ff2fce3ad7322253148c63f2ddf4ce41b2..aeacee85dc636b16d221718b63a12eb5
          if let Some(backend) = self.running_backend_instance(&settings).await? {
              if let Err(err) = thread_recovery::discard_pending(self) {
                  eprintln!("warning: failed to clear stale daemon recovery before bootstrap: {err}");
-@@ -899,46 +877,6 @@ impl Daemon {
+@@ -902,46 +880,6 @@ impl Daemon {
          backend.start().await?;
          let info = self.wait_until_ready().await?;
          let auto_update_enabled = managed.ensure_managed_updater(&settings).await?;
@@ -176,7 +176,7 @@ index 0c4f95ff2fce3ad7322253148c63f2ddf4ce41b2..aeacee85dc636b16d221718b63a12eb5
          let managed_codex_version = managed.managed_codex_version_best_effort().await;
          Ok(BootstrapOutput {
              status: BootstrapStatus::Bootstrapped,
-@@ -1078,7 +1016,11 @@ impl Daemon {
+@@ -1081,7 +1019,11 @@ impl Daemon {
  
          let managed_codex_path = self.managed_codex_bin.display();
          Err(anyhow!(
@@ -189,7 +189,7 @@ index 0c4f95ff2fce3ad7322253148c63f2ddf4ce41b2..aeacee85dc636b16d221718b63a12eb5
          ))
      }
  
-@@ -1110,10 +1052,6 @@ impl Daemon {
+@@ -1113,10 +1055,6 @@ impl Daemon {
          }
      }
  
@@ -712,10 +712,10 @@ index ef09b6dab12e4edeefdf0b3ac90dced9d63e8405..0c7e3f28e1aa3e7c2c355983e8f4dc22
      let name = if stable && mode == InstallMode::Missing {
          format!("{version}-{target}")
 diff --git a/codex-rs/app-server-daemon/src/update_loop.rs b/codex-rs/app-server-daemon/src/update_loop.rs
-index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11f503df02 100644
+index 344aba56e502dc80abe0dc3bac679f667dc526a1..7bd2c1e833f062644f18b102474ad8f71cd90ce0 100644
 --- a/codex-rs/app-server-daemon/src/update_loop.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop.rs
-@@ -1,124 +1,55 @@
+@@ -1,314 +1,100 @@
 -//! Owns scheduled and manual installs, daemon restarts, and updater replacement.
 +//! Owns scheduled update checks, daemon restarts, and updater replacement.
 +//!
@@ -810,9 +810,14 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
  pub(crate) async fn run(
 -    http_client_factory: HttpClientFactory,
 -    restore_release: Option<String>,
--) -> Result<()> {
--    let daemon = Daemon::from_environment()?;
--    crate::backend::stderr_log::start(daemon.update_pid_file.with_extension("stderr.log"));
++    _http_client_factory: HttpClientFactory,
++    _restore_release: Option<String>,
+ ) -> Result<()> {
+     let daemon = Daemon::from_environment()?;
++    // Keep the updater's own stderr, so a failed supervision cycle is still
++    // visible in the updater log after the process exits. Upstream starts the
++    // same sink at the same point.
+     crate::backend::stderr_log::start(daemon.update_pid_file.with_extension("stderr.log"));
 -    let http = RouteAwareClientPool::new_without_request_logging(
 -        http_client_factory,
 -        ClientRouteClass::Other,
@@ -831,35 +836,37 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
 -    daemon: &Daemon,
 -    running_updater_identity: &ExecutableIdentity,
 -    mut restore_release: Option<String>,
-+    _http_client_factory: HttpClientFactory,
-+    _restore_release: Option<String>,
- ) -> Result<()> {
+-) -> Result<()> {
      #[cfg(unix)]
      let mut terminate =
          signal(SignalKind::terminate()).context("failed to install updater shutdown handler")?;
--    #[cfg(any(target_os = "linux", target_os = "macos"))]
--    {
++    // An updater keeps its PID across exec during an upgrade, so a record
++    // written by an older build is promoted to the native identity format
++    // before ownership is resolved. Inspection failures must preserve the
++    // legacy record without blocking updates.
+     #[cfg(any(target_os = "linux", target_os = "macos"))]
+     {
 -        let paths = daemon.backend_paths(&DaemonSettings::default());
--        for backend in [
--            crate::backend::pid_backend(paths.clone()),
--            crate::backend::pid_update_loop_backend(paths),
--        ] {
++        let paths = daemon.backend_paths(&crate::settings::DaemonSettings::default());
+         for backend in [
+             crate::backend::pid_backend(paths.clone()),
+             crate::backend::pid_update_loop_backend(paths),
+         ] {
 -            // Inspection failures must preserve legacy records without blocking updates.
--            let _ = backend.promote_legacy_identity().await;
--        }
--    }
+             let _ = backend.promote_legacy_identity().await;
+         }
+     }
      #[cfg(windows)]
-     let updater = {
+-    let updater = {
++    let updater = crate::backend::pid_update_loop_backend(
          // Updater ownership needs only paths, not settings that may be mid-edit.
 -        crate::backend::pid_update_loop_backend(daemon.backend_paths(&DaemonSettings::default()))
-+        let daemon = Daemon::from_environment()?;
-+        crate::backend::pid_update_loop_backend(
-+            daemon.backend_paths(&daemon.load_settings().await?),
-+        )
-     };
+-    };
++        daemon.backend_paths(&daemon.load_settings().await?),
++    );
      #[cfg(windows)]
      updater.wait_for_ownership().await?;
-@@ -126,189 +57,24 @@ async fn run_with_http(
+     #[cfg(windows)]
      let mut terminate = Signal;
      #[cfg(windows)]
      let _installer_job = crate::backend::windows::updater_job()?;
@@ -1001,8 +1008,12 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
 +        #[cfg(windows)]
 +        updater.wait_for_ownership().await?;
 +        match update_once(&running_updater_identity, &mut terminate).await {
-+            Ok(UpdateLoopControl::Continue) | Err(_) => {}
++            Ok(UpdateLoopControl::Continue) => {}
 +            Ok(UpdateLoopControl::Stop) => return Ok(()),
++            // A failed cycle must not end supervision, but it must not vanish
++            // either: the next attempt is an hour away and the updater log is
++            // the only place a user can see why nothing happened.
++            Err(err) => eprintln!("codEx updater: supervision cycle failed: {err:#}"),
          }
 -    }
 -}
@@ -1062,7 +1073,7 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
      }
  }
  
-@@ -324,136 +90,19 @@ enum UpdateLoopControl {
+@@ -324,136 +110,19 @@ enum UpdateLoopControl {
      Stop,
  }
  
@@ -1206,7 +1217,7 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
          }
          match daemon
              .try_restart_if_running(restart_mode, &managed_codex_bin, &package_root)
-@@ -461,90 +110,39 @@ async fn update_once(
+@@ -461,90 +130,39 @@ async fn update_once(
          {
              RestartIfRunningOutcome::Busy => {
                  if sleep_or_terminate(RESTART_RETRY_INTERVAL, terminate).await {
@@ -1317,7 +1328,7 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
  }
  
  async fn current_updater_identity() -> Result<ExecutableIdentity> {
-@@ -553,246 +151,22 @@ async fn current_updater_identity() -> Result<ExecutableIdentity> {
+@@ -553,246 +171,22 @@ async fn current_updater_identity() -> Result<ExecutableIdentity> {
      executable_identity(&current_exe).await
  }
  
@@ -1577,10 +1588,10 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..97918fb8ffd94c3559cefb4e4163fd11
  mod tests;
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad0d087eff 100644
+index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae61bb5658 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1,1361 +1,27 @@
+@@ -1,1384 +1,27 @@
 -use std::sync::Mutex;
 -#[cfg(unix)]
 -use std::time::Duration;
@@ -1637,7 +1648,7 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -}
 -
 -#[cfg(unix)]
- #[test]
+-#[test]
 -fn updater_reexec_preserves_paths_and_recovers_deleted_working_directory() {
 -    use std::os::unix::ffi::OsStrExt;
 -    use std::os::unix::fs::PermissionsExt;
@@ -1741,7 +1752,7 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -}
 -
 -#[cfg(unix)]
--#[test]
+ #[test]
 -fn updater_reexec_child() {
 -    use std::os::unix::process::CommandExt;
 -
@@ -2089,7 +2100,8 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -            .await
 -            .expect("send response");
 -    });
--    assert_eq!(
++fn unchanged_updater_uses_version_based_restart() {
+     assert_eq!(
 -        super::manual_update::request(&daemon)
 -            .await
 -            .expect("request survives handoff"),
@@ -2351,8 +2363,7 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -            Some(RestartIfRunningOutcome::AlreadyCurrent)
 -        )
 -    ));
-+fn unchanged_updater_uses_version_based_restart() {
-     assert_eq!(
+-    assert_eq!(
 -        std::fs::read(&daemon.pid_file).expect("daemon PID record"),
 -        pid_record
 -    );
@@ -2405,8 +2416,8 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -        std::fs::read(&daemon.pid_file).expect("daemon PID record"),
 -        previous_pid_record
 +        update_modes_for_identities(
-+            &executable_identity_from_reader(b"same".as_slice()),
-+            &executable_identity_from_reader(b"same".as_slice()),
++            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
++            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
 +        ),
 +        RestartMode::IfVersionChanged
      );
@@ -2418,6 +2429,29 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -#[tokio::test]
 -async fn manual_update_restarts_managed_daemon_with_automatic_updates_disabled() {
 -    check_manual_update_restart("standalone").await;
+-}
+-
+-#[cfg(any(target_os = "linux", target_os = "macos"))]
+-#[tokio::test]
+-async fn readiness_waits_for_a_slow_managed_daemon() {
+-    let home = TempDir::new().unwrap();
+-    let (daemon, _) = manual_update_daemon(&home);
+-    let settings = crate::settings::DaemonSettings::default();
+-    let backend = crate::backend::pid_backend(daemon.backend_paths(&settings));
+-    backend.start().await.unwrap();
+-
+-    tokio::time::pause();
+-    let (ready, listener) = tokio::join!(daemon.wait_until_ready(), async {
+-        // Model a cold start that takes longer than the old Linux readiness deadline.
+-        tokio::time::sleep(Duration::from_secs(15)).await;
+-        tokio::time::resume();
+-        test_control_server(&daemon, home.path())
+-            .await
+-            .abort_handle()
+-    });
+-    backend.stop().await.unwrap();
+-    listener.abort();
+-    assert_eq!(ready.unwrap().app_server_version, "1.0.0");
 -}
 -
 -#[cfg(unix)]
@@ -2494,8 +2528,8 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -        assert_eq!(restarted.unwrap().status, crate::LifecycleStatus::Restarted);
 -        assert_eq!(args.unwrap(), expected);
 -    }
--}
--
+ }
+ 
 -#[cfg(unix)]
 -#[tokio::test]
 -async fn confirmed_feature_restart_preserves_ownership_and_skips_matching_settings() {
@@ -2568,8 +2602,8 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -#[tokio::test]
 -async fn manual_update_restarts_local_daemon_with_automatic_updates_disabled() {
 -    check_manual_update_restart("app-server-daemon").await;
- }
- 
+-}
+-
 -#[cfg(unix)]
 -async fn check_manual_update_restart(package_directory: &str) {
 -    use tokio::io::AsyncReadExt;
@@ -2813,8 +2847,8 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -            std::path::Path::new("packages/app-server-daemon"),
 -            futures::future::pending(),
 +        update_modes_for_identities(
-+            &executable_identity_from_reader(b"old".as_slice()),
-+            &executable_identity_from_reader(b"new".as_slice()),
++            &executable_identity_from_reader(b"old".as_slice()).expect("executable identity"),
++            &executable_identity_from_reader(b"new".as_slice()).expect("executable identity"),
          ),
 -    )
 -    .await
@@ -2957,7 +2991,7 @@ index 02aca068a152f8bd86705b02a3d29864a4fec29a..2bc9fb8cdd143e6873f07335f954e2ad
 -    }
  }
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index cad79b2cb27dcde27ee830211f57d8e12e95b44a..4c7ce4ac948e18aa4ad187b31638161435a926a2 100644
+index ffff79d3312d781d02b959ec36902822c4cb87da..10496b56240da63695ab650a5957520c3d20a35d 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
 @@ -84,6 +84,7 @@ codex-utils-path-uri = { workspace = true }
@@ -2968,7 +3002,7 @@ index cad79b2cb27dcde27ee830211f57d8e12e95b44a..4c7ce4ac948e18aa4ad187b316381614
  futures = { workspace = true }
  http = { workspace = true }
  libc = { workspace = true }
-@@ -93,9 +94,11 @@ owo-colors = { workspace = true }
+@@ -92,9 +93,11 @@ owo-colors = { workspace = true }
  regex-lite = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -2980,7 +3014,7 @@ index cad79b2cb27dcde27ee830211f57d8e12e95b44a..4c7ce4ac948e18aa4ad187b316381614
  tempfile = { workspace = true }
  tokio = { workspace = true, features = [
      "io-std",
-@@ -121,6 +124,7 @@ tikv-jemallocator = { workspace = true }
+@@ -120,6 +123,7 @@ tikv-jemallocator = { workspace = true }
  codex_windows_sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
  windows-sys = { workspace = true, features = [
      "Win32_Foundation",
@@ -3784,10 +3818,10 @@ index ab0f757321c806cf8e93e74fff6961c7d442cbd9..00000000000000000000000000000000
 -    }
 -}
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
-index 10d1cefc92cc412d752157aa2b3823b092a57e81..95745917ca62b754eace7ece61dd17e801bbc1da 100644
+index 18149ce607e203f1fd56c553af919a07ed388fbb..bc73cc83a577446da36dc037425a735d9b4af236 100644
 --- a/codex-rs/cli/src/doctor.rs
 +++ b/codex-rs/cli/src/doctor.rs
-@@ -73,7 +73,6 @@ use serde::Serialize;
+@@ -74,7 +74,6 @@ use serde::Serialize;
  use supports_color::Stream;
  
  mod background;
@@ -3795,7 +3829,7 @@ index 10d1cefc92cc412d752157aa2b3823b092a57e81..95745917ca62b754eace7ece61dd17e8
  mod disk;
  mod filesystem_paths;
  mod git;
-@@ -90,10 +89,6 @@ mod updates;
+@@ -91,10 +90,6 @@ mod updates;
  #[cfg(target_os = "windows")]
  mod windows_dev_drive;
  
@@ -3806,7 +3840,7 @@ index 10d1cefc92cc412d752157aa2b3823b092a57e81..95745917ca62b754eace7ece61dd17e8
  use background::background_server_check;
  use git::git_check;
  use output::HumanOutputOptions;
-@@ -589,17 +584,6 @@ async fn build_report(
+@@ -566,17 +561,6 @@ async fn build_report(
          }
      }
  
@@ -3823,7 +3857,7 @@ index 10d1cefc92cc412d752157aa2b3823b092a57e81..95745917ca62b754eace7ece61dd17e8
 -
      progress.settle();
  
-     let overall_status = overall_status(&checks);
+     report_from_checks(checks)
 diff --git a/codex-rs/cli/src/doctor/desktop.rs b/codex-rs/cli/src/doctor/desktop.rs
 deleted file mode 100644
 index 96b6a0607ced01e1221ea989ae48dc11a6d6d30a..0000000000000000000000000000000000000000
@@ -5839,7 +5873,7 @@ index fbad7d91ce5a95769a8b45412d6178cff08e9577..1e1fd1de3377e617dd8ac59d4cd666ff
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba20796541968155435581 100644
+index 8a578c38a7d3d6dae042b4ef623b7ba96122d6f0..e50911dcc71e766707f6f46a94b42df510a0e667 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -5850,21 +5884,20 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  use codex_arg0::Arg0DispatchPaths;
  use codex_arg0::arg0_dispatch_or_else;
  use codex_chatgpt::apply_command::ApplyCommand;
-@@ -18,7 +17,6 @@ use codex_cli::run_login_with_api_key;
- use codex_cli::run_login_with_chatgpt;
+@@ -19,7 +18,6 @@ use codex_cli::run_login_with_api_key;
+ use codex_cli::run_login_with_browser;
  use codex_cli::run_login_with_device_code;
  use codex_cli::run_logout;
 -use codex_cloud_tasks::Cli as CloudTasksCli;
  use codex_exec::Cli as ExecCli;
  use codex_exec::Command as ExecCommand;
  use codex_exec::ReviewArgs;
-@@ -50,14 +48,10 @@ use supports_color::Stream;
+@@ -51,13 +49,9 @@ use supports_color::Stream;
  #[global_allocator]
  static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
  
 -#[cfg(any(target_os = "macos", target_os = "windows"))]
 -mod app_cmd;
- mod cloud_config;
  mod config_override_args;
  mod daemon_install;
  mod daemon_telemetry;
@@ -5873,7 +5906,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  mod doctor;
  #[cfg(test)]
  #[path = "exec_args_tests.rs"]
-@@ -76,20 +70,18 @@ mod migrate_nfs_db;
+@@ -72,19 +66,17 @@ mod migrate_nfs_db;
  mod migrate_rollouts;
  mod plugin_cmd;
  mod queue_cmd;
@@ -5887,16 +5920,15 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
 -#[cfg(not(windows))]
 -mod wsl_paths;
  
- use crate::exec_server_command::ExecServerCommand;
  use crate::mcp_cmd::McpCli;
  use crate::plugin_cmd::PluginCli;
  use crate::plugin_cmd::PluginSubcommand;
  use crate::queue_cmd::QueueCommand;
 -use crate::remote_control_cmd::RemoteControlCommand;
+ use codex_exec_server_cli::ExecServerCommand;
  use doctor::DoctorCommand;
  use state_db_recovery as local_state_db;
- 
-@@ -114,13 +106,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -110,13 +102,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -5916,7 +5948,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -146,6 +142,14 @@ struct MultitoolCli {
+@@ -142,6 +138,14 @@ struct MultitoolCli {
      subcommand: Option<Subcommand>,
  }
  
@@ -5931,7 +5963,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  #[derive(Debug, clap::Subcommand)]
  enum Subcommand {
      /// Browse all agent sessions on the shared local app-server daemon.
-@@ -176,18 +180,11 @@ enum Subcommand {
+@@ -172,18 +176,11 @@ enum Subcommand {
      /// [experimental] Run the app server or related tooling.
      AppServer(AppServerCommand),
  
@@ -5952,7 +5984,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
      Doctor(DoctorCommand),
-@@ -230,10 +227,6 @@ enum Subcommand {
+@@ -226,10 +223,6 @@ enum Subcommand {
      /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
      Fork(ForkCommand),
  
@@ -5963,7 +5995,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      /// Internal: run the responses API proxy.
      #[clap(hide = true)]
      ResponsesApiProxy(ResponsesApiProxyArgs),
-@@ -672,7 +665,11 @@ enum AppServerDaemonSubcommand {
+@@ -668,7 +661,11 @@ enum AppServerDaemonSubcommand {
      /// Restart the local app server daemon.
      Restart,
  
@@ -5976,7 +6008,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      Update {
          /// Copy and pin this CLI package.
          #[arg(long)]
-@@ -682,12 +679,6 @@ enum AppServerDaemonSubcommand {
+@@ -678,12 +675,6 @@ enum AppServerDaemonSubcommand {
          yes: bool,
      },
  
@@ -5989,7 +6021,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      /// Stop the local app server daemon.
      Stop,
  
-@@ -766,7 +757,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -762,7 +753,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -5998,7 +6030,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      exit_info: AppExitInfo,
      cli_executable: Option<&std::path::Path>,
  ) -> anyhow::Result<()> {
-@@ -793,97 +784,56 @@ fn handle_app_exit(
+@@ -789,97 +780,56 @@ fn handle_app_exit(
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -6130,7 +6162,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -895,10 +845,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -891,10 +841,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -6143,7 +6175,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      }
  }
  
-@@ -1101,6 +1051,9 @@ async fn cli_main(
+@@ -1097,6 +1047,9 @@ async fn cli_main(
          .shared
          .take_auto_review_config_overrides(&mut root_config_overrides);
      reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
@@ -6153,7 +6185,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      if let Some(subcommand) = subcommand.as_ref() {
          profile_v2_for_subcommand(&interactive, subcommand)?;
      }
-@@ -1157,7 +1110,7 @@ async fn cli_main(
+@@ -1153,7 +1106,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -6162,7 +6194,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          }
          Some(Subcommand::TcpTunnel(args)) => {
              return codex_tcp_tunnel::run(args).await;
-@@ -1388,10 +1341,17 @@ async fn cli_main(
+@@ -1384,10 +1337,17 @@ async fn cli_main(
                          })
                          .await?;
                      }
@@ -6184,7 +6216,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
                          let result = codex_app_server_daemon::update_from_cli(|request| {
                              daemon_install::confirm_install(request, yes)
                          })
-@@ -1407,31 +1367,13 @@ async fn cli_main(
+@@ -1403,31 +1363,13 @@ async fn cli_main(
                              println!("{}", serde_json::to_string(&output)?);
                          }
                      }
@@ -6218,7 +6250,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
                          ..
                      } => {
                          let cli_overrides = root_config_overrides
-@@ -1443,36 +1385,15 @@ async fn cli_main(
+@@ -1439,36 +1381,15 @@ async fn cli_main(
                              .await
                              .map_err(anyhow::Error::from);
                          let http_client_factory = updater_http_client_factory(config)?;
@@ -6264,7 +6296,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
                      }
                  },
                  Some(AppServerSubcommand::Proxy(proxy_cli)) => {
-@@ -1507,30 +1428,6 @@ async fn cli_main(
+@@ -1503,30 +1424,6 @@ async fn cli_main(
                  }
              }
          }
@@ -6295,7 +6327,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1558,7 +1455,7 @@ async fn cli_main(
+@@ -1554,7 +1451,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -6304,7 +6336,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          }
          Some(Subcommand::Archive(cmd)) => {
              let output = run_session_archive_cli_command(
-@@ -1658,7 +1555,7 @@ async fn cli_main(
+@@ -1654,7 +1551,7 @@ async fn cli_main(
                  arg0_paths.clone(),
              )
              .await?;
@@ -6313,7 +6345,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          }
          Some(Subcommand::Login(mut login_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1724,13 +1621,13 @@ async fn cli_main(
+@@ -1720,13 +1617,13 @@ async fn cli_main(
              )?;
              print_completion(completion_cli);
          }
@@ -6329,7 +6361,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1746,19 +1643,6 @@ async fn cli_main(
+@@ -1742,19 +1639,6 @@ async fn cli_main(
              )
              .await?;
          }
@@ -6349,7 +6381,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          Some(Subcommand::Sandbox(SandboxCommand {
              host: mut sandbox_cli,
              subcommand,
-@@ -2320,6 +2204,24 @@ fn reject_unsupported_worktree_for_subcommand(
+@@ -2322,6 +2206,24 @@ fn reject_unsupported_worktree_for_subcommand(
      }
  }
  
@@ -6374,7 +6406,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  fn reject_root_strict_config_for_subcommand(
      strict_config: bool,
      subcommand: &Option<Subcommand>,
-@@ -2368,18 +2270,14 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2370,18 +2272,14 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -6394,7 +6426,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2431,12 +2329,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2433,12 +2331,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
              AppServerDaemonSubcommand::Update { .. } => "app-server daemon update",
@@ -6407,7 +6439,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop { .. } => "app-server daemon pid-update-loop",
-@@ -2464,14 +2356,6 @@ fn updater_http_client_factory(
+@@ -2466,14 +2358,6 @@ fn updater_http_client_factory(
      Ok(config.http_client_factory())
  }
  
@@ -6422,7 +6454,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -2839,52 +2723,6 @@ mod tests {
+@@ -2837,52 +2721,6 @@ mod tests {
          assert!(size < 64 * 1024, "interactive TUI future is {size} bytes");
      }
  
@@ -6475,7 +6507,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      #[tokio::test]
      async fn updater_http_client_factory_honors_respect_system_proxy() {
          let codex_home = tempfile::tempdir().expect("temporary Codex home");
-@@ -3667,7 +3505,24 @@ enabled = true
+@@ -3625,7 +3463,24 @@ enabled = true
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -6501,7 +6533,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      }
  
      #[test]
-@@ -4460,17 +4315,17 @@ enabled = true
+@@ -4416,17 +4271,17 @@ enabled = true
              "`--strict-config` is not supported for `codex mcp`"
          );
  
@@ -6522,7 +6554,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
          );
      }
  
-@@ -4491,31 +4346,31 @@ enabled = true
+@@ -4447,31 +4302,31 @@ enabled = true
      }
  
      #[test]
@@ -6577,7 +6609,7 @@ index f87786eafb0b0d3b41d3d3eb9f4ae8e4f64e5bf0..dbaecded6aa091ec3aba207965419681
      }
  
      #[test]
-@@ -4830,24 +4685,17 @@ enabled = true
+@@ -4786,24 +4641,17 @@ enabled = true
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -8651,7 +8683,7 @@ index 72b10fa51b3b73615a5070f22977d00bdc2d7c34..02a8b53b62fb7cf0aca41da1ea769956
      assert!(daemon.pid("app-server-updater.pid").is_err());
      Ok(())
 diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
-index 55cc4dfd987290a75a83d448e27b08e58702fef5..d59c26ace05e3db585500e63e93e83046d468e04 100644
+index 13b6914968de2dd8789641a146d0353077825c6c..5f1195ddac703fde9b2e336b9de622e72440045b 100644
 --- a/codex-rs/cli/tests/worktree.rs
 +++ b/codex-rs/cli/tests/worktree.rs
 @@ -611,7 +611,7 @@ trust_level = "trusted"
@@ -8892,7 +8924,7 @@ index 0498495092a94fe97b683f199f01501e9bde21f5..871526ae4176d1984dca1876e404cb04
      app.daemon_cli_executable = None;
      app.open_daemon_menu();
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
-index 4a946119946cae246bfb2721f7abc9b363c1df3b..4460cffb5e0086e8451d7ac7eb1e616517392533 100644
+index 4a946119946cae246bfb2721f7abc9b363c1df3b..f78ae6231e2842e5e213ee4356b8d5cb900fc37e 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 @@ -1,18 +1,17 @@
@@ -8912,7 +8944,7 @@ index 4a946119946cae246bfb2721f7abc9b363c1df3b..4460cffb5e0086e8451d7ac7eb1e6165
                  Update daemon and exit Codex?
 -                Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the
 -                complete package and pin it against automatic updates.
-+                Update the daemon to this CLI package v0.164.0 from /x/cli-build/
++                Update the daemon to this CLI package v0.166.0 from /x/cli-build/
 +                bin/codex. Copy the complete package and pin it against automatic
 +                updates.
                  This may restart the daemon and interrupt active or queued work.
@@ -9065,7 +9097,7 @@ index 870b86f61cf4b6daa6a73074549ed7e558a0a3d0..47b5e478306f048d3bf9b0aa9f5e942a
                                                                 Copying 5 chars…
  
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index f102e25b47ab99b4871792797e86da2a51e07cbb..f62842f5bcd73606921196758d67ec004efda637 100644
+index d77c233ba7bc5f60e5922ec17ef2dff2ea461389..be71b119452cb69e95d7850d2b5f034ad4404d7a 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 @@ -446,6 +446,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
@@ -9096,7 +9128,7 @@ index 335071a07742e41b50ce0eb62805f740d019b586..b37853d5ce444e707eb518538fc06f79
  
    gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index 06d7b2f13a544f3e4b7bc83f57ecdd103b060c3b..4d421ee401fb5d785cbbbe025cbccd5a3af24f05 100644
+index 9f5e2137f0ecb1b70c7a17b3ed14659d5b308b7a..ec4feee07bafa1947c041f0c70e372d430856759 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -5,6 +5,7 @@ use crate::style::accent_color;
@@ -9181,7 +9213,7 @@ index a9dd9cac784bd0993eb09bc518071a1e253f0ae2..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..99e2543efb837a28835cab9ff253377334860fcc 100644
+index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..7673524354bafe9fb5e4c9f8e704a85cc9d5f692 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,10 +1,12 @@
@@ -9194,7 +9226,7 @@ index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..99e2543efb837a28835cab9ff2533773
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭─────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                 │
++│ >_ codEx (v0.166.0)                 │
 +│                                     │
 +│ model:     gpt-5   /model to change │
 +│ directory: /tmp/project             │
@@ -9202,22 +9234,23 @@ index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..99e2543efb837a28835cab9ff2533773
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index c8f352dbb49ceafe78df86e841e95824c4e6f469..ddc803bf4efc9880b2540f6528b261d7950fa91d 100644
+index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..64a3c8673212ad8351dc719fdf94764e8021b4a5 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-@@ -2,10 +2,10 @@
+@@ -2,11 +2,10 @@
  source: tui/src/history_cell/tests.rs
  expression: rendered
  ---
--╭─────────────────────────────────────────────────────────────────────────────────────────────────────╮
--│ ✨ Update available! 0.0.0 -> 9.9.9                                                                 │
--│ Run sh -c 'curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh' to update. │
--│                                                                                                     │
--│ See full release notes:                                                                             │
--│ https://github.com/openai/codex/releases/latest                                                     │
--╰─────────────────────────────────────────────────────────────────────────────────────────────────────╯
+-╭────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+-│ ✨ Update available! 0.0.0 -> 9.9.9                                                                        │
+-│ Run sh -c 's=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s"' to   │
+-│ update.                                                                                                    │
+-│                                                                                                            │
+-│ See full release notes:                                                                                    │
+-│ https://github.com/openai/codex/releases/latest                                                            │
+-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.164.0 -> 9.9.9            │
++│ ✨ Update available! 0.166.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -9242,10 +9275,10 @@ index fb15a05775d4063e2780ba29d0ae15e9ad5297c8..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index 8996d8e3a10914da82df1204ef570f35b37b83c6..c27e07371e78afd4a3f235d242c29e55516ffd94 100644
+index cc7f2f668c054576111254d561e5d64104a86ddc..8b04e8d472b9362b297ca8dd396aa5e839146a6f 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1379,24 +1379,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1381,24 +1381,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -9271,7 +9304,7 @@ index 8996d8e3a10914da82df1204ef570f35b37b83c6..c27e07371e78afd4a3f235d242c29e55
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053051ed137cd64a19611d6f7dee8ca284a1..dfd1aaecfadc03d7da2948bedfd6e430d41319be 100644
+index 53c8053051ed137cd64a19611d6f7dee8ca284a1..bc5c65839056cbfbb8013dc2c06c2a7214e2d9a6 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
@@ -9281,7 +9314,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..dfd1aaecfadc03d7da2948bedfd6e430
 -  Update available · 0.0.0
 -  → 9.9.9
 +  Update available ·
-+  0.164.0 → 9.9.9
++  0.166.0 → 9.9.9
    Release notes:
 -  https://github.com/opena
 -  i/codex/releases/latest
@@ -9291,7 +9324,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..dfd1aaecfadc03d7da2948bedfd6e430
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642270e9b9c612d1b62ccedf6d305b9b84d0..bdb6209bf532986b6aa2476dea518fdf44f640d3 100644
+index b547642270e9b9c612d1b62ccedf6d305b9b84d0..6e2a254fada4c351c2e0bb7c8f2da3f32ac0889c 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
@@ -9300,7 +9333,7 @@ index b547642270e9b9c612d1b62ccedf6d305b9b84d0..bdb6209bf532986b6aa2476dea518fdf
  
 -  Update available · 0.0.0 → 9.9.9
 -  Release notes: https://github.com/openai/codex/releases/latest
-+  Update available · 0.164.0 → 9.9.9
++  Update available · 0.166.0 → 9.9.9
 +  Release notes: https://github.com/NIyueeE/codEx/releases/latest
  
 -› 1. Update now (runs `npm install -g @openai/codex`)                           
@@ -9309,10 +9342,10 @@ index b547642270e9b9c612d1b62ccedf6d305b9b84d0..bdb6209bf532986b6aa2476dea518fdf
    3. Skip until next version
  
 diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
-index d3fde7278f62eab966d120991ac5b1aaddf19459..cb86af5deaaa86c8e5905ace52c724b574783fac 100644
+index 6a8d96c97109a26e71724bf6f6e277000550c2cf..07b2a1e9a036df3c5d9ee796d07c3995200f012f 100644
 --- a/codex-rs/tui/src/startup_orchestration.rs
 +++ b/codex-rs/tui/src/startup_orchestration.rs
-@@ -975,7 +975,6 @@ pub(super) async fn run_main_inner(
+@@ -1036,7 +1036,6 @@ pub(super) async fn run_main_inner(
              (
                  "update_target",
                  match source {
@@ -9321,7 +9354,7 @@ index d3fde7278f62eab966d120991ac5b1aaddf19459..cb86af5deaaa86c8e5905ace52c724b5
                  },
              ),
 diff --git a/codex-rs/tui/src/update_action.rs b/codex-rs/tui/src/update_action.rs
-index 860d0bd10203f542c0cbf66f7715180f16a73e98..be30a6c46fc0865ca94dc34054cc130e1a0fa718 100644
+index 7b3433e99251acee1d3ee06d62e5b1d4fd210b09..be30a6c46fc0865ca94dc34054cc130e1a0fa718 100644
 --- a/codex-rs/tui/src/update_action.rs
 +++ b/codex-rs/tui/src/update_action.rs
 @@ -8,21 +8,14 @@ use codex_install_context::StandalonePlatform;
@@ -9341,7 +9374,7 @@ index 860d0bd10203f542c0cbf66f7715180f16a73e98..be30a6c46fc0865ca94dc34054cc130e
 -    PnpmGlobalLatest,
 -    /// Update via `brew upgrade codex`.
 -    BrewUpgrade,
--    /// Update via `curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh`.
+-    /// Update via the standalone Unix installer.
 +    /// Update a Unix standalone install from the codEx fork releases.
      StandaloneUnix,
 -    /// Update via `$env:CODEX_NON_INTERACTIVE=1; irm https://chatgpt.com/codex/install.ps1 | iex`.
@@ -9390,7 +9423,7 @@ index 860d0bd10203f542c0cbf66f7715180f16a73e98..be30a6c46fc0865ca94dc34054cc130e
 -                "sh",
 -                &[
 -                    "-c",
--                    "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh",
+-                    r#"s=$(curl -fsSL https://chatgpt.com/codex/install.sh) && CODEX_NON_INTERACTIVE=1 eval "$s""#,
 -                ],
 -            ),
 -            UpdateAction::StandaloneWindows => (
@@ -9454,23 +9487,13 @@ index 860d0bd10203f542c0cbf66f7715180f16a73e98..be30a6c46fc0865ca94dc34054cc130e
          );
          assert_eq!(
              UpdateAction::from_install_context(&InstallContext {
-@@ -154,45 +121,23 @@ mod tests {
+@@ -154,52 +121,23 @@ mod tests {
              Some(UpdateAction::StandaloneWindows)
          );
      }
 -
 -    #[test]
--    fn standalone_update_commands_rerun_latest_installer() {
--        assert_eq!(
--            UpdateAction::StandaloneUnix.command_args(),
--            (
--                "sh",
--                &[
--                    "-c",
--                    "curl -fsSL https://chatgpt.com/codex/install.sh | CODEX_NON_INTERACTIVE=1 sh"
--                ][..],
--            )
--        );
+-    fn standalone_windows_update_command_reruns_latest_installer() {
 -        assert_eq!(
 -            UpdateAction::StandaloneWindows.command_args(),
 -            (
@@ -9483,6 +9506,23 @@ index 860d0bd10203f542c0cbf66f7715180f16a73e98..be30a6c46fc0865ca94dc34054cc130e
 -                ][..],
 -            )
 -        );
+-    }
+-
+-    #[cfg(unix)]
+-    #[test]
+-    fn standalone_unix_update_fails_when_installer_download_fails() {
+-        let (command, args) = UpdateAction::StandaloneUnix.command_args();
+-        let offline_command = args[1].replace("https://chatgpt.com", "file:///dev/null");
+-        assert_ne!(offline_command, args[1], "installer URL must be replaced");
+-        let output = std::process::Command::new(command)
+-            .args([args[0], &offline_command])
+-            .env_clear()
+-            .env("HOME", "/dev/null")
+-            .env("PATH", "/usr/bin:/bin")
+-            .output()
+-            .expect("run standalone Unix update command");
+-
+-        assert!(!output.status.success(), "{output:?}");
 -    }
  }
  
@@ -9839,7 +9879,7 @@ index 0000000000000000000000000000000000000000..93a2a8b492eea654a9b586bfd9e9e8ff
 +    }
 +}
 diff --git a/codex-rs/utils/cli/src/lib.rs b/codex-rs/utils/cli/src/lib.rs
-index 633638e72d65a931f68a503d523c76f75d0ac62b..b98948140acf87159f19200cf8cfc802fa6c3fb9 100644
+index 6e284d7bc13629880bed51e8bf626475b3f032af..4518675d05874c3c809e56797bd546871361daf5 100644
 --- a/codex-rs/utils/cli/src/lib.rs
 +++ b/codex-rs/utils/cli/src/lib.rs
 @@ -1,5 +1,6 @@
@@ -9849,10 +9889,10 @@ index 633638e72d65a931f68a503d523c76f75d0ac62b..b98948140acf87159f19200cf8cfc802
  pub(crate) mod format_env_display;
  mod resume_command;
  mod sandbox_mode_cli_arg;
-@@ -8,6 +9,11 @@ mod shared_options;
- pub use approval_mode_cli_arg::ApprovalModeCliArg;
+@@ -9,6 +10,11 @@ pub use approval_mode_cli_arg::ApprovalModeCliArg;
  pub use codex_protocol::config_types::ProfileV2Name;
  pub use config_override::CliConfigOverrides;
+ pub use config_override::collect_config_overrides;
 +pub use fork::FORK_REPO;
 +pub use fork::latest_release_redirect_url;
 +pub use fork::latest_release_url;

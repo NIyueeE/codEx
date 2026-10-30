@@ -1,4 +1,4 @@
-From 632c9e362aa9806a7ab6994b5fb6a752d775e050 Mon Sep 17 00:00:00 2001
+From 837cc55ab1b6a22895834625e1d0b3a706e06593 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:34 +0000
 Subject: branding: codEx name and version output
@@ -8,7 +8,7 @@ Subject: branding: codEx name and version output
  .../src/event_processor_with_human_output.rs  |   2 +-
  codex-rs/login/src/device_code_auth.rs        |   4 +-
  codex-rs/login/src/device_code_auth_tests.rs  |   2 +-
- ..._animation_tests__fresh_thread_header.snap |  24 +--
+ ..._animation_tests__fresh_thread_header.snap |  24 ++--
  ...s_previous_transcript_before_replay-2.snap |  10 +-
  .../tests/background_task_defaults_tests.rs   |  13 +-
  .../app/tests/session_lifecycle_requests.rs   |   2 +-
@@ -19,41 +19,41 @@ Subject: branding: codEx name and version output
  ...partial_completed_after_thread_switch.snap |   9 +-
  ...e_replay_reconciles_matching_captions.snap |  10 +-
  ...s_mention_usage_with_history_disabled.snap |   8 +-
- ...rame_tests__startup_tip_in_transcript.snap |  24 +--
+ ...rame_tests__startup_tip_in_transcript.snap |  24 ++--
  .../tui/src/app/tests/startup_frame_tests.rs  |   8 +-
- .../tui/src/chatwidget/rendering_tests.rs     |  15 +-
+ .../tui/src/chatwidget/rendering_tests.rs     |  15 ++-
  ...__catalog_model_session_header_resume.snap |   3 +-
  ..._catalog_model_session_header_startup.snap |   3 +-
  ...og_model_session_header_unknown_model.snap |   3 +-
  ...ests__slash_copy_picker_status_fields.snap |   2 +-
  ...idget__tests__slash_copy_whole_status.snap |   3 +-
  ...story_replay__resumed_daybreak_banner.snap |  10 +-
- codex-rs/tui/src/history_cell/session.rs      | 137 +++++++++++++++---
+ codex-rs/tui/src/history_cell/session.rs      | 111 +++++++++++++++---
  ...session_header_clamps_to_narrow_width.snap |  12 +-
- ...s__session_header_halfwidth_directory.snap |  52 ++-----
+ ...s__session_header_halfwidth_directory.snap |  52 +++-----
  ...s__session_header_indicates_yolo_mode.snap |  12 +-
  ...__welcome__tests__welcome_logo_160x48.snap |   4 +-
  codex-rs/tui/src/onboarding/welcome.rs        |   4 +-
  ...ter_long_transcript_fresh_header_only.snap |  10 +-
  ...__layout__tests__owned_startup_layout.snap |  12 +-
- ...artup_draft_fresh_session_transitions.snap |  54 ++++---
- ...aft__tests__startup_draft_full_frames.snap |  55 ++++---
+ ...artup_draft_fresh_session_transitions.snap |  54 ++++++---
+ ...aft__tests__startup_draft_full_frames.snap |  55 ++++++---
  ...__startup_draft_onboarding_transition.snap |   9 +-
- ...raft__tests__terminal_app_ssh_startup.snap |  21 +--
+ ...raft__tests__terminal_app_ssh_startup.snap |  21 ++--
  .../tui/src/startup_draft_layout_tests.rs     |   4 +-
- codex-rs/tui/src/startup_draft_tests.rs       |  23 ++-
+ codex-rs/tui/src/startup_draft_tests.rs       |  23 +++-
  codex-rs/tui/src/status/card.rs               |   8 +-
  .../tui/tests/suite/external_editor_tests.rs  |   2 +-
  codex-rs/tui/tests/suite/focus_palette.rs     |   5 +-
  .../tests/suite/gov_cloud_guidance_tests.rs   |   2 +-
  ...us_palette__daemon_auto_start_failure.snap |  10 +-
- 43 files changed, 405 insertions(+), 218 deletions(-)
+ 43 files changed, 379 insertions(+), 218 deletions(-)
 
 diff --git a/codex-rs/cli/tests/sandbox_cloud_config.rs b/codex-rs/cli/tests/sandbox_cloud_config.rs
-index 81fbf07cf35c5016a3dc8542dbddee1c29f2b51b..f43276f064fa420d85de35145ed5fda5c3800f5a 100644
+index dfaded50cd8714d0a3745aec866d1c271bb12df7..91c2b1aaf682d62645918d4261f240c06011f016 100644
 --- a/codex-rs/cli/tests/sandbox_cloud_config.rs
 +++ b/codex-rs/cli/tests/sandbox_cloud_config.rs
-@@ -140,7 +140,9 @@ async fn sandbox_fetches_and_enforces_cloud_managed_permission_profile() -> Resu
+@@ -174,7 +174,9 @@ async fn run_cloud_sandbox(args: &[&str], bundle: Value) -> Result<Option<TempDi
      );
      if !nested_macos_sandbox_unavailable {
          assert!(
@@ -65,7 +65,7 @@ index 81fbf07cf35c5016a3dc8542dbddee1c29f2b51b..f43276f064fa420d85de35145ed5fda5
          );
      }
 diff --git a/codex-rs/exec/src/event_processor_with_human_output.rs b/codex-rs/exec/src/event_processor_with_human_output.rs
-index 37f1a0479520a189ceaf4364ada9825a9da8dd1d..aa5a90cfa6ae86013771d4a99c673dd216935a6a 100644
+index 0a6ceeabce5d390e81c9d0664b2bbbe54bcadf12..56df417e2def78176b8b7c35e7d15949250a5cd0 100644
 --- a/codex-rs/exec/src/event_processor_with_human_output.rs
 +++ b/codex-rs/exec/src/event_processor_with_human_output.rs
 @@ -218,7 +218,7 @@ impl EventProcessor for EventProcessorWithHumanOutput {
@@ -108,7 +108,7 @@ index ba6071ba88d4e15632d9ff42702bdbf42bd38afb..5ee621043e5ff6afd41df4799fca9906
      ));
  }
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
-index 789d6e4bda5306a29a152bb46f1b450ca822fede..6106c04fe828d30f54989e74f7129aa3b0e25663 100644
+index 789d6e4bda5306a29a152bb46f1b450ca822fede..5a596bf3a6905dd553bc7a4c325c315c615236cb 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__owned_transcript__empty_state_animation_tests__fresh_thread_header.snap
 @@ -3,12 +3,12 @@ source: tui/src/app/empty_state_animation_tests.rs
@@ -122,7 +122,7 @@ index 789d6e4bda5306a29a152bb46f1b450ca822fede..6106c04fe828d30f54989e74f7129aa3
 -
 -
 +╭───────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                       │
++│ >_ codEx (v0.166.0)                       │
 +│                                           │
 +│ model:     GPT-5.6-Sol   /model to change │
 +│ directory: /tmp/project                   │
@@ -141,7 +141,7 @@ index 789d6e4bda5306a29a152bb46f1b450ca822fede..6106c04fe828d30f54989e74f7129aa3
 -
 -
 +╭───────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                       │
++│ >_ codEx (v0.166.0)                       │
 +│                                           │
 +│ model:     GPT-5.6-Sol   /model to change │
 +│ directory: /tmp/project                   │
@@ -150,7 +150,7 @@ index 789d6e4bda5306a29a152bb46f1b450ca822fede..6106c04fe828d30f54989e74f7129aa3
  
  
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
-index 8aa1bca71b37199ea5aa9956871c68de2b0c1dc5..7162746ad295fb526e7daf4a04902e27d930e721 100644
+index 8aa1bca71b37199ea5aa9956871c68de2b0c1dc5..c3e1e2cb959ccec277ed4b72731e16c860f30756 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__tests__app_server_thread_replacement_clears_previous_transcript_before_replay-2.snap
 @@ -1,11 +1,13 @@
@@ -163,7 +163,7 @@ index 8aa1bca71b37199ea5aa9956871c68de2b0c1dc5..7162746ad295fb526e7daf4a04902e27
 -  >_ OpenAI Codex (v0.0.0)
 -     <thread cwd>
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/next                   │
@@ -172,7 +172,7 @@ index 8aa1bca71b37199ea5aa9956871c68de2b0c1dc5..7162746ad295fb526e7daf4a04902e27
  
  › Next thread prompt
 diff --git a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
-index 970e55ef724dc5ab3bb8518291b1767a9e10cc7e..d359648b6b38325515f297d7bd9ee5a5c6761040 100644
+index 9123904c5117dbf0c7c653826bea32110deaf0c1..021825f0c6e59789a6b44ef9270c646d0fd4deb0 100644
 --- a/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 +++ b/codex-rs/tui/src/app/tests/background_task_defaults_tests.rs
 @@ -79,13 +79,23 @@ async fn command_center_new_keeps_startup_draft_visible_through_handoff() -> Res
@@ -209,7 +209,7 @@ index 970e55ef724dc5ab3bb8518291b1767a9e10cc7e..d359648b6b38325515f297d7bd9ee5a5
          let final_frame = last_rendered_buffer(&tui.terminal);
          let footer = |buffer: &ratatui::buffer::Buffer| {
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index 787c7e086aff7e57309411d35250f265b0ca04c1..6da54f9d0e0fbd6ef07204d1992f04ac4bf57ccd 100644
+index f7812089cb68682763e0b44d175d7876367bdafa..db6997a7c13c05db6653639c27f3a54d7de7e583 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 @@ -3244,7 +3244,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
@@ -262,7 +262,7 @@ index a8997b370eeb543ee849f29f437c6144a1439f82..af12ff75ee934fe2ae3066475875192e
 -  Service v2.0.0 ≠ Codex CLI v0.0.0 · /daemon
 +  ? help  esc back  ↑/↓ move  enter open  n new
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
-index ab3a8c84c9889e61267bb7d72e9963311b8e434f..55f2061c64161d08980398e6eb784f7cdd38c1e8 100644
+index ab3a8c84c9889e61267bb7d72e9963311b8e434f..50a8c3331d2ad786d050df7743aacfd23686b12f 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_buffered_replay_reconciles_captions.snap
 @@ -1,11 +1,13 @@
@@ -275,7 +275,7 @@ index ab3a8c84c9889e61267bb7d72e9963311b8e434f..55f2061c64161d08980398e6eb784f7c
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -284,7 +284,7 @@ index ab3a8c84c9889e61267bb7d72e9963311b8e434f..55f2061c64161d08980398e6eb784f7c
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
-index 2ecde209a27287959623a364d840c412cc3b3022..96e2e3f0afc790c7d4e74ab55de4d466709c56ae 100644
+index 2ecde209a27287959623a364d840c412cc3b3022..fa604cc761349afbacc27f35da0535e6b1385c15 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_completed_after_thread_switch.snap
 @@ -1,11 +1,13 @@
@@ -297,7 +297,7 @@ index 2ecde209a27287959623a364d840c412cc3b3022..96e2e3f0afc790c7d4e74ab55de4d466
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -306,7 +306,7 @@ index 2ecde209a27287959623a364d840c412cc3b3022..96e2e3f0afc790c7d4e74ab55de4d466
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
-index bfd8b46a632e628f017928a98d33e3f55df05b8a..2227e319aed89aa7bfea51e4342a661a57df725d 100644
+index bfd8b46a632e628f017928a98d33e3f55df05b8a..b9ea23a9de0d0d184491065d910f7cd96410ed6c 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_partial_completed_after_thread_switch.snap
 @@ -13,9 +13,12 @@ Restored owner:
@@ -317,7 +317,7 @@ index bfd8b46a632e628f017928a98d33e3f55df05b8a..2227e319aed89aa7bfea51e4342a661a
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -326,7 +326,7 @@ index bfd8b46a632e628f017928a98d33e3f55df05b8a..2227e319aed89aa7bfea51e4342a661a
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
-index 0dfd7333b6acd684d1881dd432fc4f137126b7b0..030b95bcdfa184096f39691fcc803132037a3439 100644
+index 0dfd7333b6acd684d1881dd432fc4f137126b7b0..8f83d9bc70e181f8c864b463d71a3de97d7315c8 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__realtime_requests__voice_replay_reconciles_matching_captions.snap
 @@ -1,11 +1,13 @@
@@ -339,7 +339,7 @@ index 0dfd7333b6acd684d1881dd432fc4f137126b7b0..030b95bcdfa184096f39691fcc803132
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -348,7 +348,7 @@ index 0dfd7333b6acd684d1881dd432fc4f137126b7b0..030b95bcdfa184096f39691fcc803132
    To get started, describe a task or try one of these commands:
  
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
-index 6a47bf2b72c15db36e55aa7f626b9ad94828bbbd..9410c3d8effc5eb2d6597e2d6aafec6f4d226fe5 100644
+index 6a47bf2b72c15db36e55aa7f626b9ad94828bbbd..746c5cee61024ecdc5ee0d3e4c3ce6858cd796e4 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__session_lifecycle_requests__new_session_tests__widget_replacement_preserves_mention_usage_with_history_disabled.snap
 @@ -2,8 +2,12 @@
@@ -358,7 +358,7 @@ index 6a47bf2b72c15db36e55aa7f626b9ad94828bbbd..9410c3d8effc5eb2d6597e2d6aafec6f
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭───────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                   │
++│ >_ codEx (v0.166.0)                   │
 +│                                       │
 +│ model:     loading   /model to change │
 +│ directory: /tmp/project               │
@@ -367,7 +367,7 @@ index 6a47bf2b72c15db36e55aa7f626b9ad94828bbbd..9410c3d8effc5eb2d6597e2d6aafec6f
  
  › status   [Skill]
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
-index d45000ee78fe1ae9bfea05d87a800f17d436103a..56cd2318436a7cb56b82db2f68faa8712f5cc204 100644
+index d45000ee78fe1ae9bfea05d87a800f17d436103a..77b059e5a67c4eb1a2e14dd3d4a97b56ead687f9 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__startup_frame_tests__startup_tip_in_transcript.snap
 @@ -3,9 +3,12 @@ source: tui/src/app/tests/startup_frame_tests.rs
@@ -378,7 +378,7 @@ index d45000ee78fe1ae9bfea05d87a800f17d436103a..56cd2318436a7cb56b82db2f68faa871
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭────────────────────────────────────────╮
-+│ >_ codEx (v0.164.0)                    │
++│ >_ codEx (v0.166.0)                    │
 +│                                        │
 +│ model:     gpt-test   /model to change │
 +│ directory: /tmp/project                │
@@ -403,7 +403,7 @@ index d45000ee78fe1ae9bfea05d87a800f17d436103a..56cd2318436a7cb56b82db2f68faa871
 -  >_ OpenAI Codex (v0.0.0)
 -     /tmp/project
 +╭──────────────────────────────╮
-+│ >_ codEx (v0.164.0)          │
++│ >_ codEx (v0.166.0)          │
 +│                              │
 +│ model:     gpt-test   /mode… │
 +│ directory: /tmp/project      │
@@ -422,7 +422,7 @@ index d45000ee78fe1ae9bfea05d87a800f17d436103a..56cd2318436a7cb56b82db2f68faa871
  
    GPT-5.6-Sol default · /tmp/pr…
 diff --git a/codex-rs/tui/src/app/tests/startup_frame_tests.rs b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
-index 2c6adf43c188ed0346ca387d2beab10befe73b30..88b315a22b227174185a77b51a2d58b0e48275b5 100644
+index 9fe4a7663bdbd4555fd1d4679dd56bd55f517514..673b73492040282bb3767a60ec5e83780c190ade 100644
 --- a/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 +++ b/codex-rs/tui/src/app/tests/startup_frame_tests.rs
 @@ -74,8 +74,10 @@ async fn owned_startup_hides_tip_in_transcript() -> Result<()> {
@@ -448,7 +448,7 @@ index 2c6adf43c188ed0346ca387d2beab10befe73b30..88b315a22b227174185a77b51a2d58b0
          tui.set_owned_screen(/*owned*/ false)?;
          app_server.shutdown().await?;
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 4129eca7be4147961197913fbf30b46e2c93d726..443a02d4773468ac33784cd2cc2e0f6ce099b761 100644
+index 317a17d5cb881bb4b5a8cb4836ef7e25b1273597..ffdc336cc0cea2e618be0c577bd72866f2020422 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 @@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
@@ -577,7 +577,7 @@ index 5e78664e4a80d82ff90f15dc0608ee3a8ece15ea..5b92d92939aba7d083268d835fdbcaa1
  • Daybreak is on for new turns.
  
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 237ef9ec9699bc895011750b749aa6edcc1dae11..bc79d9c94dccaa3f5294bcbf34a6204d3bb601b6 100644
+index 237ef9ec9699bc895011750b749aa6edcc1dae11..e2b2445322b3a2f8cecf1aefa935e755ab97a078 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -6,6 +6,21 @@ use crate::line_truncation::truncate_line_with_ellipsis_if_overflow;
@@ -631,49 +631,7 @@ index 237ef9ec9699bc895011750b749aa6edcc1dae11..bc79d9c94dccaa3f5294bcbf34a6204d
          format!(" (v{version})").dim(),
      ]
  }
-@@ -295,7 +319,9 @@ pub(crate) fn has_yolo_permissions(
- pub(crate) struct SessionHeaderHistoryCell {
-     version: &'static str,
-     model: String,
-+    model_style: Style,
-     reasoning_effort: Option<ReasoningEffortConfig>,
-+    show_fast_status: bool,
-     directory: PathBuf,
-     yolo_mode: bool,
- }
-@@ -306,11 +332,31 @@ impl SessionHeaderHistoryCell {
-         reasoning_effort: Option<ReasoningEffortConfig>,
-         directory: PathBuf,
-         version: &'static str,
-+    ) -> Self {
-+        Self::new_with_style(
-+            model,
-+            Style::default(),
-+            reasoning_effort,
-+            /*show_fast_status*/ false,
-+            directory,
-+            version,
-+        )
-+    }
-+
-+    pub(crate) fn new_with_style(
-+        model: String,
-+        model_style: Style,
-+        reasoning_effort: Option<ReasoningEffortConfig>,
-+        show_fast_status: bool,
-+        directory: PathBuf,
-+        version: &'static str,
-     ) -> Self {
-         Self {
-             version,
-             model,
-+            model_style,
-             reasoning_effort,
-+            show_fast_status,
-             directory,
-             yolo_mode: false,
-         }
-@@ -357,33 +403,88 @@ impl SessionHeaderHistoryCell {
+@@ -357,33 +381,84 @@ impl SessionHeaderHistoryCell {
  
  impl HistoryCell for SessionHeaderHistoryCell {
      fn display_lines(&self, width: u16) -> Vec<Line<'static>> {
@@ -713,15 +671,11 @@ index 237ef9ec9699bc895011750b749aa6edcc1dae11..bc79d9c94dccaa3f5294bcbf34a6204d
 +        let model_spans: Vec<Span<'static>> = {
 +            let mut spans = vec![
 +                Span::from(format!("{model_label} ")).dim(),
-+                Span::styled(self.model.clone(), self.model_style),
++                Span::from(self.model.clone()),
 +            ];
 +            if let Some(reasoning) = reasoning_label {
 +                spans.push(Span::from(" "));
 +                spans.push(Span::from(reasoning.to_owned()));
-+            }
-+            if self.show_fast_status {
-+                spans.push("   ".into());
-+                spans.push(Span::styled("fast", self.model_style.magenta()));
 +            }
 +            spans.push("   ".dim());
 +            spans.push(CHANGE_MODEL_HINT_COMMAND.cyan());
@@ -1241,7 +1195,7 @@ index c9e1dab58ee3fcc40330d6525a8abcb0d78d0f20..71f62730dc68ac79deb550bea72a0cc1
      let mut blossom_visible = Vec::new();
      for (draft, action, pending) in [
 diff --git a/codex-rs/tui/src/startup_draft_tests.rs b/codex-rs/tui/src/startup_draft_tests.rs
-index 03a76ab4306b09fc61c359b157267c1d26c3a41f..e2f27b5018bbb6c04972324af11f1ed10f6e06ad 100644
+index 5e977f15a4d9d3a1d73205c2ab327016868888d9..978919e994461d8721ed47755ae51f956e8986bc 100644
 --- a/codex-rs/tui/src/startup_draft_tests.rs
 +++ b/codex-rs/tui/src/startup_draft_tests.rs
 @@ -304,7 +304,23 @@ async fn startup_draft_hydrates_its_header_without_moving_the_composer() {
@@ -1282,10 +1236,10 @@ index 03a76ab4306b09fc61c359b157267c1d26c3a41f..e2f27b5018bbb6c04972324af11f1ed1
          startup_draft_renderable(&pump.header, &pump.bottom_pane, pump.session_action)
              .desired_height(width),
 diff --git a/codex-rs/tui/src/status/card.rs b/codex-rs/tui/src/status/card.rs
-index 65ef9f651d7e71ea94f8b9e135226818cdda5c5b..45dfadcd2ac6ccf8cb8fcf3b549a49b02399c976 100644
+index 8145011fd13b386e5a1a455935f2d3f423382318..7d4d8e9d871555c746aaa73ace48b82d08351e59 100644
 --- a/codex-rs/tui/src/status/card.rs
 +++ b/codex-rs/tui/src/status/card.rs
-@@ -735,7 +735,13 @@ impl StatusHistoryCell {
+@@ -759,7 +759,13 @@ impl StatusHistoryCell {
          if available_width == 0 {
              return Vec::new();
          }
@@ -1299,7 +1253,7 @@ index 65ef9f651d7e71ea94f8b9e135226818cdda5c5b..45dfadcd2ac6ccf8cb8fcf3b549a49b0
 +        ]));
  
          let account_value = self.account.as_ref().map(|account| match account {
-             StatusAccountDisplay::ChatGpt { email, plan } => match (email, plan) {
+             StatusAccountDisplay::ChatGpt { email, plan, .. } => match (email, plan) {
 diff --git a/codex-rs/tui/tests/suite/external_editor_tests.rs b/codex-rs/tui/tests/suite/external_editor_tests.rs
 index fe5f019f844db87fd3394c61837d96517c7998a5..869ff82990b727b23d26183e151fbeba92495840 100644
 --- a/codex-rs/tui/tests/suite/external_editor_tests.rs
@@ -1314,7 +1268,7 @@ index fe5f019f844db87fd3394c61837d96517c7998a5..869ff82990b727b23d26183e151fbeba
              }
              ensure!(
 diff --git a/codex-rs/tui/tests/suite/focus_palette.rs b/codex-rs/tui/tests/suite/focus_palette.rs
-index 645f115c35e5103fb64dd3ce3ed1b9d3af82c512..3bd6ab6cc1d01693f7b8b4736686543a01ad2a98 100644
+index 084599ce1c388799e80dbb91b0ff57641a2f93a9..2cb5229c8afc7a5d1ff6693e80ed1bbbcdb87cdb 100644
 --- a/codex-rs/tui/tests/suite/focus_palette.rs
 +++ b/codex-rs/tui/tests/suite/focus_palette.rs
 @@ -210,8 +210,7 @@ fn default_owned_screen_entry_paints_before_sync_ends_and_exit_clears_inline_dra
@@ -1327,7 +1281,7 @@ index 645f115c35e5103fb64dd3ce3ed1b9d3af82c512..3bd6ab6cc1d01693f7b8b4736686543a
          "owned-screen synchronization ended before its first complete loading frame:\n{first_contents}"
      );
      let composer_row = first_contents
-@@ -394,7 +393,7 @@ impl PtyCodex {
+@@ -414,7 +413,7 @@ impl PtyCodex {
              self.read_output(Duration::from_millis(/*millis*/ 50))?;
              self.answer_startup_queries()?;
  

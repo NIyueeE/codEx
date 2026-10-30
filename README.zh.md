@@ -32,10 +32,10 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 
 归档就是上游发布的那种规范 Codex 包:`codex-package.json` 清单与 `bin/`、
 `codex-path/rg`、`codex-resources/` 并列。`bin/` 下是 `codex` 入口与
-`codex-code-mode-host` 辅助程序,`codex-resources/` 下是当前平台的沙箱辅助
-程序(Linux 上为 `bwrap`,Windows 上为 `codex-command-runner` 与
-`codex-windows-sandbox-setup`)。`InstallContext` 识别的正是这个布局,
-`codex app-server daemon` 安装共享后台服务时复制的也是它。
+`codex-code-mode-host`、`codex-exec-server` 辅助程序,`codex-resources/`
+下是当前平台的沙箱辅助程序(Linux 上为 `bwrap`,Windows 上为
+`codex-command-runner` 与 `codex-windows-sandbox-setup`)。`InstallContext`
+识别的正是这个布局,`codex app-server daemon` 安装共享后台服务时复制的也是它。
 
 安装脚本只创建 CLI 包。共享后台服务自己的包
 (`~/.codex/packages/app-server-daemon/`)由第一次 `codex` 启动时复制 CLI 包

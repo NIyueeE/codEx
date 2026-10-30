@@ -35,9 +35,9 @@ jobs:
       # gates.sh runs codespell through uvx when no system codespell exists, so
       # CI and the local hook pin the same version (2.4.3). Upstream's
       # repo-checks.yml installs uv the same way.
-      - uses: astral-sh/setup-uv@08807647e7069bb48b6ef5acd8ec9567f424441b # v8.1.0
+      - uses: astral-sh/setup-uv@07a047e608db84b3d8c06cd9a7c7dcc9c355c18e # v10.3.2
         with:
-          version: "0.11.3"
+          version: "0.13.5"
 
       # shellcheck ships with the hosted image, but the gate skips it silently
       # when it is missing, so install it explicitly rather than let a runner

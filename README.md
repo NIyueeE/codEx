@@ -36,11 +36,12 @@ under `~/.codex/packages/standalone/releases/<version>-<target>/` so
 The archive is the same canonical package upstream publishes: a
 `codex-package.json` manifest next to `bin/`, `codex-path/rg`, and
 `codex-resources/`. `bin/` carries the `codex` entrypoint plus the
-`codex-code-mode-host` helper, and `codex-resources/` carries the sandbox
-helper for the platform (`bwrap` on Linux, `codex-command-runner` and
-`codex-windows-sandbox-setup` on Windows). That layout is what
-`InstallContext` recognizes and what `codex app-server daemon` copies when it
-installs the shared background server.
+`codex-code-mode-host` and `codex-exec-server` helpers, and
+`codex-resources/` carries the sandbox helper for the platform (`bwrap` on
+Linux, `codex-command-runner` and `codex-windows-sandbox-setup` on Windows).
+That layout is what `InstallContext` recognizes and what
+`codex app-server daemon` copies when it installs the shared background
+server.
 
 The installer creates only the CLI package. The shared background server's
 own package under `~/.codex/packages/app-server-daemon/` is created by the

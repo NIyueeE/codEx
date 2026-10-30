@@ -1,4 +1,4 @@
-From 4caf21eee59d73b69347c9059a70a3cb58f630aa Mon Sep 17 00:00:00 2001
+From 43c4fadba46bf2dc27d93bded5e2b6d55a6394d6 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -13,8 +13,8 @@ Subject: config: disable update checks and announcement fetches by default
  ...ooltips__tests__desktop_app_tip_linux.snap |   8 -
  ...ooltips__tests__desktop_app_tip_macos.snap |   7 -
  ...ltips__tests__desktop_app_tip_windows.snap |   8 -
- codex-rs/tui/src/tooltips.rs                  | 587 ++----------------
- 10 files changed, 90 insertions(+), 715 deletions(-)
+ codex-rs/tui/src/tooltips.rs                  | 573 +-----------------
+ 10 files changed, 53 insertions(+), 738 deletions(-)
  delete mode 100644 announcement_tip.toml
  delete mode 100644 codex-rs/tui/src/npm_registry.rs
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
@@ -137,7 +137,7 @@ index bab5781777146a1aa18ab48c7b54c3d38adbf91e..b43e55116f793a9ddeba6d13b7eca8b6
  
      pub(super) fn list_marketplaces(
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 13daf6a7616f9e8d4dace3fcab5d0217284b4fee..91ebf1cf5a756ec125043994124804159b0e5916 100644
+index ad5f6e3d7ba4bd74e1c5e00efac3a6e72ac66506..7d31f506bae688b50f596e0cb72fa206dc6ef84a 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;
@@ -154,7 +154,7 @@ index 13daf6a7616f9e8d4dace3fcab5d0217284b4fee..91ebf1cf5a756ec12504399412480415
  use codex_app_server_protocol::AppsListParams;
  use codex_app_server_protocol::AppsListResponse;
  use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;
-@@ -297,7 +304,8 @@ impl App {
+@@ -298,7 +305,8 @@ impl App {
          let request_handle = app_server.request_handle();
          let app_event_tx = self.app_event_tx.clone();
          let plugin_sharing_enabled = self.config.features.enabled(Feature::PluginSharing);
@@ -342,10 +342,10 @@ index 5bd73ec2a7ce2808062aa349a5cade9a0861fd89..00000000000000000000000000000000
 -Line::from(Span::from("https://chatgpt.com/codex?app-landing-page=true").fg(Color::Reset).underlined()) [TerminalHyperlink { columns: 0..47, destination: "https://chatgpt.com/codex?app-landing-page=true", destination_kind: Web }]
 -Line::from_iter([Span::from("and run "), Span::from("codex app").fg(Color::Rgb(166, 227, 161)), Span::from(".")]) []
 diff --git a/codex-rs/tui/src/tooltips.rs b/codex-rs/tui/src/tooltips.rs
-index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e13199830 100644
+index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..19d78e489226ca92b0962a9182c7a7e66be8ba55 100644
 --- a/codex-rs/tui/src/tooltips.rs
 +++ b/codex-rs/tui/src/tooltips.rs
-@@ -13,16 +13,11 @@ use std::path::Path;
+@@ -13,17 +13,6 @@ use std::path::Path;
  #[path = "tooltips/keybinding_tests.rs"]
  mod keybinding_tests;
  
@@ -359,15 +359,11 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -const MACOS_APP_TOOLTIP: &str =
 -    "Use the **desktop app**. Run `codex app` to open it. It installs automatically if needed.";
 -const LINUX_APP_TOOLTIP: &str = "Use the **desktop app**. Install it from https://learn.chatgpt.com/docs/linux/linux-app and run `chatgpt`.";
-+const FAST_TOOLTIP: &str =
-+    "*New* Use **/fast** to enable our fastest inference with increased plan usage.";
-+const OTHER_TOOLTIP_NON_MAC: &str = "*New* Build faster with codEx.";
-+const FREE_GO_TOOLTIP: &str =
-+    "*New* For a limited time, Codex is included in your plan for free – let’s build together.";
- 
+-
  const RAW_TOOLTIPS: &str = include_str!("../assets/tooltips.txt");
  
-@@ -31,7 +26,6 @@ lazy_static! {
+ lazy_static! {
+@@ -31,7 +20,6 @@ lazy_static! {
          .lines()
          .map(str::trim)
          .filter(|line| !line.is_empty() && !line.starts_with('#'))
@@ -375,27 +371,28 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
          .collect();
      static ref ALL_TOOLTIPS: Vec<&'static str> = {
          let mut tips = Vec::new();
-@@ -51,62 +45,45 @@ pub(crate) fn get_tooltip(plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<
-     preferred_tooltip(&mut rng, plan).or_else(|| pick_tooltip(&mut rng, keymap))
+@@ -46,67 +34,9 @@ lazy_static! {
  }
  
+ /// Pick a random tooltip to show to the user when starting Codex.
+-pub(crate) fn get_tooltip(plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<String> {
++pub(crate) fn get_tooltip(_plan: Option<PlanType>, keymap: &TuiKeymap) -> Option<String> {
+     let mut rng = rand::rng();
+-    preferred_tooltip(&mut rng, plan).or_else(|| pick_tooltip(&mut rng, keymap))
+-}
+-
 -/// Apply the shared announcement and promotion policy before falling back to local tips.
 -/// The announcement lookup only reads the prewarmed cache.
-+/// Applies the fork's promotion policy before falling back to the local
-+/// keymap-aware tips.
-+///
-+/// codEx never fetches remote announcements and has no Desktop-app promo, so
-+/// paid plans only ever see the Fast-mode slot here.
- pub(crate) fn preferred_tooltip<R: Rng + ?Sized>(
-     rng: &mut R,
-     plan: Option<PlanType>,
- ) -> Option<String> {
+-pub(crate) fn preferred_tooltip<R: Rng + ?Sized>(
+-    rng: &mut R,
+-    plan: Option<PlanType>,
+-) -> Option<String> {
 -    if let Some(announcement) = announcement::fetch_announcement_tip(plan) {
 -        return Some(announcement);
 -    }
 -
-     // Leave small chance for a random tooltip to be shown.
-     if rng.random_ratio(/*numerator*/ 8, /*denominator*/ 10) {
+-    // Leave small chance for a random tooltip to be shown.
+-    if rng.random_ratio(/*numerator*/ 8, /*denominator*/ 10) {
 -        return app_tooltip().map(str::to_string);
 -    }
 -
@@ -415,18 +412,7 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -                has_display: std::env::var_os("DISPLAY").is_some_and(|value| !value.is_empty())
 -                    || std::env::var_os("WAYLAND_DISPLAY").is_some_and(|value| !value.is_empty()),
 -                is_wsl: crate::clipboard_paste::is_probably_wsl(),
-+        match plan {
-+            Some(plan_type)
-+                if matches!(
-+                    plan_type,
-+                    PlanType::Plus | PlanType::Enterprise | PlanType::Pro | PlanType::ProLite
-+                ) || plan_type.is_team_like()
-+                    || plan_type.is_business_like() =>
-+            {
-+                if let Some(tooltip) = pick_paid_tooltip(rng) {
-+                    return Some(tooltip.to_string());
-+                }
-             }
+-            }
 -        }
 -
 -        #[cfg(not(target_os = "linux"))]
@@ -434,21 +420,15 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -            Self {
 -                has_display: false,
 -                is_wsl: false,
-+            Some(PlanType::Go) | Some(PlanType::Free) => {
-+                return Some(FREE_GO_TOOLTIP.to_string());
-+            }
-+            _ => {
-+                return Some(OTHER_TOOLTIP_NON_MAC.to_string());
-             }
-         }
-     }
+-            }
+-        }
+-    }
 -}
- 
+-
 -fn linux_app_tooltip(session: LinuxDesktopSession) -> Option<&'static str> {
 -    (session.has_display && !session.is_wsl).then_some(LINUX_APP_TOOLTIP)
-+    None
- }
- 
+-}
+-
 -fn app_tooltip() -> Option<&'static str> {
 -    if IS_MACOS {
 -        Some(MACOS_APP_TOOLTIP)
@@ -457,17 +437,15 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -    } else {
 -        linux_app_tooltip(LinuxDesktopSession::current())
 -    }
-+/// Paid users get a dedicated promo slot instead of the generic random tip
-+/// pool. codEx has no Desktop-app promo: the slot always shows Fast mode.
-+fn pick_paid_tooltip<R: Rng + ?Sized>(_rng: &mut R) -> Option<&'static str> {
-+    Some(FAST_TOOLTIP)
++    pick_tooltip(&mut rng, keymap)
  }
  
  fn pick_tooltip<R: Rng + ?Sized>(rng: &mut R, keymap: &TuiKeymap) -> Option<String> {
-@@ -160,217 +137,9 @@ pub(crate) fn render_tooltip(mut template: &str, keymap: Option<&RuntimeKeymap>)
+@@ -159,217 +89,9 @@ pub(crate) fn render_tooltip(mut template: &str, keymap: Option<&RuntimeKeymap>)
+     rendered.push_str(template);
      Some(rendered)
  }
- 
+-
 -pub(crate) mod announcement {
 -    use crate::tooltips::ANNOUNCEMENT_TIP_URL;
 -    use crate::version::CODEX_CLI_VERSION;
@@ -678,11 +656,10 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
  mod tests {
      use super::*;
 -    use crate::tooltips::announcement::AnnouncementTips;
--    use pretty_assertions::assert_eq;
+     use pretty_assertions::assert_eq;
      use rand::SeedableRng;
      use rand::rngs::StdRng;
- 
-@@ -392,290 +161,26 @@ mod tests {
+@@ -392,290 +114,13 @@ mod tests {
      }
  
      #[test]
@@ -699,8 +676,15 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -                .collect::<Vec<_>>()
 -                .join("\n");
 -            insta::assert_snapshot!(format!("desktop_app_tip_{platform}"), rendered);
--        }
--    }
++    fn no_tooltip_advertises_the_closed_source_desktop_app() {
++        // codEx is TUI/CLI-only: no tip may promote `codex app` or the vendor
++        // Desktop app, on any platform.
++        for tip in ALL_TOOLTIPS.iter() {
++            assert!(!tip.contains("Desktop app"), "{tip}");
++            assert!(!tip.contains("codex app"), "{tip}");
++            assert!(!tip.contains("chatgpt.com/codex"), "{tip}");
+         }
+     }
 -
 -    #[test]
 -    fn desktop_app_tooltip_uses_supported_platform_launcher() {
@@ -721,17 +705,10 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -        } else {
 -            assert_eq!(tooltip, None);
 -            assert_eq!(app_tooltip(), None);
-+    fn no_tooltip_advertises_the_closed_source_desktop_app() {
-+        // codEx is TUI/CLI-only: no tip may promote `codex app` or the vendor
-+        // Desktop app, on any platform.
-+        for tip in ALL_TOOLTIPS.iter() {
-+            assert!(!tip.contains("Desktop app"), "{tip}");
-+            assert!(!tip.contains("codex app"), "{tip}");
-+            assert!(!tip.contains("chatgpt.com/codex"), "{tip}");
-         }
-     }
- 
-     #[test]
+-        }
+-    }
+-
+-    #[test]
 -    fn linux_desktop_app_tooltip_requires_graphical_native_session() {
 -        assert_eq!(
 -            linux_app_tooltip(LinuxDesktopSession {
@@ -775,12 +752,7 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -                seen,
 -                std::collections::BTreeSet::from([None, app_tooltip().map(str::to_string)])
 -            );
-+    fn paid_tooltip_pool_is_fast_mode_only() {
-+        let mut seen = std::collections::BTreeSet::new();
-+        for seed in 0..32 {
-+            let mut rng = StdRng::seed_from_u64(seed);
-+            seen.insert(pick_paid_tooltip(&mut rng));
-         }
+-        }
 -    }
 -
 -    #[test]
@@ -862,7 +834,7 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -            AnnouncementTips::parse(toml).and_then(|tips| tips.select(/*plan*/ None))
 -        );
 -    }
- 
+-
 -    #[test]
 -    fn announcement_tip_toml_parse_comments() {
 -        let toml = r#"
@@ -983,8 +955,5 @@ index 4319a0988c2a1c5db5abb2ec54218b96d3193b80..d5bd9caa7c366f7daed33a11a6edac4e
 -            Some("all operating systems".to_string()),
 -            AnnouncementTips::parse(toml).and_then(|tips| tips.select(/*plan*/ None))
 -        );
-+        // codEx has no Desktop-app promo, so Fast mode is the only paid slot.
-+        let expected = std::collections::BTreeSet::from([Some(FAST_TOOLTIP)]);
-+        assert_eq!(seen, expected);
-     }
+-    }
  }
