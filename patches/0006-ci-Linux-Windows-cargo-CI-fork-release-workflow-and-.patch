@@ -1,10 +1,10 @@
-From c28d51ee9251f12651052e5192c08b852ecea5d5 Mon Sep 17 00:00:00 2001
+From 78511b42329e0d35347feb0aca30b815a76f9563 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
- .github/actions/bootstrap-tree/action.yml     |   47 +
+ .github/actions/bootstrap-tree/action.yml     |   55 +
  .github/actions/cargo-cache/action.yml        |   43 +
  .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
@@ -22,12 +22,12 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/r2-release.yml              |   59 -
  .github/workflows/repo-checks.yml             |  100 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ---
- .github/workflows/rust-ci-full.yml            |  652 ++---
+ .github/workflows/rust-ci-full.yml            |  647 ++---
  .github/workflows/rust-ci.yml                 |  288 +-
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2428 +++--------------
+ .github/workflows/rust-release.yml            | 2418 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1049 insertions(+), 7751 deletions(-)
+ 45 files changed, 1037 insertions(+), 7756 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -87,10 +87,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
 new file mode 100644
-index 0000000000000000000000000000000000000000..83d9a73f5d88218e90a01ddb12f76b8b7c31e088
+index 0000000000000000000000000000000000000000..4504ee6147ab0fab2d11d4c9489a5a2653a30d7f
 --- /dev/null
 +++ b/.github/actions/bootstrap-tree/action.yml
-@@ -0,0 +1,47 @@
+@@ -0,0 +1,55 @@
 +name: bootstrap-tree
 +description: >-
 +  Resolve the bootstrapped tree root and export TREE_DIR/CODE_DIR so every
@@ -112,6 +112,14 @@ index 0000000000000000000000000000000000000000..83d9a73f5d88218e90a01ddb12f76b8b
 +runs:
 +  using: composite
 +  steps:
++    # Upstream's shared setup-ci action sets this on Windows; the v8 git
++    # dependency checks out chromium submodules whose paths exceed the
++    # 260-character limit without it.
++    - name: Enable Git long paths (Windows)
++      if: runner.os == 'Windows'
++      shell: pwsh
++      run: git config --global core.longpaths true
++
 +    - name: Resolve or bootstrap the tree
 +      id: resolve
 +      shell: bash
@@ -2436,10 +2444,10 @@ index 474535267aabc0143e5858754acda9679aca058f..00000000000000000000000000000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..4763f6e2ca409bc60bfbcb4f6aa3789734d2293c 100644
+index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..dbd6b26d2fa58eb975d3005e20ff67e1144675e4 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
-@@ -1,544 +1,214 @@
+@@ -1,544 +1,207 @@
  name: rust-ci-full
 +
 +# The second half of the fork's heavy gate: the release CLI build and the full
@@ -2854,17 +2862,7 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..4763f6e2ca409bc60bfbcb4f6aa37897
 -
 -      - name: Enable sccache wrapper
 -        if: ${{ env.USE_SCCACHE == 'true' }}
-+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
-+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
-+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
-+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
-+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
-+      # Belt and braces for the case where cargo still resolves the `v8` git
-+      # dependency (a cached lock or a future crate pulling it in): its
-+      # chromium submodules exceed the Windows 260-character limit, and git
-+      # only uses the extended-length path API when core.longpaths is set.
-+      - name: Enable long paths for any remaining v8 git checkout
-         shell: bash
+-        shell: bash
 -        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 -
 -      - name: Restore sccache cache (fallback)
@@ -2880,7 +2878,11 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..4763f6e2ca409bc60bfbcb4f6aa37897
 -
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Prepare APT cache directories (musl)
-+        run: git config --global core.longpaths true
++          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
++          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
++          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
++          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
++          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
 +      # Type-check the Windows-only code paths (self-update swap, sandbox
 +      # helpers) on a native runner. Cross-checking from Linux is impossible
 +      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
@@ -4534,10 +4536,10 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a8708915540 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b95a67a3a1 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,240 +1,267 @@
+@@ -1,240 +1,249 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4668,12 +4670,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 +      # Avoid problematic aws-lc jitter entropy code path on musl builders.
 +      AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
 +      AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
-+      # The Windows leg runs on a 16 GB hosted runner and the thin-LTO link of
-+      # the CLI no longer fits next to four parallel rustc jobs: the runner
-+      # died mid-link with "lost communication with the server". Packaging
-+      # strips the binaries anyway (the symbols archive is Linux-only), so drop
-+      # debug info for that leg and cap the parallelism.
-+      CARGO_PROFILE_RELEASE_DEBUG: ${{ matrix.platform == 'windows' && 'false' || 'line-tables-only' }}
++      # Upstream builds this leg on a self-hosted Windows runner, so it needs
++      # no resource cap; on the 16 GB hosted runner four parallel rustc jobs
++      # plus the thin-LTO link exhausted memory and the agent dropped off
++      # ("lost communication with the server"). Cap the parallelism only --
++      # the release profile and therefore the published binary stay upstream's.
 +      CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
  
      strategy:
@@ -4778,36 +4779,19 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -          df -h .
 -      - name: Install Linux bwrap build dependencies
 -        if: ${{ runner.os == 'Linux' }}
-+
-+      - name: Bootstrap tree if needed
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          set -euo pipefail
 -          sudo apt-get update -y
 -          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
 -      - name: Set up Rust toolchain
 -        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+          if [[ ! -d codex-rs ]]; then
-+            bash scripts/bootstrap.sh
-+          fi
-+          # Linux only because CODE_DIR is one level below the tree root).
-+          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-+          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
-+
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-         with:
+-        with:
 -          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
-+          targets: ${{ matrix.target }}
  
 -      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Use hermetic Cargo home (musl)
-+      # The `v8` git dependency checks out the rusty_v8 fork with its chromium
-+      # submodules, whose vendored crate paths exceed the Windows
-+      # 260-character limit; git needs core.longpaths to use the
-+      # extended-length path API.
-+      - name: Enable long paths for the v8 git checkout
-+        if: matrix.platform == 'windows'
-         shell: bash
+-        shell: bash
 -        run: |
 -          set -euo pipefail
 -          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
@@ -4815,7 +4799,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
 -          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
 -          : > "${cargo_home}/config.toml"
-+        run: git config --global core.longpaths true
++      - uses: ./.github/actions/bootstrap-tree
++
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
++        with:
++          targets: ${{ matrix.target }}
  
 -      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Install Zig
@@ -4972,7 +4960,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -250,1962 +277,235 @@ jobs:
+@@ -250,1962 +259,235 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5063,8 +5051,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
          env:
 -          APP_TARGET: ${{ matrix.target }}
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
-+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -          cd "$GITHUB_WORKSPACE"
 -          voice_target="${APP_TARGET%-musl}-gnu"
@@ -5088,7 +5075,8 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
 -        shell: bash
--        run: |
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
 -          set -euo pipefail
 -
 +          cd "${CODE_DIR}"
@@ -5689,22 +5677,22 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -
 -      - name: Upload signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
+-          path: signed-voice-${{ matrix.target }}.tar.gz
+-          if-no-files-found: error
+-
+-      - name: Upload signed macOS binaries
 +      - name: Upload archive
          uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
          with:
--          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
--          path: signed-voice-${{ matrix.target }}.tar.gz
+-          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
+-          path: signed-macos/${{ matrix.target }}/*
 +          name: dist-${{ matrix.target }}
 +          path: dist/${{ matrix.target }}/*
            if-no-files-found: error
  
--      - name: Upload signed macOS binaries
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
--          path: signed-macos/${{ matrix.target }}/*
--          if-no-files-found: error
--
 -      - name: Upload signed macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
 +      # Debug symbols for the stripped payload, so a crash report from a
@@ -5858,10 +5846,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
            set -euo pipefail
 -          dest="dist/${{ matrix.target }}"
 -          mkdir -p "$dest"
-+          tag="${GITHUB_REF_NAME}"
-+          version="${tag#rust-v}"
-+          version="${version#v}"
- 
+-
 -          for binary in ${{ matrix.binaries }}; do
 -            # Both variants package the host and executor; only the primary publishes
 -            # standalone binary archives to avoid duplicate release asset names.
@@ -5870,7 +5855,10 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -            fi
 -            cp "target/${{ matrix.target }}/release/${binary}" "$dest/${binary}-${{ matrix.target }}"
 -          done
--
++          tag="${GITHUB_REF_NAME}"
++          version="${tag#rust-v}"
++          version="${version#v}"
+ 
 -      - name: Build Codex package archive
 -        shell: bash
 -        env:
@@ -6649,7 +6637,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
            else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
++                --latest="${MAKE_LATEST}"
+           fi
 -
 -      - name: Stage installer scripts
 -        run: |
@@ -6689,11 +6681,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a87
 -            fi
 -            gh release create "$GITHUB_REF_NAME" "${release_args[@]}" \
 -              --draft="$draft" --verify-tag --latest=false
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
-+                --latest="${MAKE_LATEST}"
-           fi
+-          fi
 -
 -          mapfile -d '' assets < <(find dist -type f -print0 | sort -z)
 -          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" \

@@ -84,12 +84,11 @@ jobs:
       # Avoid problematic aws-lc jitter entropy code path on musl builders.
       AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
       AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
-      # The Windows leg runs on a 16 GB hosted runner and the thin-LTO link of
-      # the CLI no longer fits next to four parallel rustc jobs: the runner
-      # died mid-link with "lost communication with the server". Packaging
-      # strips the binaries anyway (the symbols archive is Linux-only), so drop
-      # debug info for that leg and cap the parallelism.
-      CARGO_PROFILE_RELEASE_DEBUG: ${{ matrix.platform == 'windows' && 'false' || 'line-tables-only' }}
+      # Upstream builds this leg on a self-hosted Windows runner, so it needs
+      # no resource cap; on the 16 GB hosted runner four parallel rustc jobs
+      # plus the thin-LTO link exhausted memory and the agent dropped off
+      # ("lost communication with the server"). Cap the parallelism only --
+      # the release profile and therefore the published binary stay upstream's.
       CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
 
     strategy:
@@ -108,28 +107,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Bootstrap tree if needed
-        shell: bash
-        run: |
-          if [[ ! -d codex-rs ]]; then
-            bash scripts/bootstrap.sh
-          fi
-          # Linux only because CODE_DIR is one level below the tree root).
-          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
-          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
+      - uses: ./.github/actions/bootstrap-tree
 
       - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
         with:
           targets: ${{ matrix.target }}
-
-      # The `v8` git dependency checks out the rusty_v8 fork with its chromium
-      # submodules, whose vendored crate paths exceed the Windows
-      # 260-character limit; git needs core.longpaths to use the
-      # extended-length path API.
-      - name: Enable long paths for the v8 git checkout
-        if: matrix.platform == 'windows'
-        shell: bash
-        run: git config --global core.longpaths true
 
       # ---- Linux musl toolchain -------------------------------------------
       - name: Install Zig

@@ -160,13 +160,6 @@ jobs:
           (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
           echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
           echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
-      # Belt and braces for the case where cargo still resolves the `v8` git
-      # dependency (a cached lock or a future crate pulling it in): its
-      # chromium submodules exceed the Windows 260-character limit, and git
-      # only uses the extended-length path API when core.longpaths is set.
-      - name: Enable long paths for any remaining v8 git checkout
-        shell: bash
-        run: git config --global core.longpaths true
       # Type-check the Windows-only code paths (self-update swap, sandbox
       # helpers) on a native runner. Cross-checking from Linux is impossible
       # because ring/aws-lc-sys build scripts need a Windows C toolchain.

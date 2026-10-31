@@ -19,6 +19,14 @@ outputs:
 runs:
   using: composite
   steps:
+    # Upstream's shared setup-ci action sets this on Windows; the v8 git
+    # dependency checks out chromium submodules whose paths exceed the
+    # 260-character limit without it.
+    - name: Enable Git long paths (Windows)
+      if: runner.os == 'Windows'
+      shell: pwsh
+      run: git config --global core.longpaths true
+
     - name: Resolve or bootstrap the tree
       id: resolve
       shell: bash
