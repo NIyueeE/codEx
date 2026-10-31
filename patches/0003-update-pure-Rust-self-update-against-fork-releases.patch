@@ -1,4 +1,4 @@
-From 1655ffd91640dc4ef564edc33bdad14c269455c2 Mon Sep 17 00:00:00 2001
+From 620380d918d0dab7651568ff354f653dab4cc5cb Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -51,7 +51,7 @@ Subject: update: pure-Rust self-update against fork releases
  ...e_reconnect__unavailable_conversation.snap |    2 -
  codex-rs/tui/src/history_cell/notices.rs      |   25 +-
  ...pdate_available_history_cell_snapshot.snap |   11 -
- ...nfo_availability_nux_tooltip_snapshot.snap |   10 +-
+ ...nfo_availability_nux_tooltip_snapshot.snap |    3 +-
  ...pdate_available_history_cell_snapshot.snap |   15 +-
  ...pdate_available_history_cell_snapshot.snap |   12 -
  codex-rs/tui/src/history_cell/tests.rs        |   18 -
@@ -65,7 +65,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1664 insertions(+), 6742 deletions(-)
+ 61 files changed, 1659 insertions(+), 6740 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -9213,24 +9213,19 @@ index a9dd9cac784bd0993eb09bc518071a1e253f0ae2..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..7673524354bafe9fb5e4c9f8e704a85cc9d5f692 100644
+index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..5a17111420ff418bbee84286899ad8ef34dc46e4 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-@@ -1,10 +1,12 @@
+@@ -1,10 +1,9 @@
  ---
  source: tui/src/history_cell/tests.rs
 -assertion_line: 778
  expression: rendered
  ---
--
+ 
 -  >_ OpenAI Codex (v0.0.0)
--     /tmp/project
-+╭─────────────────────────────────────╮
-+│ >_ codEx (v0.166.0)                 │
-+│                                     │
-+│ model:     gpt-5   /model to change │
-+│ directory: /tmp/project             │
-+╰─────────────────────────────────────╯
++  >_ codEx (v0.166.0)
+      /tmp/project
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
