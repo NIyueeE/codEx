@@ -84,6 +84,13 @@ jobs:
       # Avoid problematic aws-lc jitter entropy code path on musl builders.
       AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
       AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
+      # The Windows leg runs on a 16 GB hosted runner and the thin-LTO link of
+      # the CLI no longer fits next to four parallel rustc jobs: the runner
+      # died mid-link with "lost communication with the server". Packaging
+      # strips the binaries anyway (the symbols archive is Linux-only), so drop
+      # debug info for that leg and cap the parallelism.
+      CARGO_PROFILE_RELEASE_DEBUG: ${{ matrix.platform == 'windows' && 'false' || 'line-tables-only' }}
+      CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
 
     strategy:
       fail-fast: false

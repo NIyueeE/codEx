@@ -1,4 +1,4 @@
-From 6333bf278c02c2c51ce074d82db91912e97f8578 Mon Sep 17 00:00:00 2001
+From c28d51ee9251f12651052e5192c08b852ecea5d5 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -27,7 +27,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2421 +++--------------
+ .github/workflows/rust-release.yml            | 2428 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1042 insertions(+), 7751 deletions(-)
+ 45 files changed, 1049 insertions(+), 7751 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -4534,10 +4534,10 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..a7750dc7ec18d602d8942ee5aac34d834e87d202 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e12e8d560ee37fbdbb03446c38922a8708915540 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,240 +1,260 @@
+@@ -1,240 +1,267 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4668,6 +4668,13 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..a7750dc7ec18d602d8942ee5aac34d83
 +      # Avoid problematic aws-lc jitter entropy code path on musl builders.
 +      AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
 +      AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
++      # The Windows leg runs on a 16 GB hosted runner and the thin-LTO link of
++      # the CLI no longer fits next to four parallel rustc jobs: the runner
++      # died mid-link with "lost communication with the server". Packaging
++      # strips the binaries anyway (the symbols archive is Linux-only), so drop
++      # debug info for that leg and cap the parallelism.
++      CARGO_PROFILE_RELEASE_DEBUG: ${{ matrix.platform == 'windows' && 'false' || 'line-tables-only' }}
++      CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
  
      strategy:
        fail-fast: false
@@ -4965,7 +4972,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..a7750dc7ec18d602d8942ee5aac34d83
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -250,1962 +270,235 @@ jobs:
+@@ -250,1962 +277,235 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
