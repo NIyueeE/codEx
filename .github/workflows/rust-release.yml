@@ -115,6 +115,15 @@ jobs:
         with:
           targets: ${{ matrix.target }}
 
+      # The `v8` git dependency checks out the rusty_v8 fork with its chromium
+      # submodules, whose vendored crate paths exceed the Windows
+      # 260-character limit; git needs core.longpaths to use the
+      # extended-length path API.
+      - name: Enable long paths for the v8 git checkout
+        if: matrix.platform == 'windows'
+        shell: bash
+        run: git config --global core.longpaths true
+
       # ---- Linux musl toolchain -------------------------------------------
       - name: Install Zig
         if: matrix.platform == 'linux'

@@ -1,4 +1,4 @@
-From 1c148a6f451ffa4e5818f0ff6bee81fd4363f0ae Mon Sep 17 00:00:00 2001
+From 6333bf278c02c2c51ce074d82db91912e97f8578 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -27,7 +27,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2416 +++--------------
+ .github/workflows/rust-release.yml            | 2421 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1035 insertions(+), 7753 deletions(-)
+ 45 files changed, 1042 insertions(+), 7751 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -4534,10 +4534,10 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad174ad4ec 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..a7750dc7ec18d602d8942ee5aac34d834e87d202 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,240 +1,251 @@
+@@ -1,240 +1,260 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4771,40 +4771,47 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -          df -h .
 -      - name: Install Linux bwrap build dependencies
 -        if: ${{ runner.os == 'Linux' }}
--        shell: bash
--        run: |
++
++      - name: Bootstrap tree if needed
+         shell: bash
+         run: |
 -          set -euo pipefail
 -          sudo apt-get update -y
 -          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends binutils pkg-config libcap-dev
 -      - name: Set up Rust toolchain
 -        uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
--        with:
--          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
- 
--      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
--        name: Use hermetic Cargo home (musl)
-+      - name: Bootstrap tree if needed
-         shell: bash
-         run: |
--          set -euo pipefail
--          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
--          mkdir -p "${cargo_home}/bin"
--          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
--          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
--          : > "${cargo_home}/config.toml"
 +          if [[ ! -d codex-rs ]]; then
 +            bash scripts/bootstrap.sh
 +          fi
 +          # Linux only because CODE_DIR is one level below the tree root).
 +          echo "TREE_DIR=$([[ -d codex-rs ]] && echo . || echo tree)" >> "$GITHUB_ENV"
 +          echo "CODE_DIR=$([[ -d codex-rs ]] && echo codex-rs || echo tree/codex-rs)" >> "$GITHUB_ENV"
++
++      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+         with:
+-          targets: ${{ matrix.build-system == 'cargo' && matrix.target || '' }}
++          targets: ${{ matrix.target }}
+ 
+-      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
+-        name: Use hermetic Cargo home (musl)
++      # The `v8` git dependency checks out the rusty_v8 fork with its chromium
++      # submodules, whose vendored crate paths exceed the Windows
++      # 260-character limit; git needs core.longpaths to use the
++      # extended-length path API.
++      - name: Enable long paths for the v8 git checkout
++        if: matrix.platform == 'windows'
+         shell: bash
+-        run: |
+-          set -euo pipefail
+-          cargo_home="${GITHUB_WORKSPACE}/.cargo-home"
+-          mkdir -p "${cargo_home}/bin"
+-          echo "CARGO_HOME=${cargo_home}" >> "$GITHUB_ENV"
+-          echo "${cargo_home}/bin" >> "$GITHUB_PATH"
+-          : > "${cargo_home}/config.toml"
++        run: git config --global core.longpaths true
  
 -      - if: ${{ matrix.build-system == 'cargo' && contains(matrix.target, 'linux') }}
 -        name: Install Zig
-+      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
-+        with:
-+          targets: ${{ matrix.target }}
-+
 +      # ---- Linux musl toolchain -------------------------------------------
 +      - name: Install Zig
 +        if: matrix.platform == 'linux'
@@ -4958,7 +4965,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
  
            bwrap_path="target/${target}/release/bwrap"
            if [[ ! -f "$bwrap_path" ]]; then
-@@ -250,1962 +261,235 @@ jobs:
+@@ -250,1962 +270,235 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5049,7 +5056,8 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
          env:
 -          APP_TARGET: ${{ matrix.target }}
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
--        run: |
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
 -          set -euo pipefail
 -          cd "$GITHUB_WORKSPACE"
 -          voice_target="${APP_TARGET%-musl}-gnu"
@@ -5073,8 +5081,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -      - if: ${{ runner.os == 'macOS' }}
 -        name: Stage unsigned macOS artifacts
 -        shell: bash
-+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -
 +          cd "${CODE_DIR}"
@@ -5675,22 +5682,22 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -
 -      - name: Upload signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
--        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
--        with:
--          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
--          path: signed-voice-${{ matrix.target }}.tar.gz
--          if-no-files-found: error
--
--      - name: Upload signed macOS binaries
 +      - name: Upload archive
          uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
          with:
--          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
--          path: signed-macos/${{ matrix.target }}/*
+-          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
+-          path: signed-voice-${{ matrix.target }}.tar.gz
 +          name: dist-${{ matrix.target }}
 +          path: dist/${{ matrix.target }}/*
            if-no-files-found: error
  
+-      - name: Upload signed macOS binaries
+-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
+-        with:
+-          name: ${{ matrix.artifact_name }}-signed-binaries${{ env.ARTIFACT_SUFFIX }}
+-          path: signed-macos/${{ matrix.target }}/*
+-          if-no-files-found: error
+-
 -      - name: Upload signed macOS helpers
 -        if: ${{ matrix.bundle == 'primary' }}
 +      # Debug symbols for the stripped payload, so a crash report from a
@@ -5775,16 +5782,16 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -          path: codex-rs/target/${{ matrix.target }}/release
 -
 -      - name: Download signed macOS helpers
-+      - name: Download archives
-         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-         with:
+-        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+-        with:
 -          name: ${{ matrix.target }}-signed-resources${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/signed-resources/${{ matrix.target }}
 -
 -      - name: Download signed voice runtime
 -        if: ${{ matrix.bundle == 'primary' }}
--        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
--        with:
++      - name: Download archives
+         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+         with:
 -          name: voice-${{ matrix.target }}-signed${{ env.ARTIFACT_SUFFIX }}
 -          path: ${{ runner.temp }}/signed-voice
 +          pattern: dist-*
@@ -6675,7 +6682,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -            fi
 -            gh release create "$GITHUB_REF_NAME" "${release_args[@]}" \
 -              --draft="$draft" --verify-tag --latest=false
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
++                --latest="${MAKE_LATEST}"
+           fi
 -
 -          mapfile -d '' assets < <(find dist -type f -print0 | sort -z)
 -          gh release upload "$GITHUB_REF_NAME" "${assets[@]}" \
@@ -6876,11 +6887,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..69457f9dd74e5209aaff3ba422db7cad
 -          # The SDK depends on this exact root package version.
 -          if [[ -f "${sdk_tarball}" ]]; then
 -            tarballs+=("${sdk_tarball}")
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
-+                --latest="${MAKE_LATEST}"
-           fi
+-          fi
 -
 -          for tarball in "${tarballs[@]}"; do
 -            filename="$(basename "${tarball}")"
