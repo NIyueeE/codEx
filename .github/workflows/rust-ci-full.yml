@@ -160,12 +160,28 @@ jobs:
           (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
           echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
           echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
-      # cargo checks out the `v8` git dependency (the rusty_v8 fork) with its
-      # chromium submodules, and that tree contains vendored crate paths longer
-      # than the Windows 260-character limit. Git only uses the
-      # extended-length path API when core.longpaths is set, so without this
-      # the checkout dies with ENAMETOOLONG before the type-check starts.
-      - name: Enable long paths for the v8 git checkout
+      # The workspace patches `v8` to a git checkout of the rusty_v8 fork, and
+      # cargo initialises that repository's chromium submodules while checking
+      # it out. Their vendored crate paths exceed Windows' 260-character limit,
+      # so the checkout dies with ENAMETOOLONG before anything compiles.
+      #
+      # GitHub's source tarball carries the crate without submodule contents,
+      # and the prebuilt artifacts above are what its build script consumes, so
+      # pointing the patch at that source keeps the type-check faithful while
+      # removing the submodule fetch entirely.
+      - name: Vendor the v8 crate source for the type-check
+        shell: bash
+        run: |
+          set -euo pipefail
+          rev=350c5a859a9b3c84ab8701b3ad51e3b7699b30c0
+          curl -fsSL "https://github.com/seanh-oai/rusty_v8/archive/${rev}.tar.gz" \
+            | tar xz -C "${RUNNER_TEMP}"
+          echo "V8_SOURCE_DIR=${RUNNER_TEMP}/rusty_v8-${rev}" >> "${GITHUB_ENV}"
+      # Belt and braces for the case where cargo still resolves the `v8` git
+      # dependency (a cached lock or a future crate pulling it in): its
+      # chromium submodules exceed the Windows 260-character limit, and git
+      # only uses the extended-length path API when core.longpaths is set.
+      - name: Enable long paths for any remaining v8 git checkout
         shell: bash
         run: git config --global core.longpaths true
       # Type-check the Windows-only code paths (self-update swap, sandbox
@@ -184,12 +200,14 @@ jobs:
         shell: bash
         run: |
           cd "${CODE_DIR}"
-          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests \
+            --config "patch.crates-io.v8.path='${V8_SOURCE_DIR}'"
       - name: Type-check the TUI for Windows
         shell: bash
         run: |
           cd "${CODE_DIR}"
-          cargo check --target x86_64-pc-windows-msvc -p codex-tui
+          cargo check --target x86_64-pc-windows-msvc -p codex-tui \
+            --config "patch.crates-io.v8.path='${V8_SOURCE_DIR}'"
       - name: Check for a clean worktree
         if: always() && !cancelled()
         uses: ./.github/actions/check-clean-worktree
