@@ -90,6 +90,9 @@ jobs:
       # ("lost communication with the server"). Cap the parallelism only --
       # the release profile and therefore the published binary stay upstream's.
       CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
+      # Upstream's rust-release.yml sets this for the Cargo matrix; only Apple
+      # targets need packed dSYM bundles.
+      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: off
 
     strategy:
       fail-fast: false
@@ -243,7 +246,7 @@ jobs:
           set -euo pipefail
           cd "${CODE_DIR}"
           target="${{ matrix.target }}"
-          cargo build --target "$target" --release --bin bwrap
+          cargo build --target "$target" --release --timings --bin bwrap
 
           bwrap_path="target/${target}/release/bwrap"
           if [[ ! -f "$bwrap_path" ]]; then
@@ -266,7 +269,11 @@ jobs:
           LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
         run: |
           cd "${CODE_DIR}"
-          cargo build --target "${{ matrix.target }}" --release --bin codex
+          # Upstream's build-cargo-package-binaries action exports this so the
+          # binary embeds its commit instead of falling back to "dev".
+          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+          export STABLE_GIT_COMMIT
+          cargo build --target "${{ matrix.target }}" --release --timings --bin codex
 
       # Upstream ships every one of these inside `bin/` or `codex-resources/`;
       # a canonical package is rejected when one is missing. bwrap is built and
@@ -282,7 +289,9 @@ jobs:
           if [[ "${{ matrix.platform }}" == "windows" ]]; then
             helpers+=(--bin codex-windows-sandbox-setup --bin codex-command-runner)
           fi
-          cargo build --target "$target" --release "${helpers[@]}"
+          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+          export STABLE_GIT_COMMIT
+          cargo build --target "$target" --release --timings "${helpers[@]}"
 
       # The symbols script only exists in the bootstrapped tree (the slim repo
       # carries just check_ci_results.py), so resolve it through TREE_DIR - as

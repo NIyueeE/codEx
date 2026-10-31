@@ -171,7 +171,22 @@ Then resolve with upstream as the authority, not with a fork-local exception:
   from the workspace root, and passes `--artifact-name`; upstream's
   `rust-release.yml` does all three, and a fork version that dropped them
   failed twice on CI. If upstream has no equivalent, say so explicitly when
-  deviating.
+  deviating. CI follows the same hierarchy, and the 0.166.0 upgrade showed both
+  failure modes on one job. Upstream keeps its Windows prerequisites in the
+  shared `.github/actions/setup-ci` action - `core.longpaths`, the Dev Drive,
+  the CI build paths; when a Windows-only checkout started failing with
+  `ENAMETOOLONG`, the first fix was a per-workflow `git config` step, when the
+  correct one was to carry that single upstream step in `bootstrap-tree` (the
+  fork's setup-ci analogue) and let the release job call the action instead of
+  its own inline copy. In the other direction, an invented
+  `CARGO_PROFILE_RELEASE_DEBUG=false` made a hosted-runner link fit in memory
+  but silently changed the published Windows binary. The rule that falls out of
+  both: resource limits for the fork's hosted runners may adjust
+  `CARGO_BUILD_JOBS`, never the cargo profile that shapes the artifact, and a
+  shared prerequisite belongs in the shared action rather than in each
+  workflow. Upstream builds those legs on self-hosted runners, so it has no
+  equivalent to copy for the limit itself - that deviation belongs in the
+  workflow comment and the commit message, next to what upstream does instead.
 - **Keep the queue coherent.** One fix, one home: land it in the module commit
   that owns the affected file (see *Coding Style & Naming Conventions*), then
   re-export the queue exactly as *Build, Test & Development Commands*

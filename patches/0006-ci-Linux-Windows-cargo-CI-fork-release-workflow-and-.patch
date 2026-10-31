@@ -1,4 +1,4 @@
-From 78511b42329e0d35347feb0aca30b815a76f9563 Mon Sep 17 00:00:00 2001
+From e5991c2a0217b06b00fcb0adf265600316f405bc Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -27,7 +27,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2418 +++--------------
+ .github/workflows/rust-release.yml            | 2425 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1037 insertions(+), 7756 deletions(-)
+ 45 files changed, 1045 insertions(+), 7755 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -4536,10 +4536,10 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b95a67a3a1 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..70a6e944a9a672b986ef69167b5544d6a81a5bce 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,240 +1,249 @@
+@@ -1,238 +1,250 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4676,6 +4676,9 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 +      # ("lost communication with the server"). Cap the parallelism only --
 +      # the release profile and therefore the published binary stay upstream's.
 +      CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
++      # Upstream's rust-release.yml sets this for the Cargo matrix; only Apple
++      # targets need packed dSYM bundles.
++      CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: off
  
      strategy:
        fail-fast: false
@@ -4955,12 +4958,9 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
            set -euo pipefail
 +          cd "${CODE_DIR}"
            target="${{ matrix.target }}"
--          cargo build --target "$target" --release --timings --bin bwrap
-+          cargo build --target "$target" --release --bin bwrap
+           cargo build --target "$target" --release --timings --bin bwrap
  
-           bwrap_path="target/${target}/release/bwrap"
-           if [[ ! -f "$bwrap_path" ]]; then
-@@ -250,1962 +259,235 @@ jobs:
+@@ -250,1962 +262,241 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -4968,7 +4968,10 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -        if: ${{ matrix.build-system == 'cargo' }}
 +      - name: Build codex
          shell: bash
--        run: |
++        env:
++          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
++          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
+         run: |
 -          target="${{ matrix.target }}"
 -          build_args=()
 -          for binary in ${{ matrix.binaries }}; do
@@ -4979,8 +4982,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -            fi
 -            build_args+=(--bin "$binary")
 -          done
--          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
--          export STABLE_GIT_COMMIT
++          cd "${CODE_DIR}"
++          # Upstream's build-cargo-package-binaries action exports this so the
++          # binary embeds its commit instead of falling back to "dev".
+           STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
+           export STABLE_GIT_COMMIT
 -          cargo build --target "$target" --release --timings "${build_args[@]}"
 -
 -      - name: Prepare Bazel for release binaries or Linux voice
@@ -4993,7 +4999,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -      - name: Build Bazel release binaries and symbols
 -        if: ${{ matrix.build-system == 'bazel' }}
 -        uses: ./.github/actions/build-bazel-release
-         env:
+-        env:
 -          BUILDBUDDY_API_KEY: ${{ secrets.BUILDBUDDY_API_KEY }}
 -        with:
 -          target: ${{ matrix.target }}
@@ -5022,25 +5028,22 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -      - name: Suffix Bazel artifact filenames
 -        if: ${{ matrix.build-system == 'bazel' }}
 -        shell: bash
-+          # Mirrors upstream: SQLite intrinsics miscompile for x64 MSVC.
-+          LIBSQLITE3_FLAGS: ${{ matrix.platform == 'windows' && 'SQLITE_DISABLE_INTRINSIC' || '' }}
-         run: |
+-        run: |
 -          set -euo pipefail
 -          for artifact in "symbols-dist/${{ matrix.artifact_name }}"/*; do
 -            name="${artifact##*/}"
 -            stem="${name%%.*}"
 -            mv "$artifact" "${artifact%/*}/${stem}-bazel${name#"$stem"}"
 -          done
--
++          cargo build --target "${{ matrix.target }}" --release --timings --bin codex
+ 
 -      - name: Upload symbols archive
 -        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
 -        with:
 -          name: ${{ matrix.artifact_name }}-symbols${{ env.ARTIFACT_SUFFIX }}
 -          path: codex-rs/symbols-dist/${{ matrix.artifact_name }}/*
 -          if-no-files-found: error
-+          cd "${CODE_DIR}"
-+          cargo build --target "${{ matrix.target }}" --release --bin codex
- 
+-
 -      - name: Build Linux voice runtime
 -        if: ${{ matrix.bundle == 'primary' && contains(matrix.target, 'linux') }}
 +      # Upstream ships every one of these inside `bin/` or `codex-resources/`;
@@ -5141,7 +5144,9 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 +          if [[ "${{ matrix.platform }}" == "windows" ]]; then
 +            helpers+=(--bin codex-windows-sandbox-setup --bin codex-command-runner)
            fi
-+          cargo build --target "$target" --release "${helpers[@]}"
++          STABLE_GIT_COMMIT="$(git rev-parse HEAD)"
++          export STABLE_GIT_COMMIT
++          cargo build --target "$target" --release --timings "${helpers[@]}"
  
 -      - name: Build Codex package archive
 -        if: ${{ runner.os != 'macOS' }}
@@ -5926,7 +5931,13 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -            ditto "$package" "$dmg_root"
 -            rm "${dmg_root}/codex"
 -            ln -s bin/codex "${dmg_root}/codex"
--          fi
++          tag="${GITHUB_REF_NAME}"
++          shopt -s nullglob
++          assets=(dist/*.tar.gz dist/*.sha256)
++          if [[ ${#assets[@]} -eq 0 ]]; then
++            echo "no release assets found under dist/" >&2
++            exit 1
+           fi
 -
 -          rm -f "$dmg_path"
 -          hdiutil create \
@@ -5938,13 +5949,8 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -
 -          if [[ ! -f "$dmg_path" ]]; then
 -            echo "DMG $dmg_path not found after build"
-+          tag="${GITHUB_REF_NAME}"
-+          shopt -s nullglob
-+          assets=(dist/*.tar.gz dist/*.sha256)
-+          if [[ ${#assets[@]} -eq 0 ]]; then
-+            echo "no release assets found under dist/" >&2
-             exit 1
-           fi
+-            exit 1
+-          fi
 -
 -      - name: Upload unsigned macOS DMG
 -        if: ${{ matrix.build_dmg == 'true' }}
@@ -6637,11 +6643,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
            else
 -            echo "should_publish=false" >> "$GITHUB_OUTPUT"
 -            echo "npm_tag=" >> "$GITHUB_OUTPUT"
-+            gh release create "${tag}" \
-+                --title "codEx ${tag}" \
-+                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
-+                --latest="${MAKE_LATEST}"
-           fi
+-          fi
 -
 -      - name: Stage installer scripts
 -        run: |
@@ -6826,7 +6828,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e2a335dc49546d5c3d76ca9c394632b9
 -          prefix=""
 -          if [[ -n "${NPM_TAG}" ]]; then
 -            prefix="${NPM_TAG}-"
--          fi
++            gh release create "${tag}" \
++                --title "codEx ${tag}" \
++                --notes "codEx ${tag} (fork of openai/codex at the matching upstream tag)" \
++                --latest="${MAKE_LATEST}"
+           fi
 -
 -          root_tarball="dist/npm/codex-npm-${VERSION}.tgz"
 -          sdk_tarball="dist/npm/codex-sdk-npm-${VERSION}.tgz"
