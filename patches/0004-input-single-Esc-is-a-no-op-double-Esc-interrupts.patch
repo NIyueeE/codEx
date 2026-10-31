@@ -1,4 +1,4 @@
-From f34e4963c95f50c262002ce49a7460c852745b7c Mon Sep 17 00:00:00 2001
+From 36255bc646b8a45f545f40b2ef2054650eac71e3 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:28 +0000
 Subject: input: single Esc is a no-op, double Esc interrupts

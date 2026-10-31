@@ -1,4 +1,4 @@
-From 4f17072ceee245d4ed40f9a6b4c97a1e33bbcb76 Mon Sep 17 00:00:00 2001
+From 1c148a6f451ffa4e5818f0ff6bee81fd4363f0ae Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -22,7 +22,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/r2-release.yml              |   59 -
  .github/workflows/repo-checks.yml             |  100 +-
  .../rust-ci-full-nextest-platform.yml         |  439 ---
- .github/workflows/rust-ci-full.yml            |  667 ++---
+ .github/workflows/rust-ci-full.yml            |  652 ++---
  .github/workflows/rust-ci.yml                 |  288 +-
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1052 insertions(+), 7751 deletions(-)
+ 45 files changed, 1035 insertions(+), 7753 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -2436,10 +2436,10 @@ index 474535267aabc0143e5858754acda9679aca058f..00000000000000000000000000000000
 -            exit 1
 -          fi
 diff --git a/.github/workflows/rust-ci-full.yml b/.github/workflows/rust-ci-full.yml
-index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1a8176a23 100644
+index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..4763f6e2ca409bc60bfbcb4f6aa3789734d2293c 100644
 --- a/.github/workflows/rust-ci-full.yml
 +++ b/.github/workflows/rust-ci-full.yml
-@@ -1,544 +1,233 @@
+@@ -1,544 +1,214 @@
  name: rust-ci-full
 +
 +# The second half of the fork's heavy gate: the release CLI build and the full
@@ -2854,7 +2854,17 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -
 -      - name: Enable sccache wrapper
 -        if: ${{ env.USE_SCCACHE == 'true' }}
--        shell: bash
++          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
++          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
++          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
++          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
++          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
++      # Belt and braces for the case where cargo still resolves the `v8` git
++      # dependency (a cached lock or a future crate pulling it in): its
++      # chromium submodules exceed the Windows 260-character limit, and git
++      # only uses the extended-length path API when core.longpaths is set.
++      - name: Enable long paths for any remaining v8 git checkout
+         shell: bash
 -        run: echo "RUSTC_WRAPPER=sccache" >> "$GITHUB_ENV"
 -
 -      - name: Restore sccache cache (fallback)
@@ -2870,24 +2880,23 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -
 -      - if: ${{ matrix.target == 'x86_64-unknown-linux-musl' || matrix.target == 'aarch64-unknown-linux-musl'}}
 -        name: Prepare APT cache directories (musl)
-+          curl -fsSL "${base_url}/${archive_name}" -o "${archive_path}"
-+          curl -fsSL "${base_url}/${binding_name}" -o "${binding_path}"
-+          (cd "${binding_dir}" && tr -d '\r' < "${checksums_path}" | sha256sum -c -)
-+          echo "RUSTY_V8_ARCHIVE=${archive_path}" >> "${GITHUB_ENV}"
-+          echo "RUSTY_V8_SRC_BINDING_PATH=${binding_path}" >> "${GITHUB_ENV}"
-+      # The workspace patches `v8` to a git checkout of the rusty_v8 fork, and
-+      # cargo initialises that repository's chromium submodules while checking
-+      # it out. Their vendored crate paths exceed Windows' 260-character limit,
-+      # so the checkout dies with ENAMETOOLONG before anything compiles.
++        run: git config --global core.longpaths true
++      # Type-check the Windows-only code paths (self-update swap, sandbox
++      # helpers) on a native runner. Cross-checking from Linux is impossible
++      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
++      # `--tests` keeps the Windows test code and every
++      # `cfg(not(target_os = "windows"))` item compiled, so the Unix updater
++      # path cannot rot unseen.
 +      #
-+      # GitHub's source tarball carries the crate without submodule contents,
-+      # and the prebuilt artifacts above are what its build script consumes, so
-+      # pointing the patch at that source keeps the type-check faithful while
-+      # removing the submodule fetch entirely.
-+      - name: Vendor the v8 crate source for the type-check
++      # These two calls are the only gate commands that cannot go through
++      # scripts/gates.sh: the local gate has no Windows runner, and a
++      # `cargo check --target` with the MSVC environment is not something a
++      # Linux host can reproduce. They are the Windows half of the compile
++      # surface that `gates.sh tree` checks on Linux.
++      - name: Type-check the CLI for Windows
          shell: bash
          run: |
-           set -euo pipefail
+-          set -euo pipefail
 -          sudo mkdir -p /var/cache/apt/archives /var/lib/apt/lists
 -          sudo chown -R "$USER:$USER" /var/cache/apt /var/lib/apt/lists
 -
@@ -2913,16 +2922,7 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -          TARGET: ${{ matrix.target }}
 -          APT_UPDATE_ARGS: -o Acquire::Retries=3
 -          APT_INSTALL_ARGS: --no-install-recommends
-+          rev=350c5a859a9b3c84ab8701b3ad51e3b7699b30c0
-+          curl -fsSL "https://github.com/seanh-oai/rusty_v8/archive/${rev}.tar.gz" \
-+            | tar xz -C "${RUNNER_TEMP}"
-+          echo "V8_SOURCE_DIR=${RUNNER_TEMP}/rusty_v8-${rev}" >> "${GITHUB_ENV}"
-+      # Belt and braces for the case where cargo still resolves the `v8` git
-+      # dependency (a cached lock or a future crate pulling it in): its
-+      # chromium submodules exceed the Windows 260-character limit, and git
-+      # only uses the extended-length path API when core.longpaths is set.
-+      - name: Enable long paths for any remaining v8 git checkout
-         shell: bash
+-        shell: bash
 -        run: bash "${GITHUB_WORKSPACE}/.github/scripts/install-musl-build-tools.sh"
 -
 -      - name: Configure rusty_v8 artifact overrides and verify checksums
@@ -2939,22 +2939,8 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -
 -      - name: Pre-warm dependency cache (cargo-chef)
 -        if: ${{ matrix.profile == 'release' }}
-+        run: git config --global core.longpaths true
-+      # Type-check the Windows-only code paths (self-update swap, sandbox
-+      # helpers) on a native runner. Cross-checking from Linux is impossible
-+      # because ring/aws-lc-sys build scripts need a Windows C toolchain.
-+      # `--tests` keeps the Windows test code and every
-+      # `cfg(not(target_os = "windows"))` item compiled, so the Unix updater
-+      # path cannot rot unseen.
-+      #
-+      # These two calls are the only gate commands that cannot go through
-+      # scripts/gates.sh: the local gate has no Windows runner, and a
-+      # `cargo check --target` with the MSVC environment is not something a
-+      # Linux host can reproduce. They are the Windows half of the compile
-+      # surface that `gates.sh tree` checks on Linux.
-+      - name: Type-check the CLI for Windows
-         shell: bash
-         run: |
+-        shell: bash
+-        run: |
 -          set -euo pipefail
 -          RECIPE="${RUNNER_TEMP}/chef-recipe.json"
 -          cargo chef prepare --recipe-path "$RECIPE"
@@ -3005,8 +2991,7 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -      - name: sccache summary
 -        if: always() && env.USE_SCCACHE == 'true'
 +          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests \
-+            --config "patch.crates-io.v8.path='${V8_SOURCE_DIR}'"
++          cargo check --target x86_64-pc-windows-msvc -p codex-cli --tests
 +      - name: Type-check the TUI for Windows
          shell: bash
          run: |
@@ -3051,7 +3036,12 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -      remote_env: true
 -      use_sccache: true
 -    secrets: inherit
--
++          cd "${CODE_DIR}"
++          cargo check --target x86_64-pc-windows-msvc -p codex-tui
++      - name: Check for a clean worktree
++        if: always() && !cancelled()
++        uses: ./.github/actions/check-clean-worktree
+ 
 -  tests_linux_arm64:
 -    name: Tests — ubuntu-24.04-arm - aarch64-unknown-linux-gnu
 -    uses: ./.github/workflows/rust-ci-full-nextest-platform.yml
@@ -3096,13 +3086,6 @@ index 188f94ef452f6354e25295e0f1ddda89cb0cdf9a..636294b077ee517918ff94f4304543a1
 -    secrets: inherit
 -
 -  # --- Gatherer job for the full post-merge workflow --------------------------
-+          cd "${CODE_DIR}"
-+          cargo check --target x86_64-pc-windows-msvc -p codex-tui \
-+            --config "patch.crates-io.v8.path='${V8_SOURCE_DIR}'"
-+      - name: Check for a clean worktree
-+        if: always() && !cancelled()
-+        uses: ./.github/actions/check-clean-worktree
-+
 +  # The gatherer: only an explicit success from every above is safe to accept.
    results:
      name: Full CI results

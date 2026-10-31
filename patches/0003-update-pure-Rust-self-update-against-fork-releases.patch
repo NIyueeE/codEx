@@ -1,4 +1,4 @@
-From 620380d918d0dab7651568ff354f653dab4cc5cb Mon Sep 17 00:00:00 2001
+From b0d5751e92cda8e7305144d6df1a183ad48c56b5 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -7690,7 +7690,7 @@ index 21cff3a7a6731c557ceed99b3edc34505f4cd1bc..00000000000000000000000000000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..c85d837277d9e997619ade26f9dba9c72a195ef6
+index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3132fe043
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
 @@ -0,0 +1,875 @@
@@ -7869,7 +7869,7 @@ index 0000000000000000000000000000000000000000..c85d837277d9e997619ade26f9dba9c7
 +    {
 +        // Windows cannot replace its own running executable, so the staged
 +        // package hands the swap to a detached copy and exits.
-+        stage_windows_update(&staging_dir).await
++        stage_windows_update(&staging_dir, target).await
 +    }
 +
 +    #[cfg(not(target_os = "windows"))]
@@ -8124,11 +8124,11 @@ index 0000000000000000000000000000000000000000..c85d837277d9e997619ade26f9dba9c7
 +/// detached copy of the new binary, which waits for the current process to
 +/// exit, swaps the install, and relaunches codEx.
 +#[cfg(target_os = "windows")]
-+async fn stage_windows_update(staging_dir: &Path) -> anyhow::Result<()> {
++async fn stage_windows_update(staging_dir: &Path, target: &str) -> anyhow::Result<()> {
 +    use std::os::windows::process::CommandExt;
 +    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 +
-+    let staged = StagedPackage::read(staging_dir)?;
++    let staged = StagedPackage::read(staging_dir, target)?;
 +    let new_codex = staged.entrypoint_in(staging_dir);
 +
 +    let parent_pid = std::process::id();

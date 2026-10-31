@@ -1,4 +1,4 @@
-From 543cc62a4d0108edba9d28da5474016389d08bf3 Mon Sep 17 00:00:00 2001
+From 8517b3ac66e4dd3c1a355800c0ec1436467dfaf7 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
