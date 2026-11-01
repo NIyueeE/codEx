@@ -1,10 +1,10 @@
-From c221b8e8a985803a3da3d184c31126adb7196b0e Mon Sep 17 00:00:00 2001
+From 71eb072247dac484e10aeafb702739c520fc0fd7 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 ---
- .github/actions/bootstrap-tree/action.yml     |   55 +
+ .github/actions/bootstrap-tree/action.yml     |   69 +
  .github/actions/cargo-cache/action.yml        |   43 +
  .github/blob-size-allowlist.txt               |   18 +-
  .github/scripts/install-musl-build-tools.sh   |   11 +-
@@ -27,7 +27,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2426 +++--------------
+ .github/workflows/rust-release.yml            | 2427 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1046 insertions(+), 7755 deletions(-)
+ 45 files changed, 1061 insertions(+), 7755 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -87,10 +87,10 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
 
 diff --git a/.github/actions/bootstrap-tree/action.yml b/.github/actions/bootstrap-tree/action.yml
 new file mode 100644
-index 0000000000000000000000000000000000000000..4504ee6147ab0fab2d11d4c9489a5a2653a30d7f
+index 0000000000000000000000000000000000000000..11f2519f1b110442c35d16e08e1e06bb8cdbcf55
 --- /dev/null
 +++ b/.github/actions/bootstrap-tree/action.yml
-@@ -0,0 +1,55 @@
+@@ -0,0 +1,69 @@
 +name: bootstrap-tree
 +description: >-
 +  Resolve the bootstrapped tree root and export TREE_DIR/CODE_DIR so every
@@ -119,6 +119,20 @@ index 0000000000000000000000000000000000000000..4504ee6147ab0fab2d11d4c9489a5a26
 +      if: runner.os == 'Windows'
 +      shell: pwsh
 +      run: git config --global core.longpaths true
++
++    - name: Configure CI build paths
++      shell: bash
++      run: |
++        set -euo pipefail
++        # Upstream's setup-ci action redirects the Cargo target directory to a
++        # dedicated build root. The GitHub-hosted runner's default location
++        # shares the ~14 GB workspace disk with the checkout, and a release
++        # build of this workspace plus the tree's dependencies fills it
++        # ("rustc-LLVM ERROR: IO failure ... No space left on device").
++        build_root="$HOME/.cache/codex-ci"
++        cargo_target_dir="$build_root/cargo-target"
++        mkdir -p "$cargo_target_dir"
++        echo "CARGO_TARGET_DIR=${cargo_target_dir}" >> "$GITHUB_ENV"
 +
 +    - name: Resolve or bootstrap the tree
 +      id: resolve
@@ -4536,7 +4550,7 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e0afeeeb0f709506a68f666e274145866f759b17 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..156e26f55ec317875aa63069cd62fb5e863efb7a 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
 @@ -1,238 +1,251 @@
@@ -4961,7 +4975,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e0afeeeb0f709506a68f666e27414586
            target="${{ matrix.target }}"
            cargo build --target "$target" --release --timings --bin bwrap
  
-@@ -250,1962 +263,241 @@ jobs:
+@@ -250,1962 +263,242 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"
  
@@ -5172,9 +5186,10 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e0afeeeb0f709506a68f666e27414586
 +          tree_dir="${GITHUB_WORKSPACE}"
 +          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
 +          binaries="codex codex-code-mode-host codex-exec-server"
-+          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
-+          # workspace rather than the repo root; the script runs from the repo
-+          # root and therefore needs the absolute release directory.
++          # bootstrap-tree exports CARGO_TARGET_DIR for the shared build root;
++          # resolve it (relative to CODE_DIR) so this step follows the same
++          # directory cargo wrote the binaries to.
++          release_root="${CARGO_TARGET_DIR:-target}"
 +          bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
              --target "$TARGET" \
 -            --bundle "$BUNDLE" \
@@ -5459,7 +5474,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e0afeeeb0f709506a68f666e27414586
 -
 -      - name: Sign and notarize macOS binaries
 +            --artifact-name "$TARGET" \
-+            --release-dir "${tree_dir}/codex-rs/target/${TARGET}/release" \
++            --release-dir "${tree_dir}/codex-rs/${release_root}/${TARGET}/release" \
 +            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
 +            --binaries "$binaries"
 +      - name: Assemble package archive
@@ -5476,7 +5491,7 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..e0afeeeb0f709506a68f666e27414586
 +          # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
 +          tree_dir="${GITHUB_WORKSPACE}"
 +          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
-+          release_dir="target/${TARGET}/release"
++          release_dir="${CARGO_TARGET_DIR:-target}/${TARGET}/release"
 +          [[ -f "${release_dir}/codex" || -f "${release_dir}/codex.exe" ]] || {
 +            echo "codex binary not found in ${release_dir}"
 +            exit 1

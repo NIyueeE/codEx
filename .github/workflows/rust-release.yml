@@ -308,13 +308,14 @@ jobs:
           tree_dir="${GITHUB_WORKSPACE}"
           [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           binaries="codex codex-code-mode-host codex-exec-server"
-          # The fork leaves CARGO_TARGET_DIR unset, so cargo writes into the tree
-          # workspace rather than the repo root; the script runs from the repo
-          # root and therefore needs the absolute release directory.
+          # bootstrap-tree exports CARGO_TARGET_DIR for the shared build root;
+          # resolve it (relative to CODE_DIR) so this step follows the same
+          # directory cargo wrote the binaries to.
+          release_root="${CARGO_TARGET_DIR:-target}"
           bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
-            --release-dir "${tree_dir}/codex-rs/target/${TARGET}/release" \
+            --release-dir "${tree_dir}/codex-rs/${release_root}/${TARGET}/release" \
             --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
             --binaries "$binaries"
       - name: Assemble package archive
@@ -328,7 +329,7 @@ jobs:
           # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
           tree_dir="${GITHUB_WORKSPACE}"
           [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
-          release_dir="target/${TARGET}/release"
+          release_dir="${CARGO_TARGET_DIR:-target}/${TARGET}/release"
           [[ -f "${release_dir}/codex" || -f "${release_dir}/codex.exe" ]] || {
             echo "codex binary not found in ${release_dir}"
             exit 1

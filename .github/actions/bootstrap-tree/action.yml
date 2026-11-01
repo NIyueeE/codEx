@@ -27,6 +27,20 @@ runs:
       shell: pwsh
       run: git config --global core.longpaths true
 
+    - name: Configure CI build paths
+      shell: bash
+      run: |
+        set -euo pipefail
+        # Upstream's setup-ci action redirects the Cargo target directory to a
+        # dedicated build root. The GitHub-hosted runner's default location
+        # shares the ~14 GB workspace disk with the checkout, and a release
+        # build of this workspace plus the tree's dependencies fills it
+        # ("rustc-LLVM ERROR: IO failure ... No space left on device").
+        build_root="$HOME/.cache/codex-ci"
+        cargo_target_dir="$build_root/cargo-target"
+        mkdir -p "$cargo_target_dir"
+        echo "CARGO_TARGET_DIR=${cargo_target_dir}" >> "$GITHUB_ENV"
+
     - name: Resolve or bootstrap the tree
       id: resolve
       shell: bash
