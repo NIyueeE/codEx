@@ -1,4 +1,4 @@
-From 42cdb6b11e51de044aa4d001121ebde222d07177 Mon Sep 17 00:00:00 2001
+From 0f870c987b12b33feba2b07e1aab1439bd611e48 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -31,7 +31,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
- install.sh                                    |  215 ++
+ install.sh                                    |  242 ++
  patches/BUILD.bazel                           |   37 -
  ...seil_windows_gnullvm_thread_identity.patch |   16 -
  patches/bzip2_windows_stack_args.patch        |   23 -
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1065 insertions(+), 7755 deletions(-)
+ 45 files changed, 1092 insertions(+), 7755 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -8239,10 +8239,10 @@ index 65eca0493b5869c621e0c98f6e901781034e0d47..00000000000000000000000000000000
 -        uses: ./.github/actions/check-clean-worktree
 diff --git a/install.sh b/install.sh
 new file mode 100755
-index 0000000000000000000000000000000000000000..e807e8f92344336f2afd3c5dc926cc81a2750876
+index 0000000000000000000000000000000000000000..15a2db842edc4ebc38332aa42c71299a27628259
 --- /dev/null
 +++ b/install.sh
-@@ -0,0 +1,215 @@
+@@ -0,0 +1,242 @@
 +#!/bin/sh
 +#
 +# codEx standalone installer
@@ -8333,10 +8333,37 @@ index 0000000000000000000000000000000000000000..e807e8f92344336f2afd3c5dc926cc81
 +}
 +
 +resolve_latest_tag() {
-+  curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
-+    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-+    head -1 ||
-+    die "failed to fetch the latest release tag from $API_BASE_URL"
++  # api.github.com allows 60 unauthenticated requests per hour per source IP,
++  # which a shared or NATed address exhausts without any local mistake; the
++  # resulting 403 then blocks the install outright. The releases/latest
++  # redirect answers the same question outside the API limit, so follow it
++  # first and keep the API only as a fallback, authenticated when the
++  # environment carries a token. This mirrors release_metadata.rs, which
++  # codex update and codex doctor already use.
++  tag="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
++    "https://github.com/${FORK_REPO}/releases/latest" 2>/dev/null |
++    sed -n 's#.*/releases/tag/\([^/]*\)$#\1#p' | head -1)"
++
++  if [ -z "$tag" ]; then
++    auth_header=""
++    if [ -n "${GITHUB_TOKEN:-}" ]; then
++      auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
++    elif [ -n "${GH_TOKEN:-}" ]; then
++      auth_header="Authorization: Bearer ${GH_TOKEN}"
++    fi
++    if [ -n "$auth_header" ]; then
++      tag="$(curl -fsSL -H "$auth_header" \
++        "$API_BASE_URL/releases/latest" 2>/dev/null |
++        sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
++    else
++      tag="$(curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
++        sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
++    fi
++  fi
++
++  [ -n "$tag" ] ||
++    die "failed to resolve the latest codEx release from $API_BASE_URL"
++  printf '%s\n' "$tag"
 +}
 +
 +file_sha256() {

@@ -88,10 +88,37 @@ detect_target() {
 }
 
 resolve_latest_tag() {
-  curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
-    sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' |
-    head -1 ||
-    die "failed to fetch the latest release tag from $API_BASE_URL"
+  # api.github.com allows 60 unauthenticated requests per hour per source IP,
+  # which a shared or NATed address exhausts without any local mistake; the
+  # resulting 403 then blocks the install outright. The releases/latest
+  # redirect answers the same question outside the API limit, so follow it
+  # first and keep the API only as a fallback, authenticated when the
+  # environment carries a token. This mirrors release_metadata.rs, which
+  # codex update and codex doctor already use.
+  tag="$(curl -fsSL -o /dev/null -w '%{url_effective}' \
+    "https://github.com/${FORK_REPO}/releases/latest" 2>/dev/null |
+    sed -n 's#.*/releases/tag/\([^/]*\)$#\1#p' | head -1)"
+
+  if [ -z "$tag" ]; then
+    auth_header=""
+    if [ -n "${GITHUB_TOKEN:-}" ]; then
+      auth_header="Authorization: Bearer ${GITHUB_TOKEN}"
+    elif [ -n "${GH_TOKEN:-}" ]; then
+      auth_header="Authorization: Bearer ${GH_TOKEN}"
+    fi
+    if [ -n "$auth_header" ]; then
+      tag="$(curl -fsSL -H "$auth_header" \
+        "$API_BASE_URL/releases/latest" 2>/dev/null |
+        sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    else
+      tag="$(curl -fsSL "$API_BASE_URL/releases/latest" 2>/dev/null |
+        sed -n 's/.*"tag_name"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)"
+    fi
+  fi
+
+  [ -n "$tag" ] ||
+    die "failed to resolve the latest codEx release from $API_BASE_URL"
+  printf '%s\n' "$tag"
 }
 
 file_sha256() {
