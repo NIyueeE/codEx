@@ -308,14 +308,18 @@ jobs:
           tree_dir="${GITHUB_WORKSPACE}"
           [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           binaries="codex codex-code-mode-host codex-exec-server"
-          # bootstrap-tree exports CARGO_TARGET_DIR for the shared build root;
-          # resolve it (relative to CODE_DIR) so this step follows the same
-          # directory cargo wrote the binaries to.
+          # bootstrap-tree exports CARGO_TARGET_DIR as an absolute path for the
+          # shared build root, so resolve it before joining anything onto it.
           release_root="${CARGO_TARGET_DIR:-target}"
+          if [[ "${release_root}" = /* ]]; then
+            release_dir="${release_root}/${TARGET}/release"
+          else
+            release_dir="${tree_dir}/codex-rs/${release_root}/${TARGET}/release"
+          fi
           bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
-            --release-dir "${tree_dir}/codex-rs/${release_root}/${TARGET}/release" \
+            --release-dir "${release_dir}" \
             --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
             --binaries "$binaries"
       - name: Assemble package archive
