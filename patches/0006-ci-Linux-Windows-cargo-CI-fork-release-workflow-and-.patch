@@ -1,4 +1,4 @@
-From 71eb072247dac484e10aeafb702739c520fc0fd7 Mon Sep 17 00:00:00 2001
+From c5b87fd52612019159155951ec93a521be3a4dfd Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:31 +0000
 Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
@@ -27,7 +27,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  .../rust-release-argument-comment-lint.yml    |  113 -
  .../rust-release-provisioned-macos.yml        |  218 --
  .github/workflows/rust-release-windows.yml    |  728 -----
- .github/workflows/rust-release.yml            | 2427 +++--------------
+ .github/workflows/rust-release.yml            | 2429 +++--------------
  .github/workflows/rusty-v8-release.yml        |  485 ----
  .github/workflows/sdk.yml                     |  161 --
  .github/workflows/v8-canary.yml               |  450 ---
@@ -49,7 +49,7 @@ Subject: ci: Linux + Windows cargo CI, fork release workflow, and installer
  patches/windows-link.patch                    |   10 -
  patches/xz_windows_stack_args.patch           |   14 -
  .../zstd-sys_windows_msvc_include_dirs.patch  |   41 -
- 45 files changed, 1061 insertions(+), 7755 deletions(-)
+ 45 files changed, 1062 insertions(+), 7756 deletions(-)
  create mode 100644 .github/actions/bootstrap-tree/action.yml
  create mode 100644 .github/actions/cargo-cache/action.yml
  delete mode 100644 .github/workflows/bazel.yml
@@ -4550,10 +4550,10 @@ index ae435ae4af6e36298f835b4400ebc3699e45f4f2..00000000000000000000000000000000
 -          path: |
 -            codex-rs/dist/${{ matrix.target }}/*
 diff --git a/.github/workflows/rust-release.yml b/.github/workflows/rust-release.yml
-index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..156e26f55ec317875aa63069cd62fb5e863efb7a 100644
+index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..82b1fc8b067bcc96398bce22df85b9feeee9f73d 100644
 --- a/.github/workflows/rust-release.yml
 +++ b/.github/workflows/rust-release.yml
-@@ -1,238 +1,251 @@
+@@ -1,242 +1,255 @@
 -# Release workflow for codex-rs.
 -# To release, follow a workflow like:
 -# ```
@@ -4975,6 +4975,11 @@ index 6a4a2dcacaa7b815a88a56d0083bf01075ffdfa1..156e26f55ec317875aa63069cd62fb5e
            target="${{ matrix.target }}"
            cargo build --target "$target" --release --timings --bin bwrap
  
+-          bwrap_path="target/${target}/release/bwrap"
++          bwrap_path="${CARGO_TARGET_DIR:-target}/${target}/release/bwrap"
+           if [[ ! -f "$bwrap_path" ]]; then
+             echo "bwrap binary ${bwrap_path} not found"
+             exit 1
 @@ -250,1962 +263,242 @@ jobs:
            echo "CODEX_BWRAP_SHA256=${digest}" >> "$GITHUB_ENV"
            echo "Built bwrap ${bwrap_path} with sha256:${digest}"

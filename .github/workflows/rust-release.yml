@@ -249,7 +249,7 @@ jobs:
           target="${{ matrix.target }}"
           cargo build --target "$target" --release --timings --bin bwrap
 
-          bwrap_path="target/${target}/release/bwrap"
+          bwrap_path="${CARGO_TARGET_DIR:-target}/${target}/release/bwrap"
           if [[ ! -f "$bwrap_path" ]]; then
             echo "bwrap binary ${bwrap_path} not found"
             exit 1
