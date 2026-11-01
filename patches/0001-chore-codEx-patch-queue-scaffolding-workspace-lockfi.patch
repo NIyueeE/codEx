@@ -1,4 +1,4 @@
-From 3e7ac05e2f0a506ac38f5c06623830198e25c1e6 Mon Sep 17 00:00:00 2001
+From 56ec0501a05e50406c6ab6a2378a4044ff3fbba9 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
@@ -8,7 +8,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  .codespellrc                                  |   4 +-
  .gitignore                                    | 100 +---
  BASE_TAG                                      |   1 +
- README.md                                     | 477 ++++++++++++++--
+ README.md                                     | 478 ++++++++++++++--
  codex-rs/.config/nextest.toml                 |   7 +
  codex-rs/Cargo.lock                           | 419 +++++++-------
  codex-rs/Cargo.toml                           |   2 +-
@@ -20,7 +20,7 @@ Subject: chore: codEx patch-queue scaffolding, workspace lockfile, and README
  scripts/gen-patches.sh                        | 114 ++++
  scripts/patch-modules.conf                    | 263 +++++++++
  scripts/update.sh                             | 128 +++++
- 16 files changed, 2006 insertions(+), 349 deletions(-)
+ 16 files changed, 2007 insertions(+), 349 deletions(-)
  create mode 100644 BASE_TAG
  create mode 100644 scripts/bootstrap.sh
  create mode 100644 scripts/check-patch-modules.sh
@@ -176,10 +176,10 @@ index 0000000000000000000000000000000000000000..ae26ca71b80cc0f990b8b7d99c3c47db
 @@ -0,0 +1 @@
 +rust-v0.166.0
 diff --git a/README.md b/README.md
-index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e37eac4841 100644
+index 06b02fced7db972084bf0188cb03f60375b51c1c..aa383a7f4a5103f5e63f475fc27d5f82d3096733 100644
 --- a/README.md
 +++ b/README.md
-@@ -1,81 +1,456 @@
+@@ -1,81 +1,457 @@
 -<p align="center"><strong>Codex CLI</strong> is a coding agent from OpenAI that runs locally on your computer.
 -<p align="center">
 -  <img src="https://github.com/openai/codex/blob/main/.github/codex-cli-splash.png" alt="Codex CLI splash" width="80%" />
@@ -191,7 +191,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +# codEx
  
 ----
-+[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.164.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.164.0)
++[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.166.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.166.0)
 +[![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
 +[![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
 +[![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
@@ -209,7 +209,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +upstream tree, it stores only the fork's changes as a `git format-patch`
 +series plus the scripts that rebuild a full codex tree from an upstream tag.
 +The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
-+patch queue applies to (currently `rust-v0.164.0`).
++patch queue applies to (currently `rust-v0.166.0`).
  
 -Run the following on Mac or Linux to install Codex CLI:
 +## Installing from a release
@@ -253,8 +253,8 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +the install's manifest is out of sync with the binary (older `codex update`
 +releases replaced only the binary). Re-run the installer once; it replaces the
 +whole release directory. Releases up to and including `0.164.0` still ship the
-+binary-only updater, so install the first fixed release with the installer
-+too; after that, `codex update` keeps the package complete.
++binary-only updater, so install `0.166.0` or later with the installer once;
++after that, `codex update` keeps the package complete.
 +
 +Windows users install from the release archive directly: download
 +`codex-x86_64-pc-windows-msvc.tar.gz`, verify it against the published
@@ -283,7 +283,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 -$env:CODEX_INSTALLER_USE_RELEASES_OPENAI_COM='false'; irm https://chatgpt.com/codex/install.ps1 | iex
 +Environment overrides:
 +
-+- `CODEX_RELEASE` - version to install, e.g. `0.164.0` (default: `latest`)
++- `CODEX_RELEASE` - version to install, e.g. `0.166.0` (default: `latest`)
 +- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
 +- `CODEX_HOME` - codex home (default: `~/.codex`)
 +
@@ -501,7 +501,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +  Windows Store update feeds, and the Sparkle-staging inspection are removed;
 +  `doctor` no longer contacts `persistent.oaistatic.com`.
 +- **Desktop-app tooltips.** Startup tips no longer advertise the Desktop app
-+  on any platform; the paid promo slot now only offers Fast mode.
++  on any platform; only upstream's local tooltips remain.
 +- **`codex cloud`** (Codex Cloud task browser) and **`codex remote-control`**
 +  plus the daemon's `enable-remote-control` / `disable-remote-control` toggles,
 +  which paired a local daemon with the vendor relay.
@@ -515,11 +515,11 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +### Branding
 +
 +- `codex --version` prints
-+  `codEx 0.164.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
++  `codEx 0.166.0 (codEx fork, https://github.com/NIyueeE/codEx)`; the status
 +  bar shows `codEx <version>`.
 +- The TUI welcome screen, session header, and status header display `codEx`;
 +  tips reference `codEx` as well.
-+- The version number itself **matches the upstream base tag** (e.g. `0.164.0`),
++- The version number itself **matches the upstream base tag** (e.g. `0.166.0`),
 +  so version parsing stays plain semver and fork release tags stay clean.
 +
 +### Release & CI (Linux CI + Windows check)
@@ -533,25 +533,26 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +  - `codex-x86_64-pc-windows-msvc.tar.gz` (the same layout with `.exe`
 +    entrypoints and the Windows sandbox helpers under `codex-resources/`)
 +  - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
-+- **CI** (`blocking-ci.yml`) is plain Cargo on hosted runners, tiered the way
-+  upstream tiers it: a light gate that blocks a pull request, and a heavy gate
-+  that does not. The fork is a patch-queue repository, so the tiers split on
-+  whether a check needs the queue applied (`scripts/bootstrap.sh`), which is
-+  the expensive part of CI.
++- **CI** is plain Cargo on hosted runners, tiered by whether a check needs
++  the patch queue applied: `blocking-ci.yml` runs the light gate on every PR
++  and push to `main`; `postmerge-ci.yml` runs the heavy gate after a merge.
++  Heavy checks also run on dispatch or from a `**full-ci**` branch. The fork
++  keeps upstream's workflow names and narrows their content to Linux + Windows.
 +
 +  | Gate | Workflow | Runs | Contains |
 +  | --- | --- | --- | --- |
 +  | Light | `repo-checks.yml` | every PR, every push to `main` | patch-queue layout, README ASCII, README.zh typography, shellcheck |
 +  | Light | `blob-size-policy.yml` | every PR | changed-blob budget (upstream's policy) |
 +  | Light | `codespell.yml` | every PR | spelling |
-+  | Heavy | `rust-ci.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | queue integrity + export-drift check, package/installer suites, TUI/core boundary, `cargo check` on the CLI/TUI/core compile surface, config-schema fixture, `cargo fmt --check`, cargo-deny |
++  | Heavy | `rust-ci.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | queue integrity + export-drift check, package/installer suites, TUI/core boundary, `cargo check` on the CLI/TUI/core compile surface, config-schema fixture, `cargo fmt --check` (cargo-deny runs as its own job) |
 +  | Heavy | `rust-ci-full.yml` | post-merge, on dispatch, and from a `**full-ci**` branch | `cargo build --release --bin codex`, `codex-tui` full suite, `codex-core` unit tests, Windows check |
 +  | Heavy | `cargo-deny.yml` | post-merge, on dispatch | licence, ban, and advisory drift |
 +
 +  `blocking-ci.yml` aggregates the light gate and reports the single required
 +  status; `postmerge-ci.yml` aggregates the heavy gate. The sandbox-dependent
-+  core integration suite (`suite::*`) needs sandbox-capable runners and is
-+  excluded from hosted CI, mirroring upstream's own self-hosted-runner setup.
++  core integration suite (`suite::*`) and V8-linked `code_mode_host::*` tests
++  need prerequisites that hosted CI does not provide and are excluded from
++  the core unit-test run, mirroring upstream's own self-hosted-runner setup.
 +- The workflows are bootstrap-aware: they work both in a full checkout and in
 +  this slim repo (bootstrap first, then build/test/release inside `tree/`).
 +
@@ -600,7 +601,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 -<summary>You can also go to the <a href="https://github.com/openai/codex/releases/latest">latest GitHub Release</a> and download the appropriate binary for your platform.</summary>
 +| Piece | Purpose |
 +| --- | --- |
-+| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.164.0`) |
++| `BASE_TAG` | upstream tag the patch queue applies to (e.g. `rust-v0.166.0`) |
 +| `patches/` | one `git format-patch` per feature module, in fixed order |
 +| `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
 +| `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
@@ -662,7 +663,7 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
  
 -You can also use Codex with an API key, but this requires [additional setup](https://developers.openai.com/codex/auth#sign-in-with-an-api-key).
 +```sh
-+bash scripts/update.sh rust-v0.164.0
++bash scripts/update.sh rust-v0.166.0
 +```
  
 -## Docs
@@ -670,13 +671,13 @@ index 06b02fced7db972084bf0188cb03f60375b51c1c..fb698151575319c47a3d63b10405a2e3
 +with `git am --3way`, then runs the same checks as CI (build, `cargo fmt
 +--check`, and the `codex-tui`/`codex-core` nextest runs) from the `codex-rs`
 +workspace. It accepts the tag with or without the `rust-v` prefix
-+(`rust-v0.164.0` or `0.164.0`). If a patch conflicts, resolve it in
++(`rust-v0.166.0` or `0.166.0`). If a patch conflicts, resolve it in
 +`update-work/` (`git am --continue`), then regenerate with
-+`bash scripts/gen-patches.sh rust-v0.164.0` from inside the bootstrapped tree
++`bash scripts/gen-patches.sh rust-v0.166.0` from inside the bootstrapped tree
 +(the slim repo has no upstream history, so the script refuses to run there).
 +The patch queue never changes version numbers; fork releases keep the
 +upstream semver and are tagged `rust-v<version>` (for example
-+`rust-v0.164.0`), and the release workflow publishes
++`rust-v0.166.0`), and the release workflow publishes
 +`codex-<target>.tar.gz` + sha256 checksums.
  
 -- [**Codex Documentation**](https://developers.openai.com/codex)

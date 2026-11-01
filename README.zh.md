@@ -1,6 +1,6 @@
 # codEx
 
-[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.164.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.164.0)
+[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.166.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.166.0)
 [![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
 [![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
@@ -14,7 +14,7 @@ codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向
 本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
 `git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
 真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.164.0`)。
+`rust-v0.166.0`)。
 
 ## 从 Release 安装
 
@@ -45,7 +45,7 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 如果 `codex` 以 `the CLI package version does not match its executable` 退出,
 说明安装的清单与二进制版本不一致(较旧的 `codex update` 只替换了二进制)。
 重新运行一次安装脚本即可:它会替换整个 release 目录。截至 `0.164.0`(含)的
-版本仍只带旧的更新器,所以包含修复的第一个版本也要用安装脚本装一次;此后
+版本仍只带旧的更新器,所以请先用安装脚本安装 `0.166.0` 或更高版本;此后
 `codex update` 就会保持整个包完整。
 
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
@@ -67,7 +67,7 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.164.0`(默认:`latest`)
+- `CODEX_RELEASE` - 要安装的版本,如 `0.166.0`(默认:`latest`)
 - `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
 
@@ -235,8 +235,7 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 - **`codex doctor` 的桌面探测**:`desktop` 模块、appcast 与 Windows Store
   更新源、Sparkle 暂存检查均已移除;`doctor` 不再访问
   `persistent.oaistatic.com`。
-- **桌面应用提示语**:任何平台都不再宣传桌面应用;付费用户的推广位只保留
-  Fast 模式。
+- **桌面应用提示语**:任何平台都不再宣传桌面应用;只保留上游的本地提示语。
 - **`codex cloud`**(Codex Cloud 任务浏览)与 **`codex remote-control`**
   及守护进程的 `enable-remote-control` / `disable-remote-control` 开关
   —— 它们会把本地守护进程与厂商中继配对。
@@ -249,10 +248,10 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.164.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.166.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.164.0`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.166.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
 ### 发布与 CI(Linux CI + Windows 检查)
@@ -266,22 +265,24 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
   - `codex-x86_64-pc-windows-msvc.tar.gz`(同样的布局,入口带 `.exe`
     后缀,Windows 沙箱辅助程序位于 `codex-resources/` 下)
   - `codex-x86_64-pc-windows-msvc.tar.gz.sha256`
-- **CI**(`blocking-ci.yml`)在托管 runner 上使用纯 Cargo,并与上游一样分层:
-  轻门阻塞 PR,重门不阻塞。本仓库是补丁队列仓库,因此分层的界线是「该检查
-  是否需要先应用补丁队列」(`scripts/bootstrap.sh`,CI 中最贵的一步)。
+- **CI** 在托管 runner 上使用纯 Cargo,并按是否需要先应用补丁队列分层:
+  `blocking-ci.yml` 在每个 PR 与每次推送 `main` 时运行轻门,
+  `postmerge-ci.yml` 在合并后运行重门;重门也可手动触发或通过
+  `**full-ci**` 分支运行。工作流名称沿用上游,内容收窄为 Linux + Windows。
 
   | 门 | 工作流 | 触发时机 | 内容 |
   | --- | --- | --- | --- |
   | 轻门 | `repo-checks.yml` | 每个 PR、每次推送 `main` | 补丁队列布局、README ASCII、README.zh 排版、shellcheck |
   | 轻门 | `blob-size-policy.yml` | 每个 PR | 新增 blob 体积预算(沿用上游策略) |
   | 轻门 | `codespell.yml` | 每个 PR | 拼写检查 |
-  | 重门 | `rust-ci.yml` | 合并后、手动触发、`**full-ci**` 分支 | 队列完整性与导出漂移、package/installer 测试、TUI/core 边界、CLI/TUI/core 编译面的 `cargo check`、config schema 基线、`cargo fmt --check`、cargo-deny |
+  | 重门 | `rust-ci.yml` | 合并后、手动触发、`**full-ci**` 分支 | 队列完整性与导出漂移、package/installer 测试、TUI/core 边界、CLI/TUI/core 编译面的 `cargo check`、config schema 基线、`cargo fmt --check`(cargo-deny 独立运行) |
   | 重门 | `rust-ci-full.yml` | 合并后、手动触发、`**full-ci**` 分支 | `cargo build --release --bin codex`、`codex-tui` 完整套件、`codex-core` 单元测试、Windows 检查 |
   | 重门 | `cargo-deny.yml` | 合并后、手动触发 | 许可证、ban 与安全公告漂移 |
 
   `blocking-ci.yml` 汇总轻门并报告唯一的必需状态,`postmerge-ci.yml` 汇总重门。
-  依赖沙箱的核心集成套件(`suite::*`)需要具备沙箱能力的 runner,已从托管
-  CI 排除,与上游自己的自托管 runner 配置一致。
+  依赖沙箱的核心集成套件(`suite::*`)与依赖 V8 辅助二进制的
+  `code_mode_host::*` 需要托管 CI 不提供的前置条件,已从 core 单元测试运行中
+  排除,与上游自己的自托管 runner 配置一致。
 - 工作流是 bootstrap-aware 的:在完整检出和本精简仓库中都能工作(先
   bootstrap,再在 `tree/` 内构建/测试/发布)。
 
@@ -320,7 +321,7 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.164.0`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.166.0`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -367,17 +368,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.164.0
+bash scripts/update.sh rust-v0.166.0
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.164.0` 或 `0.164.0`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.166.0` 或 `0.166.0`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.164.0` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.166.0` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.164.0`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.166.0`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证

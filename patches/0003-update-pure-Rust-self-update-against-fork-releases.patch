@@ -1,4 +1,4 @@
-From b0d5751e92cda8e7305144d6df1a183ad48c56b5 Mon Sep 17 00:00:00 2001
+From cd518d1c3e55a0cff794eeced7dd45acef0d4b14 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases

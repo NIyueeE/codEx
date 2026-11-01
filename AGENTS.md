@@ -1,635 +1,194 @@
 # Repository Guidelines
 
-Contributor guide for codEx, a community fork of `openai/codex` for
-standalone Linux and Windows users, maintained as a **patch-queue
-repository**: upstream code is not vendored. Only the fork's delta lives
-here; `bootstrap.sh` rebuilds a full codex tree from `BASE_TAG` and applies
-`patches/` via `git am`.
+codEx is a Linux + Windows TUI/CLI fork of `openai/codex`, maintained as a
+patch queue: only the delta lives here. `BASE_TAG` selects the upstream tag;
+`bootstrap.sh` rebuilds the tree and applies `patches/` with `git am`.
 
-## Project Structure & Module Organization
+## Layout and workflow
 
-- `patches/` — one `git format-patch` per feature module, applied in order:
+- `patches/` contains exactly one generated patch per feature module, in order:
   `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
-  `identity` (see `scripts/patch-modules.conf`)
-- `BASE_TAG` — upstream tag the queue applies to (e.g. `rust-v0.160.0`)
-- `scripts/` — `bootstrap.sh`, `update.sh`, `gen-patches.sh`,
-  `patch-modules.conf` (module manifest), `check-patch-modules.sh` (layout checker)
-- `.github/` — CI workflows (`blocking-ci.yml`, `repo-checks.yml`,
-  `blob-size-policy.yml`, `codespell.yml` for the light gate;
-  `postmerge-ci.yml`, `rust-ci.yml`, `rust-ci-full.yml`, `cargo-deny.yml` for
-  the heavy gate; `rust-release.yml` for releases), plus the composite actions
-  they share. The fork keeps upstream's workflow names and narrows their
-  content to Linux + Windows, so upgrades see a modify rather than a
-  delete-plus-add. Only the three entrypoints (`blocking-ci.yml`,
-  `postmerge-ci.yml`, `rust-release.yml`) set `concurrency`: a *called*
-  reusable workflow sees the caller's `github.workflow`, so a group built from
-  it collides with the caller's own group and GitHub refuses to start the child
-  (every dependent job reports `failure` with no jobs).
-- `README.md` / `README.zh.md` — English/Chinese docs
+  `identity` (see `scripts/patch-modules.conf`). Never hand-edit it.
+- `scripts/` owns bootstrap, upgrades, patch export, ownership checks, and the
+  single gate runner. `scripts/gates.sh` is the authority for check contents;
+  hooks and CI select tiers from it.
+- `.github/` keeps upstream workflow names and narrows their content to Linux +
+  Windows. Only `blocking-ci.yml`, `postmerge-ci.yml`, and `rust-release.yml`
+  set `concurrency`: called workflows see the caller's `github.workflow`.
+- `README.md` is ASCII-only (U+2728 allowed) and `README.zh.md` is its Chinese
+  counterpart. Update both when documenting behaviour.
+- Rust sources exist only after bootstrapping, under `tree/` (or `update-work/`
+  during an upgrade). Both are gitignored and never committed.
+- The seven patch modules own disjoint files, machine-checked by
+  `check-patch-modules.sh`. A feature adds one manifest section and one tree
+  commit; a change is rebased/`--fixup`ed into the owning module, not a new
+  module patch. Fork-owned files at the slim root and tree must be identical
+  (README, scripts, `.github/*`, `.codespell*`, `install.sh`); `.gitignore` is
+  the only intentional exception. This guide is slim-only: edit it directly.
+- Commits use conventional prefixes (`docs:`, `fix:`, `ci:`, `release:`,
+  `patches:`, `rewind:`) with an ASCII bulleted body. Keep messages ASCII.
 
-Rust sources exist only after bootstrapping, under `tree/` (or
-`update-work/` during upgrades); never commit either — both are gitignored.
-
-## Build, Test & Development Commands
+## Build, test, and upgrade
 
 ```sh
-bash scripts/bootstrap.sh      # clone openai/codex@BASE_TAG into tree/ and apply patches/
+bash scripts/bootstrap.sh
 cd tree/codex-rs
-cargo build --release --bin codex   # build the CLI
-cargo fmt --check                   # rustfmt check
-```
+cargo build --release --bin codex
+cargo fmt --check
 
-- `bash scripts/update.sh <tag>` — upgrade to a new upstream tag (`rust-v0.149.1`
-  or `0.149.1` both work): clones into `update-work/`, applies the queue with
-  `git am --3way`, runs `scripts/gates.sh heavy` against the in-flight tree
-  (the same gate the local pre-push hook and post-merge CI run, minus the
-  export-drift check that only makes sense after regeneration), then
-  regenerates `patches/` and `BASE_TAG`
-- `bash scripts/gen-patches.sh <base-tag> [output-dir]` — regenerate `patches/`
-  as one patch per feature module; run it from inside a bootstrapped tree
-  (`tree/` or `update-work/`), e.g. `bash ../scripts/gen-patches.sh rust-v0.148.0`.
-  It refuses to run in the slim repo (no upstream history), and refuses to
-  export any tree or patch set that violates `patch-modules.conf`
-- `bash scripts/check-patch-modules.sh --tree DIR [--patches DIR] [--slim DIR]`
-  — validate the module manifest against a tree and/or an exported patches/
-  dir. `--slim .` (from the slim repo root) additionally byte-compares every
-  fork-owned file that exists in both the slim repo and the tree, so the slim
-  copy cannot drift from the queue it publishes; only `.gitignore` is exempt
-  (the tree keeps upstream's version plus the generated `/patches/`)
-- `scripts/gates.sh [light|tree|full|heavy|all] [--only ID] [--skip ID]` — the
-  single gate runner. Both the local git hooks and CI call it, so a local pass
-  is a CI pass. The tiers split on whether a check needs the patch queue
-  applied, because bootstrapping is what makes CI slow:
-  - `light` — no patch list, no bootstrap, seconds: the exported queue's shape
-    (patch-queue layout against `patches/` alone), README ASCII (upstream's
-    `scripts/asciicheck.py`, carried at the slim root byte-identically),
-    README.zh typography, codespell (2.4.3, the version CI pins), shellcheck,
-    and the changed-blob budget (upstream's policy; `patches/*.patch` is
-    expanded into the allowlist at run time, and the check is skipped when no
-    `GATES_BASE_SHA`/`GATES_HEAD_SHA` range is given)
-  - `tree` — needs the bootstrapped tree: the queue's layout in the tree (plus
-    `--patches`/`--slim` when the slim repo and the tree agree on `BASE_TAG`),
-    the export drift check, the `codex_package` and `install` Python suites,
-    the codex-tui/core boundary rule, `cargo check` on the CLI/TUI/core compile
-    surface, the config-schema fixture, `cargo fmt --check`, and cargo-deny
-    when the binary is installed
-  - `full` — needs the bootstrapped tree: release CLI build, the full
-    `codex-tui` and `codex-core` suites (the Windows type-check is CI-only,
-    on a Windows runner)
-  - `heavy` — `tree` + `full`: what `git push` runs and what CI runs after a
-    merge
-  - `all` — `light` + `heavy`, serially
-  - `--only`/`--skip` take the check ids listed in the script header; the CI
-    jobs use them to select their slice. Never run two cargo-backed tiers
-    against the same tree at once; the runner takes a per-tree `flock` and
-    refuses rather than letting the suites time each other out (the light tier
-    runs no cargo and takes no lock)
-- `pre-commit install` and `pre-commit install --hook-type pre-push` — the
-  local tiers: commit runs `gates.sh light`, push adds `gates.sh heavy`
-- Reproduce the Codespell job locally with the same version the hook pins,
-  without touching the system Python (which is externally managed here and
-  has no working `ensurepip`, so `pip install` and `python3 -m venv` both
-  fail):
-
-  ```sh
-  git ls-files -z | xargs -0 uvx --from codespell==2.4.3 codespell -I .codespellignore
-  ```
-
-## Headless-only policy
-
-codEx is TUI/CLI only. The fork deliberately removes every entry point that
-pulls in OpenAI's closed-source products or vendor-run services; do not
-re-introduce them during an upgrade, and do not "fix" their absence.
-
-Removed (entry points, not just defaults):
-
-- `codex app`, its `AppCommand`, and `cli/src/desktop_app/` (macOS `.dmg`
-  download, Windows install page).
-- The `/app` slash command, `AppEvent::OpenDesktopThread`, and the `codex://`
-  handoff in `tui/src/app/history_ui.rs`.
-- `codex doctor`'s `desktop` module, the appcast / Windows Store update feeds,
-  and the Sparkle-staging probe.
-- The Desktop-app startup tooltips.
-- `codex cloud`, `codex remote-control`, and the daemon's
-  `enable-remote-control` / `disable-remote-control` toggles.
-- The remote plugin marketplace (`REMOTE_PLUGIN_CATALOG_ENABLED = false` in
-  `cli/src/plugin_cmd.rs`); local and Git marketplaces still work.
-
-When upstream adds new vendor-facing surface, prefer deleting the entry point
-and leaving the underlying implementation in place: that keeps the diff small
-and the conflict surface narrow while still denying the behaviour. Verify with
-`grep -rn 'oaistatic|appcast|\.dmg|app-landing-page' codex-rs` (pets' CDN
-sprite pack is the one intentional leftover, default-disabled) and by checking
-`codex --help` for the removed subcommands.
-
-## Diagnosing a Reported Breakage
-
-A user report is triaged before it is patched. Establish which of three causes
-it has, because each has a different correct fix:
-
-- **Upstream changed behaviour.** Compare against the previous `BASE_TAG`. The
-  fork inherits every upstream default, so a new default can break a fork
-  install without any fork patch being wrong. Signature to look for: the
-  failing code path is upstream-owned and the fork never touched it.
-- **A fork patch is wrong or incomplete.** Check the module manifest for the
-  file, then read the module's commit.
-- **The fork's distribution or CI diverges from what the code assumes.** This
-  is the fork's own defect even when no patch is at fault.
-
-Then resolve with upstream as the authority, not with a fork-local exception:
-
-- **Upstream's model wins.** Before inventing fork-specific behaviour, check
-  whether upstream already has a mechanism for the situation. The daemon's
-  startup path is the example: it already falls back to embedded mode through
-  `AppServerTarget::Embedded` and `daemon_exclusion` when it prints "Running
-  without the shared background server: <reason> requires embedded mode", so a
-  second fallback would have been fork-only surface upstream does not have.
-- **Remove the divergence; do not patch the assumption.** When the fork's
-  distribution contradicts a printed contract, fix the distribution. The
-  worked example: upstream promoted `features.daemon_auto_start` to Stable and
-  on by default, and the daemon installs that shared server by copying the CLI
-  from its own canonical package. The fork shipped a flat archive (a bare
-  `codex` plus `bwrap`), so the install had no package to copy and every
-  launch failed with "this CLI has no complete local package". The fix was to
-  publish the canonical package upstream's packaging scripts already produce,
-  not to disable the feature or add a fallback.
-- **Fork-local exceptions need the same proof the conflict bullets demand.**
-  A deviation is justified only where the fork's core features make it
-  unavoidable (`/rewind` snapshots, the Esc semantics, the update-source
-  redirection, the Linux+Windows release replacement) - not as a way to paper
-  over the fork's own distribution choices.
-- **Mirror upstream before you invent.** For any surface upstream also ships -
-  a release workflow step, a build or CI script, a packaging contract, a test
-  harness - read upstream's implementation at `BASE_TAG` first and copy its
-  structure, commands, step order, and prerequisites. The fork's job is to
-  narrow that surface to Linux + Windows, not to re-derive it. Symptoms that
-  the rule was skipped: a fork-only step that "almost" replicates an upstream
-  one, a failure debugged by local trial instead of by diffing against
-  upstream, or a step whose prerequisites (installed packages, working
-  directory, working-directory-relative paths) upstream establishes elsewhere.
-  Worked example: the release job's symbols step needs `binutils`, must run
-  from the workspace root, and passes `--artifact-name`; upstream's
-  `rust-release.yml` does all three, and a fork version that dropped them
-  failed twice on CI. If upstream has no equivalent, say so explicitly when
-  deviating. CI follows the same hierarchy, and the 0.166.0 upgrade showed both
-  failure modes on one job. Upstream keeps its Windows prerequisites in the
-  shared `.github/actions/setup-ci` action - `core.longpaths`, the Dev Drive,
-  the CI build paths; when a Windows-only checkout started failing with
-  `ENAMETOOLONG`, the first fix was a per-workflow `git config` step, when the
-  correct one was to carry that single upstream step in `bootstrap-tree` (the
-  fork's setup-ci analogue) and let the release job call the action instead of
-  its own inline copy. In the other direction, an invented
-  `CARGO_PROFILE_RELEASE_DEBUG=false` made a hosted-runner link fit in memory
-  but silently changed the published Windows binary. The rule that falls out of
-  both: resource limits for the fork's hosted runners may adjust
-  `CARGO_BUILD_JOBS`, never the cargo profile that shapes the artifact, and a
-  shared prerequisite belongs in the shared action rather than in each
-  workflow. Upstream builds those legs on self-hosted runners, so it has no
-  equivalent to copy for the limit itself - that deviation belongs in the
-  workflow comment and the commit message, next to what upstream does instead.
-- **Keep the queue coherent.** One fix, one home: land it in the module commit
-  that owns the affected file (see *Coding Style & Naming Conventions*), then
-  re-export the queue exactly as *Build, Test & Development Commands*
-  describes. The dual-copy rule under *Upgrading the Patch Queue* applies
-  unchanged, including to `README.md` and `README.zh.md` when both document
-  the behaviour. This guide itself is slim-only: editing it needs no module
-  commit.
-
-## Working with CI
-
-CI files are fork-owned (`[distribution]`, carried by the queue, dual-copy
-rule applies), but their **content is upstream's**. A workflow's jobs, steps,
-order, commands, and prerequisites come from upstream at `BASE_TAG`; the fork
-only narrows them to Linux + Windows. Upstream is the authority for what a
-check *is* and *how it runs* - never re-derive a check the fork can copy.
-
-- **A red check is a symptom to diagnose, not a file to edit.** The triage in
-  *Diagnosing a Reported Breakage* applies verbatim: upstream changed
-  behaviour, a fork patch is wrong, or the fork's own distribution/runner
-  diverges. Only the third justifies touching a workflow, and even then the
-  edit must be a runner-resource limit (job count, target directory, timeout
-  headroom) or a prerequisite upstream already has an equivalent for. The
-  0.166.0 release took seven CI commits, and the first two of them were
-  exactly the mistake this rule forbids: a real Windows-only compile error
-  was found by the check, and an invented profile override was removed once
-  upstream's implementation was actually read.
-- **Never change what a check verifies to make it pass.** No
-  `CARGO_PROFILE_*` overrides that reshape the published binary, no `--skip`
-  for a check the fork's runner can run, no lint silenced, no timeout raised
-  past a genuine hang. When the fork's environment genuinely cannot provide a
-  check's prerequisites, narrow it explicitly and say why - as `gates.sh`
-  does for `suite::*` (needs self-hosted sandbox runners) and
-  `code_mode_host::*` (needs the V8-linked helper only the release workflow
-  builds).
-- **A prerequisite every cargo job needs belongs in the shared action once.**
-  `bootstrap-tree` is the fork's `setup-ci`; a step copied into each workflow
-  is a step the next upgrade will miss.
-- **Every deviation is documented twice**: a workflow comment naming what
-  upstream does instead (self-hosted runner, hermetic toolchain, ...), and the
-  commit message next to it.
-
-## Upgrading the Patch Queue
-
-Upgrades (`rust-vX.Y.Z`) routinely conflict: upstream refactors the same code
-regions the fork patches touch. Resolve conflicts with a clear hierarchy:
-
-- **Upstream wins by default.** Take the upstream implementation verbatim
-  whenever the conflict region is not part of a fork feature. Cosmetic fork
-  deltas (assertion messages, lockfile version sync) are re-applied only
-  when they are load-bearing (e.g. `--locked` reproducibility). This is the
-  conflict-time form of the authority rule in *Diagnosing a Reported
-  Breakage*.
-- **Only fork core features are re-implemented.** Keep the fork's side when
-  the conflict touches behavior the fork exists to change: `/rewind`
-  snapshot/restore logic, single-Esc/double-Esc semantics, update-source
-  redirection, and the Linux-CI/Linux+Windows-release replacement.
-  Everything else follows upstream.
-- **Independent additions coexist.** When both sides added separate items
-  at the same spot (an enum vs a struct, two unrelated calls), keep both.
-  When both sides rewrote the same logic block, prefer upstream's rewrite
-  and layer the fork behavior on top only if upstream provably cannot
-  satisfy the fork feature. Example: upstream's replay-buffer turn merge is
-  bounded (32768 events / 256KB of agent deltas), so long sessions evict
-  old turns; `/rewind` therefore keeps its `thread_read` fast path while
-  upstream's logic survives unchanged as the fallback.
-- **Snapshot conflicts resolve against upstream content.** Take the
-  upstream `.snap` side, run the suite with `INSTA_UPDATE=always`, then
-  review the regenerated diff to confirm it only contains fork-intended
-  deltas (bindings, branding, versions).
-- **Lockfile conflicts take upstream verbatim.** The fork's only planned
-  `Cargo.lock` delta is the workspace member-version sync, and nothing in
-  the fork's CI or release workflows builds with `--locked`. Resolve by
-  taking upstream's lockfile and letting the build regenerate whatever
-  entries fork features need (e.g. `self_update`'s tar/flate2/sha2/ignore);
-  the regenerated lock lands in the `[infra]` commit at export time.
-- **Upstream deletions win, then scrub the fork.** When upstream removes a
-  whole feature the fork's code references (the plan-mode nudge in 0.151.0),
-  take upstream's side and delete every fork reference to it, including
-  comment mentions -- the queue then applies but the tree must still
-  compile. When upstream rewrote machinery the fork had deleted (the
-  npm/brew/windows update dispatch in `cli/src/main.rs`), keep the fork's
-  replacement, drop upstream's new helpers for the removed variants, and
-  grep the merged tree for stale references before continuing.
-- **Delete/modify conflicts on fork-deleted files accept the deletion.**
-  Upstream edits to files the fork removes (its CI replacement deletes
-  upstream workflows and bazel patch files) are irrelevant to the fork;
-  resolve with `git rm` and move on.
-
-Operational experience from the rust-v0.149.1, rust-v0.151.0, rust-v0.154.0,
-rust-v0.155.1, rust-v0.160.0, and rust-v0.163.0 upgrades:
-
-- `git am --3way` needs the previous base tag's blobs to build its fake
-  ancestor; a shallow clone of the new tag alone fails with "sha1
-  information is lacking or useless". `update.sh` fetches the old `BASE_TAG`
-  into the shallow clone; the fetch must name the `origin` remote
-  explicitly -- a bare `git fetch <refspec>` parses the refspec as a
-  repository URL and always fails (this shipped as a silent bug once, so
-  the "could not fetch" warning can mean the queue is about to fail with
-  missing blobs; fetch the tag manually before retrying `git am`).
-- Module order must keep every intermediate revision of the queue
-  compilable: `[updates]` precedes `[input]` because the input module
-  removes `mod npm_registry;` from lib.rs only after the updates module
-  stops referencing it. Reorder commits and the manifest together, never
-  one without the other.
-- New fork-delta files introduced by an upgrade (regenerated snapshots,
-  newly touched upstream files such as the app-server-daemon updater) must
-  be added to `scripts/patch-modules.conf` before `gen-patches.sh` will
-  export the queue. Brand-new upstream test snapshots whose rendered
-  content changes under fork patches count too (the 0.151.0 upgrade had to
-  claim a new footer-text snapshot for `[input]`).
-- Mid-upgrade the module checks need the tree's `BASE_TAG` bumped first.
-  `check-patch-modules.sh` derives the base from the tree, and during an
-  upgrade `old-base..HEAD` counts every upstream commit in between -- on a
-  clean bootstrap the old base is HEAD's direct parent, so only conflict
-  upgrades hit this (mass bogus "touches a file it does not own" notes,
-  then an `order[$i]: unbound variable` crash). After `git am --continue`
-  finishes the queue: write the new tag into the tree's `BASE_TAG`, fold
-  it together with any `[infra]` script/manifest changes into the infra
-  commit via fixup commits and `git rebase -i --autosquash rust-vX.Y.Z`,
-  and only then run the check and `gen-patches.sh`. Amending `[infra]` is
-  also what makes the regenerated patch 0001 carry the new base, so a
-  fresh bootstrap records the right `BASE_TAG`.
-- History rewrites must not change content. After the autosquash rebase,
-  `git diff <pre-rebase-sha> HEAD` has to be empty; a targeted rerun of
-  the touched snapshot families confirms nothing shifted.
-- After resolving conflicts: grep for leftover conflict markers, run
-  `cargo fmt`, build, run the TUI suite with `INSTA_UPDATE=always`
-  (regenerates snapshots in one pass; review the resulting `git diff` by
-  category -- version strings, fork footer text, unbound-count deltas --
-  so surprises stand out), then run core unit tests, then re-bootstrap a
-  fresh tree from the regenerated patches as the final proof that the
-  queue applies cleanly.
-- Upstream files the fork does not need (e.g. CLA/issue-bot workflows that
-  only make sense on openai/codex) stay inert inside the bootstrapped tree;
-  the slim repo only runs its own workflows, so they need no cleanup.
-- Release builds of this workspace are memory-heavy: linking `codex-cli`
-  with thin LTO holds 10+ GB in a single process. Never run multiple
-  cargo builds concurrently on one host (even in separate target dirs) --
-  the machine can OOM and hang. Run builds serially; on memory-constrained
-  hosts cap parallelism with `CARGO_BUILD_JOBS=2` and do not start other
-  cargo work while the final link runs. Run long builds detached
-  (`setsid nohup ... &`) and poll the log, so an outer tool timeout never
-  kills a half-finished compile or link.
-- `cargo nextest` defaults to one process per CPU, and this workspace's tests
-  spawn sandboxes, PTYs, and servers, so an unconstrained run on a 20-core
-  host can exhaust memory on its own. Always pass a thread cap --
-  `cargo nextest run -j 2` -- and set `CARGO_BUILD_JOBS=2` for the build phase
-  that precedes it. Run the `codex-tui` and `codex-core` suites one at a time,
-  never alongside another cargo invocation, and write logs under
-  `$HOME/tmp/` rather than `/tmp` (which is periodically cleaned and can lose
-  a long run's output). `codex-cli`'s own test suite is not a CI gate; build
-  it (`--bin codex`) instead of running its full suite unless the change is
-  CLI-specific.
-- "Never alongside another cargo invocation" is a correctness rule, not only a
-  memory rule. `scripts/gates.sh` therefore holds a per-tree `flock`, so a
-  second concurrent gate run is refused instead of silently starving the first.
-  The failure mode it prevents: `codex-core`'s
-  `tools::handlers::multi_agents::tests::send_input_*` tests wait five seconds
-  for an event (`multi_agents_tests.rs`'s `wait_for_recorded_user_input`), which
-  is enough on an idle host and not enough while the box is also compiling.
-  They pass 6/6 in isolation, fail 2/2672 under load, and nextest itself
-  reports them as flaky. The 0.163.0 upgrade hit the same class once:
-  `thread_manager::tests::mcp_invalidation_refreshes_threads_that_are_still_starting`
-  timed out after five seconds in the full-suite run ("thread should enter its
-  startup lifecycle: Elapsed(())") and passes alone in under a second. Upstream
-  owns those files and the fork never touches them, so treat such a failure as
-  load, re-run it alone, and do not patch upstream's timeout to make a loaded
-  box green.
-- A deterministic single-test failure is not automatically an upgrade
-  regression. Before treating it as one, check in order: which assert
-  actually fired (read the panic, not just the test name), whether the
-  code under test differs between the old and new tags, whether upstream
-  `main` already fixed it, and whether the fork touches that area at all.
-  The 0.151.0 upgrade hit
-  `session::tests::managed_network_proxy_decider_survives_full_access_start`:
-  it fails deterministically on hosts whose `/etc/hosts` maps
-  `example.com` into the 198.18.0.0/15 fake-IP range, because the network
-  proxy's baseline policy blocks the request as a local address before
-  the policy decider is consulted (`"source":"baseline_policy"` in the
-  response body; the decider counter stays 0). Environmental -- ignore it
-  on such hosts, everything else still gates the upgrade.
-- Resolve conflicts at the *file* level, not with `-X theirs`. A 3-way
-  merge can silently splice one upstream test's tail into the neighbouring
-  test when the fork deletes the lines in between: the 0.154.0 upgrade's
-  `[input]` commit left `bottom_pane::tests::
-  esc_is_noop_at_pane_level_and_remapped_binding_interrupts` asserting the
-  pre-fork `esc -> Op::Interrupt` behaviour, because the next test's tail
-  was appended to it. Read the merged function, not just the conflict
-  markers -- orphaned code without markers fails only at test time.
-- After a conflict-heavy module, diff the fork's own test *keys* against
-  the snapshot files it ships. The `[input]` module renames snapshot tests
-  (`footer_mode_ctrl_c_hint_survives_esc`,
-  `footer_mode_esc_closes_shortcut_overlay`) and deletes two upstream
-  ones; taking upstream's source wholesale resurrects the upstream names,
-  which then regenerate upstream-named `.snap` files while the fork-named
-  ones linger as untracked duplicates. Re-apply the fork renames in the
-  source and delete the stale files.
-- Snapshot regeneration is terminal-sensitive. Run the suite as
-  `env -u NO_COLOR TERM=xterm-256color ... INSTA_UPDATE=always cargo
-  nextest run`; under the default `TERM=dumb`/`NO_COLOR=1` the
-  `custom_terminal::tests::cursor::*` tests fail on style escapes and
-  `INSTA_UPDATE=always` then *accepts* those corrupted frames into the
-  snapshots. When cursor snapshots show up in the diff, revert
-  `codex-rs/tui/src/custom_terminal/` and rerun with a real `TERM`.
-- The `[distribution]` module conflicts are *hard failures*, not markers:
-  upstream deletes workflows the fork also replaced, so the non-`.snap`
-  files surface as `patch does not apply` / "modify/delete" rather than
-  content conflicts. Take the upstream side for `rust-release.yml` and
-  `git rm` the workflows the fork's CI replacement deletes, then confirm
-  the fork's own workflows still exist.
-- `scripts/patch-modules.conf` exists in two places and both must agree:
-  the bootstrapped tree's copy is what `gen-patches.sh` reads, while
-  `check-patch-modules.sh` in the slim repo reads its own sibling. A
-  manifest change belongs to `[infra]`; when folding it, remember that
-  `git commit --fixup` silently drops an *empty* diff, so a fixup that
-  appears to succeed can be a no-op. Verify with
-  `git log --oneline <base>..HEAD -- scripts/patch-modules.conf` that
-  exactly the infra commit touches the file, and diff the two copies
-  afterwards.
-- Resolving a conflict "block by block" is not always right. For
-  `app-server-daemon/src/update_loop.rs` the fork deletes upstream's whole
-  install-script machinery, and taking the fork side of each hunk also dropped
-  the lines that *define* the symbols the fork's own `run()` uses
-  (`running_updater_identity`, `update_modes_for_identities`). The fix is to
-  write the file from the fork's previous version and re-adapt it to the new
-  upstream API instead: 0.155.1 removed `UpdaterRefreshMode`, dropped the
-  third argument of `try_restart_if_running`, and turned
-  `daemon.managed_codex_bin` into `current_managed_codex_bin()`. Same lesson
-  for `lib.rs`: drop upstream's new helpers for removed variants rather than
-  trying to keep both.
-- Snapshot conflicts are taken on the upstream side and then regenerated with
-  `INSTA_UPDATE=always`, but a *failed* run first leaves `.snap.new` files
-  behind from the polluted terminal. Those pending files are stale by the time
-  the regeneration succeeds: verify each one differs from its `.snap` and
-  delete them all, then re-run the suite clean to confirm. Afterwards,
-  `git diff rust-v<new-tag> -- <snap>` is the review that matters -- it shows
-  only what the fork changed, which should be exactly branding (`codEx` for
-  `OpenAI Codex`), keymap binding counts, and footer wording.
-- New upstream snapshots need manifest entries before `gen-patches.sh` will
-  export, and a whole-directory `git add` while fixing one module silently
-  pulls files into the wrong commit. Classify each regenerated snapshot by
-  what drives its diff (branding -> `[identity]`, keymap/footer -> `[input]`),
-  and prefer an existing `dir/*` pattern over new explicit lines: the 0.155.1
-  upgrade briefly double-claimed `tui/src/status/snapshots/*`, which `[input]`
-  already owned. New *platform variants* count as separate files: 0.163.0
-  introduced `...@windows.snap` siblings, and a fork patch that rewrites the
-  generic snapshot rewrites the Windows sibling with it, so each new
-  `@windows.snap` needs its own manifest line (a directory-wide pattern would
-  double-claim snapshots other modules own).
-- `git checkout --ours/--theirs` does not stage the file: the index keeps all
-  three stages, so `git status` still reports it as unmerged (`UU`) and a
-  later `git diff --diff-filter=U | while read; do git checkout ...; done`
-  sweep will silently overwrite hand-resolved files. Always `git add`
-  immediately after a resolution, and never resolve by looping over the
-  unmerged list without staging as you go.
-- When a sweep does clobber a resolved file, rebuild the merge instead of
-  guessing: `git merge-file -L HEAD -L base -L "<patch subject>" -p
-  <upstream-tag-blob> <old-tag-blob> <fork-blob>` reproduces exactly the
-  conflict `git am --3way` produced (same hunk boundaries and labels), so the
-  recorded resolution edits apply again verbatim. The three blobs are
-  `git show <new-tag>:<path>`, `git show <old-tag>:<path>`, and
-  `git -C <tree> show <module-commit>:<path>`.
-- Upstream removals do not only hit files the fork patches; they hit *surface
-  the fork's own branding leans on*. 0.163.0 deleted the empty-state greeting
-  (`set_session_greeting`, `Greeting`, the `greeting` field on the session
-  header), so the fork's branded session card had to drop the greeting line it
-  used to append, and the `[identity]` test that asserted it had to move to
-  the new behaviour. Grep the merged tree for the removed symbol before
-  deciding a conflict in the fork's favour.
-- New upstream *tests* can wait for the upstream product name. 0.163.0's
-  `tui/tests/suite/gov_cloud_guidance_tests.rs` polls the PTY until the screen
-  contains "OpenAI Codex", which the fork's branding never renders, so the test
-  timed out after 30s. Adapt the string to `codEx` and claim the file for
-  `[identity]` (it becomes a fork-delta file the moment you touch it); grep the
-  merged tree for `OpenAI Codex` in `*.rs` after every upgrade, since the
-  branding module's job is to make that string unreachable in the UI.
-- New upstream tests can also need workspace *helper binaries*. 0.163.0 added
-  `code_mode_host::tests`, which spawn `codex-code-mode-host` from
-  `target/debug`; that binary links V8 through the pinned rusty-v8 artifacts,
-  which only the release workflow downloads. `scripts/gates.sh` therefore
-  excludes `test(code_mode_host)` from the core suite next to
-  `test(suite)` -- both are upstream suites whose runner prerequisites the
-  fork's hosted CI does not provide -- instead of failing three tests on a
-  missing binary. Upstream builds its own test archive after wiring rusty-v8
-  up, so this is a narrowing, not a workaround for fork code.
-- 0.163.0 also dropped the bundled zsh from the canonical package:
-  `scripts/codex_package/layout.py` no longer ships or requires
-  `codex-resources/zsh/bin/zsh`, `codex_package/zsh.py` and the
-  `--zsh-manifest`/`--zsh-bin` flags are gone, and upstream's release workflow
-  lost its `CODEX_ZSH_*` env and manifest verification. The fork's release
-  workflow, `install.sh` and READMEs all had to stop listing the path.
-  `scripts/build_codex_package.py` itself is now a thin wrapper over
-  `scripts/codex_package/cli.py`; the flags the fork passes are unchanged.
-- Moving a setting out of a workflow is not the same as deleting it. 0.163.0
-  removed the inline `LIBSQLITE3_FLAGS=SQLITE_DISABLE_INTRINSIC` export from
-  `rust-release.yml` only because the Windows build moved to
-  `rust-release-windows.yml` (and the new `build-cargo-package-binaries`
-  action), where it is still required. The fork's single-workflow release keeps
-  the export.
-- Upstream now keeps the `releases/latest` pointer monotonic: the release job
-  compares the tag against `repos/<repo>/releases/latest` through
-  `.github/scripts/releases.py --check-github latest` and passes the result to
-  `gh release create/edit --latest`. The fork adopted it because its own
-  `codex update` resolves the newest release through that redirect, so a
-  re-published older tag must not roll it back. The script is carried at the
-  slim root next to `check_ci_results.py` rather than bootstrapped in the
-  release job.
-- The same applies to `gen-patches.sh`: `git format-patch` ends every patch
-  with a `-- ` signature line carrying the *producing* git version, so an
-  export made by a workstation's git (2.47) and one made by the runner's
-  (2.55) differ even when the queue is identical. The exporter passes
-  `--no-signature` for that reason; the drift check additionally normalizes the
-  `From <sha>` line, which a fresh `git am` legitimately changes.
-- A dependency bump can change a *type* under the fork's own `#[cfg(windows)]`
-  code. 0.163.0's resolution moved the workspace onto a windows-sys release
-  where `HANDLE` is `*mut c_void` (older ones made it an `isize`), so
-  `cli/src/self_update.rs`'s `handle != 0` stopped compiling on Windows only.
-  No local gate can see that (the fork's Linux CI cannot cross-check the ring
-  and sandbox build scripts), so the Windows job in `rust-ci-full.yml` is the
-  only place it surfaces -- treat a red Windows check as a real regression, not
-  as CI flakiness.
-- The cargo home cache restores `~/.cargo/bin`, so any `cargo install` in a
-  workflow must be idempotent: the second run fails with "binary ... already
-  exists in destination" otherwise. The heavy gate checks `command -v
-  cargo-nextest` first and installs a pinned version when the cache is cold.
-- Advisories age independently of this repository: a lockfile that passed
-  cargo-deny last week can fail today because rustsec published a new advisory
-  (0.163.0 shipped rustls 0.23.45 into four of them). The fix is to bump the
-  dependency in the `[infra]` lockfile (`cargo update -p <crate>`) and
-  re-export, never to add the advisory to `deny.toml`'s ignore list.
-- Comparing the merged tree against the slim copies is the fastest way to find
-  the files a `[distribution]` conflict damaged: every fork-carried workflow
-  that `git am` auto-merged should be byte-identical to its slim copy (`cmp`),
-  so a short loop over `git ls-files .github install.sh` names the ones that
-  still need attention. In the 0.163.0 upgrade only `rust-ci.yml` and
-  `rust-ci-full.yml` differed, because the fork replaces their content
-  wholesale; `rust-release.yml` needs the manual narrowing described above.
-- The dual-copy rule is broader than the manifest: every fork-owned file
-  that exists at the slim root *and* in the bootstrapped tree must be
-  byte-identical in both, and the list is not just `scripts/`: `README.md`,
-  `.codespellignore`, `.codespellrc`, `install.sh`, `.github/workflows/*`,
-  `.github/actions/*` and `.github/scripts/*` are all carried by the queue.
-  Editing the tree copy without folding the change back into the slim root
-  (or vice versa) is invisible until the next upgrade, so
-  `check-patch-modules.sh --slim .` now fails CI on any divergence; exempt
-  only `.gitignore`, whose two copies legitimately differ. Files no module
-  claims (`README.zh.md`, `.pre-commit-config.yaml`) are slim-only and are
-  skipped automatically.
-- The fork's release lookup must never depend on the GitHub REST API. Its
-  unauthenticated quota is 60 requests per hour per source IP, which a shared
-  or NATed address exhausts without any local mistake, and the resulting
-  `403 rate limit exceeded` blocks `codex update` outright (seen in the wild on
-  a home connection). `codex update` and `codex doctor` therefore resolve the
-  newest tag from the `github.com/<repo>/releases/latest` redirect, which costs
-  no quota, and only fall back to
-  `api.github.com/repos/<repo>/releases/latest`, which they authenticate with
-  `GITHUB_TOKEN`/`GH_TOKEN` when either is set. Keep that order when resolving
-  conflicts in `cli/src/release_metadata.rs`, `cli/src/self_update.rs`, and
-  `utils/cli/src/fork.rs`; the asset downloads already use the
-  `/releases/latest/download/...` endpoint, which is likewise unlimited.
-- Upstream 0.154.0 added workspace members that need system headers the
-  fork's CI never builds (`voice-host` pulls gstreamer/glib through
-  `pkg-config`). A bare `cargo check --workspace` therefore fails on a
-  host without `libglib2.0-dev`; the CI-equivalent gate is
-  `cargo check -p codex-cli --bin codex -p codex-tui -p codex-core
-  --all-targets`. `liblzma-dev`/`libbz2-dev` *are* required for the
-  `codex-tui` test binaries (the `zip` dev-dependency chain), so install
-  those rather than treating the link error as a regression.
-
-
-## Coding Style & Naming Conventions
-
-- Rust: standard `rustfmt`; keep `cargo fmt --check` clean
-- Patches: exactly one commit per module in `scripts/patch-modules.conf`;
-  every fork-delta file belongs to exactly one module (the ownership
-  partition is enforced by `check-patch-modules.sh`). To add a feature,
-  append a manifest section and the matching tree commit; to change an
-  existing feature, rebase/`--fixup` into that module's commit. Never
-  hand-edit `patches/`. Sequential `NNNN-` prefixes, subject-derived names;
-  patch content never changes version numbers
-- `README.md` must be ASCII-only (U+2728 allowed), enforced by CI
-  (`asciicheck`); update `README.zh.md` alongside it
-- Keep codespell clean (`.codespellignore` for pre-commit, `.codespellrc` for
-  CI); Bash scripts use `set -euo pipefail`
-
-## Testing Guidelines
-
-Tests use `cargo-nextest` in the bootstrapped tree:
-
-```sh
 CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
   cargo nextest run -j 2 --no-fail-fast -p codex-tui
-# suite::* needs self-hosted sandbox runners; code_mode_host::* needs the
-# V8-linked helper binary only the release workflow builds (see gates.sh).
 CARGO_BUILD_JOBS=2 RUST_MIN_STACK=8388608 NEXTEST_PROFILE=local \
   cargo nextest run -j 2 --no-fail-fast \
   -p codex-core -E 'not test(suite) and not test(code_mode_host)'
 ```
 
-Add regression tests with bug fixes (e.g. `/rewind` tests). `rust-ci.yml`
-(through `scripts/gates.sh tree`) also runs the `codex_package` and `install`
-Python unit tests and the `codex-tui`/`codex-core` boundary check.
+- `scripts/gates.sh [light|tree|full|heavy|all] [--only ID] [--skip ID]` is
+  the single gate implementation. `light` needs no tree (queue layout, docs,
+  spelling, shell lint, blob budget); `tree` adds queue/export/slim-copy
+  integrity, Python suites, the TUI/core boundary, compile surface, config
+  schema, rustfmt, and cargo-deny when installed; `full` adds the release CLI
+  build and TUI/core suites; `heavy` is tree + full; `all` is light + heavy.
+- `pre-commit install` runs light on commit;
+  `pre-commit install --hook-type pre-push` runs heavy before push. A local
+  pass uses the same commands as CI. Never run two cargo-backed tiers against
+  the same tree: gates.sh takes a per-tree lock. Its flock and capped jobs
+  prevent starvation from turning five-second waits into flaky tests.
+- Reproduce codespell without modifying system Python:
+  `git ls-files -z | xargs -0 uvx --from codespell==2.4.3 codespell -I .codespellignore`.
+  Use the pinned versions for other CI tools too; restored caches can make
+  `cargo install` fail on an existing binary, so install only when absent.
+- Run builds serially with `CARGO_BUILD_JOBS=2`, detached with a log under
+  `$HOME/tmp/`, and cap nextest explicitly. `suite::*` needs self-hosted
+  sandbox runners and `code_mode_host::*` needs the V8-linked helper built by
+  the release workflow; both are excluded from hosted core tests.
+  `liblzma-dev`/`libbz2-dev` are needed for TUI test links. The compile gate
+  is `cargo check -p codex-cli --bin codex -p codex-tui -p codex-core
+  --all-targets`, not `--workspace` (voice-host needs gstreamer headers).
+- For upgrades run `bash scripts/update.sh rust-vX.Y.Z` (prefix optional).
+  It applies the queue with 3-way merges, runs heavy checks, and regenerates
+  `patches/` + `BASE_TAG`. For manual export use
+  `bash scripts/gen-patches.sh <base-tag> [output-dir]` from a bootstrapped
+  tree. Validate with `check-patch-modules.sh --tree DIR --patches DIR
+  --slim .`, then re-bootstrap from the exported queue as the final proof.
+  An export applies to a fresh clone with plain `git am`.
+- During conflict resolution, fetch the previous base tag with the `origin`
+  remote named explicitly so `git am --3way` has its blobs. Bump the tree's
+  BASE_TAG before manifest checks. Fold BASE_TAG and any infra changes into
+  `[infra]` via fixup + autosquash; `git diff <pre-rebase-sha> HEAD` must be
+  empty. Keep module order compilable; update the manifest in the same commit
+  as newly owned files. The exporter uses `--no-signature` and the drift check
+  normalizes the `From <sha>` line, so different git versions do not churn.
 
-TUI snapshot tests are environment-independent: the footer shortcuts pin a
-test-only WSL flag, so the full suite passes on WSL hosts and Linux CI alike.
+## Diagnose before changing
 
-## Publishing a Release
+Compare against the previous `BASE_TAG` and identify the cause first:
+upstream behaviour changed, a fork patch is wrong/incomplete, or the fork's
+distribution/CI/environment diverged. Then resolve with upstream as the
+authority: use its mechanism, remove the contradictory distribution choice,
+and keep fork exceptions only where a core feature genuinely requires them
+(`/rewind`, Esc semantics, update redirection, Linux + Windows distribution).
 
-Upgrades (and other `main` changes) ship through CI, in this order:
+- Mirror upstream's structure, commands, step order, and prerequisites; do not
+  re-derive them. Cosmetic fork deltas survive only when load-bearing.
+- Independent additions coexist; rewrites favour upstream, with fork behaviour
+  layered on only when upstream cannot provide it. Upstream deletions win;
+  scrub every fork reference, including tests, comments, and branding.
+  Delete/modify conflicts on fork-deleted files accept deletion. Lockfile
+  conflicts take upstream verbatim and let the build regenerate fork entries.
+- Resolve file-level conflicts, not with `-X theirs`; 3-way merges can splice
+  neighbouring tests without markers. Read merged functions. Stage every
+  `checkout --ours/--theirs` immediately. If a resolution is clobbered,
+  rebuild it with `git merge-file` from the new/old upstream blobs and the
+  fork's module blob instead of guessing.
+- When upstream removed entry points but rewrote the machinery, drop its new
+  helpers for removed variants rather than retaining both. Reconstruct such
+  files from the fork's prior version and adapt to the new upstream API; do
+  not resolve merely block by block.
+- A deterministic failure is not automatically a regression: read the panic,
+  diff the code, check upstream main, and rule out environment first. Re-run
+  load-sensitive tests alone, never patch upstream timeouts. Host networking,
+  DNS, runner caches, and terminal settings are common causes.
 
-1. Push `main`, then wait for `blocking-ci` to finish green:
-   `gh run list --commit <sha>` followed by
-   `gh run watch <run-id> --exit-status`. Never tag before CI concludes.
-2. Tag the upgrade commit and push the tag:
-   `git tag rust-v<version> <commit> && git push origin rust-v<version>`.
-   `rust-release.yml` validates the tag against the workspace version in
-   `codex-rs/Cargo.toml`, builds the Linux musl and Windows MSVC targets
-   (~45 min on CI), and publishes `codex-<target>.tar.gz` plus its `.sha256`
-   for each target.
-3. Verify end to end: download an asset, compare the checksum, and run
-   `codex --version` -- expect
-   `codEx <version> (codEx fork, https://github.com/NIyueeE/codEx)`.
+## CI and releases
 
-Pushes to GitHub from this workstation can fail with intermittent
-"GnuTLS, handshake failed" errors while `api.github.com` (and `gh`) keep
-working; retry the same push several times before investigating anything
-else.
+CI file ownership belongs to the fork, but upstream owns their content: jobs,
+steps, commands, and prerequisites. Narrow, never re-derive. A red check is
+diagnosed, not edited; only a genuine runner divergence justifies an edit.
 
-## Commit & Pull Request Guidelines
+- Do not weaken what a check verifies: no artifact-shaping `CARGO_PROFILE_*`
+  overrides, skipped runnable checks, silenced lints, or inflated timeouts.
+  Runner limits change job count, target directory, or timeout headroom only.
+  `CARGO_BUILD_JOBS=2` is allowed; the published release profile is not.
+- Shared prerequisites belong in `bootstrap-tree` (the fork's `setup-ci`
+  analogue), once. Mirror upstream's Windows `core.longpaths`, cargo build
+  root, `STABLE_GIT_COMMIT`, `--timings`, and non-Apple split-debuginfo
+  settings; when a failure points elsewhere, diff the upstream action first.
+  When the build root changes, resolve `CARGO_TARGET_DIR` before joining
+  paths and check every consumer, including bwrap and the symbols archive.
+- The native Windows check is authoritative for `cfg(windows)` code; Linux
+  cannot reproduce its toolchain. Treat a red Windows job as a regression,
+  not CI noise. A cargo git checkout with chromium submodules needs long
+  paths on Windows; runner OOM and disk exhaustion need resource fixes, not
+  artifact changes. A shutdown signal is not automatically an OOM - inspect
+  step timing and competing jobs before changing anything.
+- Snapshot work uses `env -u NO_COLOR TERM=xterm-256color` and
+  `INSTA_UPDATE=always`. Take upstream `.snap` content, regenerate, and review
+  `git diff rust-v<tag> -- <snap>` for only intended branding/footer deltas.
+  Delete stale `.snap.new` files and re-run clean. Claim every regenerated
+  snapshot by its driver (branding -> identity, footer/keymap -> input),
+  including new `@windows.snap` variants; avoid double-claiming directory
+  patterns. Some tests execute `target/debug/codex` or assume `/tmp`, so
+  rebuild helpers and keep the temp directory conventional before blaming
+  an upgrade for snapshot failures.
+- The release workflow publishes `codex-<target>.tar.gz` + `.sha256` for
+  x86_64 Linux musl and Windows MSVC, including `bin/codex-exec-server` in
+  the canonical package. Push `main`, wait for `blocking-ci`, then tag and
+  push `rust-v<version>`; never tag before blocking CI concludes.
+- `releases/latest` stays monotonic through `.github/scripts/releases.py`.
+  Verify an asset's checksum and `codex --version` after release. Retry the
+  intermittent workstation `GnuTLS handshake failed` push before debugging
+  elsewhere.
 
-Commits use conventional-style prefixes from the project history — `docs:`,
-`fix:`, `ci:`, `release:`, `patches:`, `rewind:` — with a bulleted body
-explaining what and why. Keep messages ASCII-only.
+## Product boundary
 
-PRs must pass every `blocking-ci` job -- the light gate (`repo-checks`,
-`blob-size-policy`, `codespell`) -- and leave the worktree clean. That gate
-deliberately carries no Cargo check: every Cargo check needs the patch queue
-applied, which is the expensive part of CI, so the whole compile surface lives
-in the heavy gate with the release build and the suites. The heavy gate runs
-post-merge through `postmerge-ci.yml` (`rust-ci`, `rust-ci-full`,
-`cargo-deny`), from a `**full-ci**` branch or a workflow dispatch when you want
-it before merging, and locally as `scripts/gates.sh heavy` from the `pre-push`
-hook -- install it (`pre-commit install --hook-type pre-push`) so the compile
-check happens before the push rather than after the merge. Describe the change
-and motivation; link related issues when they exist. Upgrades commit the new
-`BASE_TAG` and regenerated `patches/` together, tagged `rust-v<semver>`.
+codEx is headless TUI/CLI only. Remove vendor-facing entry points while
+leaving the underlying implementation intact: `codex app`, `/app` and
+`codex://`, desktop doctor/update feeds and startup tips, `codex cloud`,
+`codex remote-control`, daemon remote-control toggles, and the remote plugin
+marketplace. Do not reintroduce or "fix" their absence. Local/Git marketplaces
+still work. Check new upstream surfaces against
+`grep -rn 'oaistatic|appcast|\.dmg|app-landing-page' codex-rs` and
+`codex --help`; pets' CDN sprite pack is the intentional default-disabled
+exception. Also remove stale references in tests and to removed modules
+(`app_cmd`, `desktop_app`, `remote_control_cmd`, `wsl_paths`, `npm_registry`).
+
+Privacy defaults stay off: no startup update checks, announcement fetches, or
+remote plugin searches. `tooltips.rs` should be upstream minus remote
+announcements and desktop promotion, not an old fork copy that resurrects
+marketing text. Updates use pure Rust against fork releases with checksum
+verification; daemon supervision never runs upstream's install script.
+Release lookup prefers the `releases/latest` redirect (no REST quota), with
+authenticated API fallback. Keep that order in release metadata, self-update,
+and the shared fork helpers.
+
+## Queue-maintenance details
+
+- Rebase/history rewrites never change content. Verify touched snapshot
+  families after autosquash and ensure exactly the owning module touches the
+  manifest. Empty fixups are silently dropped; check with `git log`.
+- Resolve advisory drift by bumping the dependency in `[infra]` and
+  re-exporting, not adding ignores. Remove ignore entries that no longer
+  match the graph. Advisories can appear after the queue was last green.
+- Module order is load-bearing (`updates` before `input`). New fork-delta
+  files, snapshots, and upstream tests that wait for the product name must be
+  claimed before export. Branding should make `OpenAI Codex` unreachable in
+  the UI; adapt tests to `codEx` rather than letting them time out.
+- Keep each patch's cut minimal: prefer deleting entry points, retaining
+  upstream implementations, and avoiding fork-only alternatives. Reconstruct
+  inherited UI from the current upstream file when a fork copy is years old;
+  the session header is branding-only, not a separate card layout.
+- Upstream zsh removal, Windows executable helpers, the standalone executor,
+  and `rust-release-windows.yml` settings can move between workflows without
+  disappearing. Check the action that actually consumes a setting before
+  deleting it from the fork's single-workflow release.
