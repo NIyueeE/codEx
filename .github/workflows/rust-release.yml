@@ -84,12 +84,13 @@ jobs:
       # Avoid problematic aws-lc jitter entropy code path on musl builders.
       AWS_LC_SYS_NO_JITTER_ENTROPY: "1"
       AWS_LC_SYS_NO_JITTER_ENTROPY_AARCH64_UNKNOWN_LINUX_MUSL: "1"
-      # Upstream builds this leg on a self-hosted Windows runner, so it needs
-      # no resource cap; on the 16 GB hosted runner four parallel rustc jobs
-      # plus the thin-LTO link exhausted memory and the agent dropped off
-      # ("lost communication with the server"). Cap the parallelism only --
-      # the release profile and therefore the published binary stay upstream's.
-      CARGO_BUILD_JOBS: ${{ matrix.platform == 'windows' && '2' || '4' }}
+      # Upstream builds both legs on self-hosted runners, so it needs no
+      # resource cap. On GitHub-hosted runners four parallel rustc jobs starve
+      # the box: the Windows agent dropped off mid-build ("lost communication
+      # with the server") and the Linux leg was shut down ~19 minutes into the
+      # codex compile three times over. Cap the parallelism only -- the release
+      # profile, and therefore the published binary, stays upstream's.
+      CARGO_BUILD_JOBS: "2"
       # Upstream's rust-release.yml sets this for the Cargo matrix; only Apple
       # targets need packed dSYM bundles.
       CARGO_PROFILE_RELEASE_SPLIT_DEBUGINFO: off
