@@ -195,6 +195,39 @@ Then resolve with upstream as the authority, not with a fork-local exception:
   the behaviour. This guide itself is slim-only: editing it needs no module
   commit.
 
+## Working with CI
+
+CI files are fork-owned (`[distribution]`, carried by the queue, dual-copy
+rule applies), but their **content is upstream's**. A workflow's jobs, steps,
+order, commands, and prerequisites come from upstream at `BASE_TAG`; the fork
+only narrows them to Linux + Windows. Upstream is the authority for what a
+check *is* and *how it runs* - never re-derive a check the fork can copy.
+
+- **A red check is a symptom to diagnose, not a file to edit.** The triage in
+  *Diagnosing a Reported Breakage* applies verbatim: upstream changed
+  behaviour, a fork patch is wrong, or the fork's own distribution/runner
+  diverges. Only the third justifies touching a workflow, and even then the
+  edit must be a runner-resource limit (job count, target directory, timeout
+  headroom) or a prerequisite upstream already has an equivalent for. The
+  0.166.0 release took seven CI commits, and the first two of them were
+  exactly the mistake this rule forbids: a real Windows-only compile error
+  was found by the check, and an invented profile override was removed once
+  upstream's implementation was actually read.
+- **Never change what a check verifies to make it pass.** No
+  `CARGO_PROFILE_*` overrides that reshape the published binary, no `--skip`
+  for a check the fork's runner can run, no lint silenced, no timeout raised
+  past a genuine hang. When the fork's environment genuinely cannot provide a
+  check's prerequisites, narrow it explicitly and say why - as `gates.sh`
+  does for `suite::*` (needs self-hosted sandbox runners) and
+  `code_mode_host::*` (needs the V8-linked helper only the release workflow
+  builds).
+- **A prerequisite every cargo job needs belongs in the shared action once.**
+  `bootstrap-tree` is the fork's `setup-ci`; a step copied into each workflow
+  is a step the next upgrade will miss.
+- **Every deviation is documented twice**: a workflow comment naming what
+  upstream does instead (self-hosted runner, hermetic toolchain, ...), and the
+  commit message next to it.
+
 ## Upgrading the Patch Queue
 
 Upgrades (`rust-vX.Y.Z`) routinely conflict: upstream refactors the same code
