@@ -1,4 +1,4 @@
-From 6c7698d3aa260b74329db9cf7f1ac7b420688a46 Mon Sep 17 00:00:00 2001
+From 99f080b9d366e1e8d2df3f803c6099df48bd8485 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -112,7 +112,7 @@ index bab5781777146a1aa18ab48c7b54c3d38adbf91e..b43e55116f793a9ddeba6d13b7eca8b6
  
      pub(super) fn list_marketplaces(
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index ad5f6e3d7ba4bd74e1c5e00efac3a6e72ac66506..7d31f506bae688b50f596e0cb72fa206dc6ef84a 100644
+index 999931d53b9cd9f622ba81589ec6ffa5b2f49782..82a107df293c9b5a8215153c31ef83fa3291a4b2 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
 @@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;

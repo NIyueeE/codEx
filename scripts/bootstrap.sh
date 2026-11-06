@@ -45,23 +45,25 @@ git clone --depth 1 --branch "${base_tag}" "https://github.com/${repo}.git" "${o
 # every upstream bump. Keep this list in step with what scripts/gates.sh and
 # .github/workflows/rust-release.yml resolve through TREE_DIR.
 #
+# Cone mode, not --no-cone: cone takes bare directory names and recurses into
+# them, which is the form every git version agrees on. --no-cone needs
+# gitignore-style patterns anchored with a leading slash, and git 2.56 on
+# Windows silently drops a nested directory pattern such as
+# /.github/actions/setup-msvc-env/, which broke the Windows release leg
+# (setup-msvc-env.ps1 missing from the tree). Cone mode does materialize the
+# repository root's files, so those are removed right after.
+sparse_dirs=(
+  codex-rs
+  scripts
+  .github
+  third_party
+  .cargo
+)
+git -C "${output_dir}" sparse-checkout set --cone "${sparse_dirs[@]}"
+
 # BASE_TAG is written rather than cloned: it is the fork's own pin, and
 # scripts/check-patch-modules.sh reads it back out of the tree to confirm the
 # queue was applied to the tag it was exported against.
-# --no-cone, not the default cone mode: cone mode always materializes every
-# file in the repository root, which would drag in upstream's Bazel, npm,
-# Nix, and Prettier configuration. These patterns are gitignore-style and
-# anchored at the root, so nothing outside them is checked out.
-sparse_patterns=(
-  /codex-rs/
-  /scripts/
-  /.github/scripts/
-  /.github/actions/setup-msvc-env/
-  /third_party/
-  /.cargo/
-)
-git -C "${output_dir}" sparse-checkout set --no-cone "${sparse_patterns[@]}"
-
 echo "${base_tag}" > "${output_dir}/BASE_TAG"
 echo "/BASE_TAG" >> "${output_dir}/.git/info/exclude"
 
@@ -78,5 +80,39 @@ if ! git am --3way "${patches_dir}"/*.patch; then
   echo "=============================================================" >&2
   exit 1
 fi
+
+# Pruned after `git am`, not before: cone mode's /* rule matches every root
+# file, and each `git am` step re-materializes the worktree, which silently
+# restored the junk deleted earlier in the run. Anything a build or gate step
+# starts needing shows up as a missing file, so this list is safe to keep
+# short. Keep it in step with the cone list above.
+root_junk=(
+  .bazelignore .bazelrc .bazelversion .codespellignore .codespellrc
+  .gitignore .markdownlint-cli2.yaml .npmrc .nvmrc .prettierignore
+  .prettierrc.toml .gitattributes .worktreeinclude
+  BUILD.bazel CHANGELOG.md LICENSE MODULE.bazel MODULE.bazel.lock NOTICE
+  README.md SECURITY.md announcement_tip.toml defs.bzl flake.lock flake.nix
+  justfile package.json pnpm-lock.yaml pnpm-workspace.yaml rbe.bzl ruff.toml
+  workspace_root_test_launcher.bat.tpl workspace_root_test_launcher.sh.tpl
+)
+for junk in "${root_junk[@]}"; do
+  rm -rf "${PWD:?}/${junk}"
+done
+rm -rf ".github/actions/build-bazel-package-binaries" \
+  ".github/actions/build-bazel-release" \
+  ".github/actions/build-cargo-package-binaries" \
+  ".github/actions/build-codex-packages" \
+  ".github/actions/linux-code-sign" \
+  ".github/actions/prepare-bazel-ci" \
+  ".github/actions/publish-dotslash" \
+  ".github/actions/run-argument-comment-lint" \
+  ".github/actions/setup-akv-pkcs11-codesigning" \
+  ".github/actions/setup-ci" \
+  ".github/actions/setup-python-release-tools" \
+  ".github/actions/setup-rusty-v8" \
+  ".github/actions/windows-code-sign" \
+  ".github/scripts/macos-signing" \
+  ".github/ISSUE_TEMPLATE" \
+  ".github/CODEOWNERS"
 
 echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"

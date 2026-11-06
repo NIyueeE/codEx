@@ -1,4 +1,4 @@
-From 21bc29dbc73128d2a855e45dc168438585d8ee1f Mon Sep 17 00:00:00 2001
+From e32329129f45aa523d7f981c02d871f748fbf8b3 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:34 +0000
 Subject: branding: codEx name and version output
@@ -183,10 +183,10 @@ index 9123904c5117dbf0c7c653826bea32110deaf0c1..021825f0c6e59789a6b44ef9270c646d
          let final_frame = last_rendered_buffer(&tui.terminal);
          let footer = |buffer: &ratatui::buffer::Buffer| {
 diff --git a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-index f7812089cb68682763e0b44d175d7876367bdafa..db6997a7c13c05db6653639c27f3a54d7de7e583 100644
+index 53563c33e9d8d243bf3f976a7220c5090f14a018..16c37cb44c1180a987913bda73052d96ccc816cd 100644
 --- a/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
 +++ b/codex-rs/tui/src/app/tests/session_lifecycle_requests.rs
-@@ -3244,7 +3244,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
+@@ -3210,7 +3210,7 @@ async fn underfilled_scrollback_fetches_older_pages_without_opening_the_transcri
          )?;
          let loading = render_overlay(overlay);
          assert!(loading.contains("Loading earlier messages…"));
@@ -356,7 +356,7 @@ index 9fe4a7663bdbd4555fd1d4679dd56bd55f517514..074ba4bc84fb738949d81aad54259e7f
          tui.set_owned_screen(/*owned*/ false)?;
          app_server.shutdown().await?;
 diff --git a/codex-rs/tui/src/chatwidget/rendering_tests.rs b/codex-rs/tui/src/chatwidget/rendering_tests.rs
-index 317a17d5cb881bb4b5a8cb4836ef7e25b1273597..60d9017aab099e8b52f2d9bfa0a62eef560485ce 100644
+index 28108e89523ecadd843b384c94c56460ec1e0310..ea512458dbb5fb1c8e1c95c92c52c11bb00ff64c 100644
 --- a/codex-rs/tui/src/chatwidget/rendering_tests.rs
 +++ b/codex-rs/tui/src/chatwidget/rendering_tests.rs
 @@ -386,7 +386,7 @@ async fn initial_session_header_starts_at_the_top_of_the_viewport() {
@@ -401,10 +401,10 @@ index 915041d85fa6112b9727d6ce497358398d49cdc0..bf04308c55c210e1e73b05bf0fed74b6
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-index 65f90350893b96fd6ad73a61eb83da074d0ee0bc..2243d254c907f8461fab6b83758b7724aa249d20 100644
+index 915041d85fa6112b9727d6ce497358398d49cdc0..bf04308c55c210e1e73b05bf0fed74b6cfd7be83 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
 +++ b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_startup.snap
-@@ -1,9 +1,8 @@
+@@ -1,8 +1,7 @@
  ---
  source: tui/src/chatwidget/tests/app_server.rs
 -assertion_line: 99
@@ -414,7 +414,6 @@ index 65f90350893b96fd6ad73a61eb83da074d0ee0bc..2243d254c907f8461fab6b83758b7724
 +codEx (v<VERSION>)
  model: GPT-5.6 Luna high
  directory: /tmp/thread-settings
- 
 diff --git a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap b/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
 index 147a544c9485f429f0e9ac058ee0ebd0389b265c..05ddff5f9eb166950f9ba11307932a57b55e63d3 100644
 --- a/codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__catalog_model_session_header_unknown_model.snap
@@ -477,7 +476,7 @@ index 5e78664e4a80d82ff90f15dc0608ee3a8ece15ea..898583d35200966a2baa35f5af230713
  
  • Daybreak is on for new turns.
 diff --git a/codex-rs/tui/src/history_cell/session.rs b/codex-rs/tui/src/history_cell/session.rs
-index 237ef9ec9699bc895011750b749aa6edcc1dae11..11aa60aab387342e1cac20e890f0b1215f0e9daf 100644
+index 120454d1eaf73c8fe677e792c59f5d3f66dbf241..205b57baa723b8c32e9e2b80eb40cf698bd193d6 100644
 --- a/codex-rs/tui/src/history_cell/session.rs
 +++ b/codex-rs/tui/src/history_cell/session.rs
 @@ -44,7 +44,7 @@ pub(crate) fn with_border_with_inner_width(
@@ -489,7 +488,7 @@ index 237ef9ec9699bc895011750b749aa6edcc1dae11..11aa60aab387342e1cac20e890f0b121
          format!(" (v{version})").dim(),
      ]
  }
-@@ -383,7 +383,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
+@@ -406,7 +406,7 @@ impl HistoryCell for SessionHeaderHistoryCell {
  
      fn raw_lines(&self) -> Vec<Line<'static>> {
          let mut lines = vec![

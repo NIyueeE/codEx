@@ -1,6 +1,6 @@
 # codEx
 
-[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.166.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.166.0)
+[![upstream](https://img.shields.io/badge/upstream-openai%2Fcodex%20rust--v0.167.0-412991?style=flat-square&logo=github&logoColor=white)](https://github.com/openai/codex/tree/rust-v0.167.0)
 [![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
 [![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
@@ -13,7 +13,7 @@ codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向
 
 本仓库采用 **patch-queue 模型**:只保存分支的改动(以 `git format-patch`
 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。代码本身在上游;
-`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为 `rust-v0.166.0`)。
+`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为 `rust-v0.167.0`)。
 
 ## 从 Release 安装
 
@@ -44,7 +44,7 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 如果 `codex` 以 `the CLI package version does not match its executable` 退出,
 说明安装的清单与二进制版本不一致(较旧的 `codex update` 只替换了二进制)。
 重新运行一次安装脚本即可:它会替换整个 release 目录。截至 `0.164.0`(含)的
-版本仍只带旧的更新器,所以请先用安装脚本安装 `0.166.0` 或更高版本;此后
+版本仍只带旧的更新器,所以请先用安装脚本安装 `0.167.0` 或更高版本;此后
 `codex update` 就会保持整个包完整。
 
 Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
@@ -66,7 +66,7 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 环境变量:
 
-- `CODEX_RELEASE`:要安装的版本,如 `0.166.0`(默认:`latest`)
+- `CODEX_RELEASE`:要安装的版本,如 `0.167.0`(默认:`latest`)
 - `CODEX_INSTALL_DIR`:`codex` 符号链接目录(默认:`~/.local/bin`)
 - `CODEX_HOME`:codex 主目录(默认:`~/.codex`)
 
@@ -242,10 +242,10 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
 ### 品牌
 
 - `codex --version` 输出
-  `codEx 0.166.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
+  `codEx 0.167.0 (codEx fork, https://github.com/NIyueeE/codEx)`;状态栏
   显示 `codEx <version>`。
 - TUI 的欢迎页、会话标题栏和状态标题栏显示 `codEx`;提示语也使用 `codEx`。
-- 版本号本身**与上游基础 tag 保持一致**(如 `0.166.0`),因此版本解析保持
+- 版本号本身**与上游基础 tag 保持一致**(如 `0.167.0`),因此版本解析保持
   纯 semver,分支 release tag 也保持整洁。
 
 ### 发布与 CI(Linux CI + Windows 检查)
@@ -313,7 +313,7 @@ pre-commit install --hook-type pre-push   # 推送 hook:重门
 
 | 组成部分 | 用途 |
 | --- | --- |
-| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.166.0`) |
+| `BASE_TAG` | 补丁队列所基于的上游 tag(如 `rust-v0.167.0`) |
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
@@ -368,17 +368,17 @@ cargo build --release --bin codex
 ## 升级到新的上游 tag
 
 ```sh
-bash scripts/update.sh rust-v0.166.0
+bash scripts/update.sh rust-v0.167.0
 ```
 
 `update.sh` 将新 tag 克隆到 `update-work/`,用 `git am --3way` 应用补丁队列,
 然后从 `codex-rs` 工作区运行与 CI 相同的检查(构建、`cargo fmt --check`,
 以及 `codex-tui`/`codex-core` 的 nextest 测试)。tag 参数带不带 `rust-v` 前缀
-均可(`rust-v0.166.0` 或 `0.166.0`)。如果补丁冲突,在 `update-work/` 中解决
+均可(`rust-v0.167.0` 或 `0.167.0`)。如果补丁冲突,在 `update-work/` 中解决
 (`git am --continue`),然后在 bootstrap 树内用
-`bash scripts/gen-patches.sh rust-v0.166.0` 重新生成(精简仓库没有上游历史,
+`bash scripts/gen-patches.sh rust-v0.167.0` 重新生成(精简仓库没有上游历史,
 脚本会拒绝在那里运行)。补丁队列从不改变版本号;分支 release 保持上游
-semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.166.0`),release 工作流
+semver,并以 `rust-v<version>` 打 tag(例如 `rust-v0.167.0`),release 工作流
 发布 `codex-<target>.tar.gz` + sha256 校验和。
 
 ## 许可证

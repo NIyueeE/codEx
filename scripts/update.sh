@@ -41,10 +41,42 @@ git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" 
 
 # Same sparse set scripts/bootstrap.sh uses: update-work/ is the same kind of
 # scratch build directory, and the heavy gate runs against it. Keep the two
-# lists in step.
-git -C "${work_dir}" sparse-checkout set --no-cone \
-  /codex-rs/ /scripts/ /.github/scripts/ /.github/actions/setup-msvc-env/ \
-  /third_party/ /.cargo/
+# lists in step. Cone mode, because --no-cone's anchored patterns are not
+# portable across git versions (see bootstrap.sh).
+git -C "${work_dir}" sparse-checkout set --cone \
+  codex-rs scripts .github third_party .cargo
+
+root_junk=(
+  .bazelignore .bazelrc .bazelversion .codespellignore .codespellrc
+  .gitignore .markdownlint-cli2.yaml .npmrc .nvmrc .prettierignore
+  .prettierrc.toml .gitattributes .worktreeinclude
+  BUILD.bazel CHANGELOG.md LICENSE MODULE.bazel MODULE.bazel.lock NOTICE
+  README.md SECURITY.md announcement_tip.toml defs.bzl flake.lock flake.nix
+  justfile package.json pnpm-lock.yaml pnpm-workspace.yaml rbe.bzl ruff.toml
+  workspace_root_test_launcher.bat.tpl workspace_root_test_launcher.sh.tpl
+)
+for junk in "${root_junk[@]}"; do
+  rm -rf "${PWD:?}/${junk}"
+done
+rm -rf ".github/actions/build-bazel-package-binaries" \
+  ".github/actions/build-bazel-release" \
+  ".github/actions/build-cargo-package-binaries" \
+  ".github/actions/build-codex-packages" \
+  ".github/actions/linux-code-sign" \
+  ".github/actions/prepare-bazel-ci" \
+  ".github/actions/publish-dotslash" \
+  ".github/actions/run-argument-comment-lint" \
+  ".github/actions/setup-akv-pkcs11-codesigning" \
+  ".github/actions/setup-ci" \
+  ".github/actions/setup-python-release-tools" \
+  ".github/actions/setup-rusty-v8" \
+  ".github/actions/windows-code-sign" \
+  ".github/scripts/macos-signing" \
+  ".github/ISSUE_TEMPLATE" \
+  ".github/CODEOWNERS"
+
+# The same pruning runs again after `git am`, because cone mode's /* rule
+# re-materializes the root files on every applied commit.
 
 # `git am --3way` rebuilds a fake ancestor from the blob SHAs recorded in each
 # patch. A shallow clone of the *new* tag only carries that tag's blobs, so any
@@ -90,6 +122,29 @@ fi
 # would also count every upstream commit between the two tags and report the
 # fork's own commits as touching files they do not own.
 echo "${upstream_tag}" > "${work_dir}/BASE_TAG"
+
+# Re-run the pruning after `git am`, which re-materializes the root files that
+# cone mode's /* rule covers. See scripts/bootstrap.sh for the same step.
+for junk in "${root_junk[@]}"; do
+  rm -rf "${PWD:?}/${junk}"
+done
+rm -rf ".github/actions/build-bazel-package-binaries" \
+  ".github/actions/build-bazel-release" \
+  ".github/actions/build-cargo-package-binaries" \
+  ".github/actions/build-codex-packages" \
+  ".github/actions/linux-code-sign" \
+  ".github/actions/prepare-bazel-ci" \
+  ".github/actions/publish-dotslash" \
+  ".github/actions/run-argument-comment-lint" \
+  ".github/actions/setup-akv-pkcs11-codesigning" \
+  ".github/actions/setup-ci" \
+  ".github/actions/setup-python-release-tools" \
+  ".github/actions/setup-rusty-v8" \
+  ".github/actions/windows-code-sign" \
+  ".github/scripts/macos-signing" \
+  ".github/ISSUE_TEMPLATE" \
+  ".github/CODEOWNERS"
+
 if ! bash "${script_dir}/check-patch-modules.sh" --tree "${work_dir}"; then
   echo "The applied patch queue does not match the patch-module manifest." >&2
   exit 1

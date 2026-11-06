@@ -1,4 +1,4 @@
-From dd8d6d3a8ccc324cad1530ab1d5ff2f78218bfa9 Mon Sep 17 00:00:00 2001
+From 67783ae9815dfc47e1cf355573b5345a1956a568 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:22 +0000
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -17,7 +17,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
  ...ts__desktop_thread_open_error_history.snap |    5 -
  ..._tests__desktop_thread_opened_history.snap |    5 -
- codex-rs/tui/src/app/tests.rs                 |  632 +++++++-
+ codex-rs/tui/src/app/tests.rs                 |  635 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
  codex-rs/tui/src/app_backtrack.rs             |  137 +-
  codex-rs/tui/src/app_event.rs                 |   52 +-
@@ -32,7 +32,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 28 files changed, 4041 insertions(+), 322 deletions(-)
+ 28 files changed, 4042 insertions(+), 324 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
@@ -41,7 +41,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  create mode 100644 codex-rs/tui/src/rewind/rewind_tests.rs
 
 diff --git a/codex-rs/config/src/config_toml.rs b/codex-rs/config/src/config_toml.rs
-index 2578c59d9c07d78b11cda00be940dfe2d19e0a58..894dec20a8efef074c5b0cc309248064e349227c 100644
+index cd1c40056e191533b5ba5d1ea22c1940d6738177..89d367dc7f193daa97991c756813d03475c0c49f 100644
 --- a/codex-rs/config/src/config_toml.rs
 +++ b/codex-rs/config/src/config_toml.rs
 @@ -528,10 +528,25 @@ pub struct ConfigToml {
@@ -73,10 +73,10 @@ index 2578c59d9c07d78b11cda00be940dfe2d19e0a58..894dec20a8efef074c5b0cc309248064
      pub disable_paste_burst: Option<bool>,
  
 diff --git a/codex-rs/core/config.schema.json b/codex-rs/core/config.schema.json
-index 0e741b619f29ca531575accba1a2d6d18ebc7403..5e5f3e338764aba3f4d6a1fa3819a3246cbd7c50 100644
+index f5149c6efdf7ab9f1550aa0639dd5f2401205f25..562ebf64388962978c92eb97f036d852c73dd41c 100644
 --- a/codex-rs/core/config.schema.json
 +++ b/codex-rs/core/config.schema.json
-@@ -7392,7 +7392,7 @@
+@@ -7454,7 +7454,7 @@
        "type": "string"
      },
      "check_for_update_on_startup": {
@@ -85,7 +85,7 @@ index 0e741b619f29ca531575accba1a2d6d18ebc7403..5e5f3e338764aba3f4d6a1fa3819a324
        "type": "boolean"
      },
      "cli_auth_credentials_store": {
-@@ -8480,6 +8480,21 @@
+@@ -8563,6 +8563,21 @@
        "description": "Review model override used by the `/review` feature.",
        "type": "string"
      },
@@ -108,7 +108,7 @@ index 0e741b619f29ca531575accba1a2d6d18ebc7403..5e5f3e338764aba3f4d6a1fa3819a324
        "allOf": [
          {
 diff --git a/codex-rs/core/src/config/config_tests.rs b/codex-rs/core/src/config/config_tests.rs
-index 309e2d3d5442b8a98397a942919aa1c6b37616d2..593a048087f36e58aeda64a19444d66928ba2538 100644
+index 8b2548f7eaad0aebdc70e3be691bfc70b6868f85..1659f8c739069332e56cf0e5b4e75e4e113f851d 100644
 --- a/codex-rs/core/src/config/config_tests.rs
 +++ b/codex-rs/core/src/config/config_tests.rs
 @@ -665,6 +665,41 @@ async fn load_config_resolves_update_plan_enabled() -> std::io::Result<()> {
@@ -154,7 +154,7 @@ index 309e2d3d5442b8a98397a942919aa1c6b37616d2..593a048087f36e58aeda64a19444d669
  async fn load_config_resolves_code_mode_config() -> std::io::Result<()> {
      let codex_home = tempdir()?;
 diff --git a/codex-rs/core/src/config/mod.rs b/codex-rs/core/src/config/mod.rs
-index eb949b8a461575cf3260669cb3dbe24ffd40ae71..a05aae14dff212afe7a1bb87e8a7ce87ad72d847 100644
+index 8d93436455c461e1cd79753e369e116bc79f326a..54d529b4be19860dd206856d05b2b5c2be366957 100644
 --- a/codex-rs/core/src/config/mod.rs
 +++ b/codex-rs/core/src/config/mod.rs
 @@ -1184,10 +1184,24 @@ pub struct Config {
@@ -184,7 +184,7 @@ index eb949b8a461575cf3260669cb3dbe24ffd40ae71..a05aae14dff212afe7a1bb87e8a7ce87
      /// When true, disables burst-paste detection for typed input entirely.
      /// All characters are inserted as they are received, and no buffering
      /// or placeholder replacement will occur for fast keypress bursts.
-@@ -4311,7 +4325,13 @@ impl Config {
+@@ -4313,7 +4327,13 @@ impl Config {
          let compact_prompt = compact_prompt.or(file_compact_prompt);
          let review_model = override_review_model.or(cfg.review_model);
  
@@ -199,7 +199,7 @@ index eb949b8a461575cf3260669cb3dbe24ffd40ae71..a05aae14dff212afe7a1bb87e8a7ce87
          let model_catalog = load_model_catalog(cfg.model_catalog_json.clone())?;
  
          let log_dir = cfg
-@@ -4741,6 +4761,9 @@ impl Config {
+@@ -4743,6 +4763,9 @@ impl Config {
              active_project,
              notices,
              check_for_update_on_startup,
@@ -252,10 +252,10 @@ index 47968b86946d94be3b72d3dc2f817ec18cf82f55..497a2a2920531b5a8988dffc11a5e776
  opentelemetry_sdk = { workspace = true }
  pretty_assertions = { workspace = true }
 diff --git a/codex-rs/tui/src/app/event_dispatch.rs b/codex-rs/tui/src/app/event_dispatch.rs
-index 550965d65ebb02b1d4f8bf0af92649037cb64446..30b3944f3f2eed763909095abeb0b67a95a2ea35 100644
+index ba6e3f8af0a5333e63b2789704e75a4c2e590268..5cb5854ad27c5dce7a366549fc672a6d90788ff2 100644
 --- a/codex-rs/tui/src/app/event_dispatch.rs
 +++ b/codex-rs/tui/src/app/event_dispatch.rs
-@@ -494,6 +494,37 @@ impl App {
+@@ -532,6 +532,37 @@ impl App {
              AppEvent::OpenResumePicker => {
                  self.pending_open_resume_picker = true;
              }
@@ -293,7 +293,7 @@ index 550965d65ebb02b1d4f8bf0af92649037cb64446..30b3944f3f2eed763909095abeb0b67a
              AppEvent::OpenExternalAgentConfigMigration => {
                  let cwd = if self.chat_widget.thread_id().is_some()
                      || !app_server.uses_remote_workspace()
-@@ -696,6 +727,7 @@ impl App {
+@@ -738,6 +769,7 @@ impl App {
                  thread_id,
                  selected_cell,
                  mut prompt,
@@ -301,7 +301,7 @@ index 550965d65ebb02b1d4f8bf0af92649037cb64446..30b3944f3f2eed763909095abeb0b67a
              } => {
                  if self.chat_widget.thread_id() != Some(thread_id) {
                      return Ok(AppRunControl::Continue);
-@@ -862,6 +894,12 @@ impl App {
+@@ -904,6 +936,12 @@ impl App {
                  self.app_event_tx.send(AppEvent::FinishPromptRevert {
                      thread_id, nth_user_message,
                  });
@@ -314,7 +314,7 @@ index 550965d65ebb02b1d4f8bf0af92649037cb64446..30b3944f3f2eed763909095abeb0b67a
              }
              AppEvent::FinishPromptRevert { thread_id, nth_user_message } => {
                  self.pending_thread_switch_resets -= 1;
-@@ -1351,9 +1389,6 @@ impl App {
+@@ -1423,9 +1461,6 @@ impl App {
              AppEvent::OpenUrlInBrowser { url } => {
                  self.open_url_in_browser(url);
              }
@@ -325,7 +325,7 @@ index 550965d65ebb02b1d4f8bf0af92649037cb64446..30b3944f3f2eed763909095abeb0b67a
                  self.handle_pet_selected(tui, pet_id);
              }
 diff --git a/codex-rs/tui/src/app/history_ui.rs b/codex-rs/tui/src/app/history_ui.rs
-index ca29929c1350cdad2a9ba465ffafc27dd59a96cb..85aab09ae19fc1d3327d2540b78aafadff75bc52 100644
+index ac38f1110fa73b2fb5c53be5de1de8e92995f960..1fee25b05f62ffb47cdb19705e4e67d93d6017b4 100644
 --- a/codex-rs/tui/src/app/history_ui.rs
 +++ b/codex-rs/tui/src/app/history_ui.rs
 @@ -1,4 +1,4 @@
@@ -343,7 +343,7 @@ index ca29929c1350cdad2a9ba465ffafc27dd59a96cb..85aab09ae19fc1d3327d2540b78aafad
  pub(super) struct RenderedHistoryTail {
      pub(super) cell: Weak<dyn HistoryCell>,
      pub(super) lines: Vec<HyperlinkLine>,
-@@ -284,20 +282,6 @@ impl App {
+@@ -301,20 +299,6 @@ impl App {
          }
      }
  
@@ -364,7 +364,7 @@ index ca29929c1350cdad2a9ba465ffafc27dd59a96cb..85aab09ae19fc1d3327d2540b78aafad
      pub(super) fn clear_ui_header_lines_with_version(
          &self,
          width: u16,
-@@ -414,107 +398,6 @@ impl App {
+@@ -443,107 +427,6 @@ impl App {
      }
  }
  
@@ -473,7 +473,7 @@ index ca29929c1350cdad2a9ba465ffafc27dd59a96cb..85aab09ae19fc1d3327d2540b78aafad
  #[path = "history_ui_tests.rs"]
  mod tests;
 diff --git a/codex-rs/tui/src/app/history_ui_tests.rs b/codex-rs/tui/src/app/history_ui_tests.rs
-index 252eb046b4e61b4908fdb40639ff614b1f4407ca..863c9386b80aa0cff376b65e8067b1f044652da9 100644
+index 46bbd9eb47775a77312379cbfaade63eaa306460..da456c16ea3831693eb40560de314a3aacfcc288 100644
 --- a/codex-rs/tui/src/app/history_ui_tests.rs
 +++ b/codex-rs/tui/src/app/history_ui_tests.rs
 @@ -1,38 +1,14 @@
@@ -518,13 +518,13 @@ index 252eb046b4e61b4908fdb40639ff614b1f4407ca..863c9386b80aa0cff376b65e8067b1f0
 -}
 -
  #[tokio::test]
- async fn owned_clear_resets_navigation_and_retains_one_fresh_header() -> Result<()> {
-     let (mut app, _rx, _op_rx) = make_test_app_with_channels().await;
+ async fn viewed_image_links_follow_workspace_locality() -> Result<()> {
+     let dir = tempfile::tempdir()?;
 diff --git a/codex-rs/tui/src/app/owned_transcript_tests.rs b/codex-rs/tui/src/app/owned_transcript_tests.rs
-index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e34201c322de7 100644
+index 422d53ff544f8314e88d5674125a8997bd86a278..142c842010e51209d0da28ac8e68fbf75fe75a3c 100644
 --- a/codex-rs/tui/src/app/owned_transcript_tests.rs
 +++ b/codex-rs/tui/src/app/owned_transcript_tests.rs
-@@ -584,7 +584,7 @@ async fn owned_transcript_keeps_text_out_of_the_pet_columns() -> Result<()> {
+@@ -735,7 +735,7 @@ async fn owned_transcript_keeps_text_out_of_the_pet_columns() -> Result<()> {
  
  #[tokio::test]
  async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Result<()> {
@@ -533,7 +533,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
      let thread_id = ThreadId::new();
      attach_thread(&mut app, thread_id);
      app.transcript_cells = vec![user_cell("historical prompt")];
-@@ -611,14 +611,19 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
+@@ -762,14 +762,19 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
          }),
          /*replay_kind*/ None,
      );
@@ -561,7 +561,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
          .count();
      assert_eq!(
          (
-@@ -629,6 +634,11 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
+@@ -780,6 +785,11 @@ async fn owned_details_escape_interrupts_work_without_starting_backtrack() -> Re
          ),
          (1, false, true, "draft survives interrupt".to_string()),
      );
@@ -573,7 +573,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
      tui.set_owned_screen(/*owned*/ false)?;
      app_server.shutdown().await?;
      Ok(())
-@@ -665,6 +675,7 @@ async fn owned_backtrack_keys_edit_the_selected_prompt_and_restore_compact_view(
+@@ -816,6 +826,7 @@ async fn owned_backtrack_keys_edit_the_selected_prompt_and_restore_compact_view(
              thread_id,
              selected_cell,
              prompt,
@@ -581,7 +581,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
          } => Some((
              thread_id,
              Arc::ptr_eq(&selected_cell, &app.transcript_cells[1]),
-@@ -856,7 +867,8 @@ async fn owned_search_and_selection_consume_input_before_composer_and_backtrack(
+@@ -1007,7 +1018,8 @@ async fn owned_search_and_selection_consume_input_before_composer_and_backtrack(
      assert!(app.handle_owned_transcript_event(&mut tui, &mut app_server, &escape)?);
      assert!(app.transcript_view.is_following());
      assert!(!app.backtrack.overlay_preview_active);
@@ -591,7 +591,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
      assert!(!app.backtrack.overlay_preview_active);
      assert_eq!(
          app.chat_widget.composer_text_with_pending(),
-@@ -1222,12 +1234,19 @@ async fn offline_backtrack_keeps_the_preview_and_draft_without_reverting() -> Re
+@@ -1373,12 +1385,19 @@ async fn offline_backtrack_keeps_the_preview_and_draft_without_reverting() -> Re
          let mut tui = crate::tui::test_support::make_test_tui()?;
          tui.set_owned_screen(owned)?;
          app.open_transcript_overlay(&mut tui);
@@ -617,7 +617,7 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
          app.chat_widget
              .apply_external_edit("offline draft".to_string());
          app.reconnect.offline = true;
-@@ -1436,10 +1455,19 @@ async fn double_escape_browses_prompts_without_reverting_and_explains_editing()
+@@ -1587,10 +1606,19 @@ async fn double_escape_browses_prompts_without_reverting_and_explains_editing()
      tui.set_owned_screen(/*owned*/ true)?;
      let size = Size::new(/*width*/ 80, /*height*/ 16);
      app.render_owned_transcript(&mut tui, size)?;
@@ -638,10 +638,10 @@ index c3ec487f6d67f545c5504a109b525f7137fad7c3..af04fd93ac73576a76c1e920ed9e3420
      assert_eq!(app.backtrack.nth_user_message, 2);
      for key in [
 diff --git a/codex-rs/tui/src/app/session_lifecycle.rs b/codex-rs/tui/src/app/session_lifecycle.rs
-index c7dc18d544a064d4bc684b0a54e3e86be76731f6..d54404bea56c016f13a63b9ebd0e1cb66b09381d 100644
+index 9203adf62c15a00dda8090f2e82fa2b9c287e776..767b488638f213dddaac7ac309aaae679d1baef9 100644
 --- a/codex-rs/tui/src/app/session_lifecycle.rs
 +++ b/codex-rs/tui/src/app/session_lifecycle.rs
-@@ -1184,6 +1184,11 @@ impl App {
+@@ -1216,6 +1216,11 @@ impl App {
                      .start_fresh();
              }
          }
@@ -676,19 +676,29 @@ index 8e34f8e8a64508e0ac897e8a6eab8bea1b429015..00000000000000000000000000000000
 ----
 -• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b4793e66a833 100644
+index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2e13bff3e 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
-@@ -6384,7 +6384,7 @@ async fn ctrl_l_clears_owned_history_and_preserves_the_draft() -> Result<()> {
-             .is::<history_cell::SessionHeaderHistoryCell>()
+@@ -6479,7 +6479,7 @@ async fn ctrl_l_preserves_the_transcript_and_draft_after_clearing_the_screen() -
+     let compact = transcript_composer::buffer_text(
+         crate::custom_terminal::test_support::last_rendered_buffer(&tui.terminal),
      );
-     let header = lines_to_single_string(&app.transcript_cells[0].display_lines(/*width*/ 80));
--    assert!(header.contains("OpenAI Codex"));
-+    assert!(header.contains("codEx"));
-     let raw_header = lines_to_single_string(&app.transcript_cells[0].raw_lines());
-     assert!(raw_header.contains("gpt-test"));
-     assert!(!header.contains("old transcript row"));
-@@ -8070,13 +8070,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+-    assert!(compact.contains("OpenAI Codex"));
++    assert!(compact.contains("codEx"));
+     assert!(compact.contains("New exchange"));
+     assert!(!compact.contains("Earlier exchange"));
+     let ctrl_t = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);
+@@ -6525,8 +6525,7 @@ async fn ctrl_l_preserves_the_transcript_and_draft_after_clearing_the_screen() -
+         .collect::<Vec<_>>()
+         .join("\n");
+     assert!(replay.contains("New exchange"));
+-    assert!(!replay.contains("Earlier exchange"));
+-    assert_eq!(
++    assert!(!replay.contains("Earlier exchange"));    assert_eq!(
+         app.chat_widget.composer_text_with_pending(),
+         "draft survives"
+     );
+@@ -8210,13 +8209,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              rollout_path: Some(PathBuf::new()),
          });
  
@@ -705,7 +715,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -8103,6 +8099,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -8243,6 +8238,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              thread_id,
              selected_cell,
              prompt,
@@ -713,7 +723,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
          } if thread_id == expected.thread_id
              && Arc::ptr_eq(&selected_cell, &app.transcript_cells[nth_user_position(&app.transcript_cells, expected.nth_user_message).unwrap()])
              && prompt == expected.prompt
-@@ -8140,6 +8137,569 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -8280,6 +8276,569 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
@@ -1283,7 +1293,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -8938,6 +9498,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9078,6 +9637,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
                          [nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
                  ),
                  prompt: remote_prompt,
@@ -1291,7 +1301,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
              },
          ))
          .await?;
-@@ -8957,6 +9518,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9097,6 +9657,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
              &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
          ),
          prompt: prompt.clone(),
@@ -1299,7 +1309,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
      };
      // A queued page shifts both identical prompts before confirmation is dispatched.
      let cursor = app_server
-@@ -9082,6 +9644,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9222,6 +9783,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
                  &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 0).unwrap()],
              ),
              prompt: "retained prompt".into(),
@@ -1307,7 +1317,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
          },
      ))
      .await?;
-@@ -9501,7 +10064,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9641,7 +10203,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -1315,7 +1325,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -9513,7 +10075,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9653,7 +10214,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -1323,7 +1333,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
      })
      .await;
  }
-@@ -10214,9 +10775,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -10354,9 +10914,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -1333,7 +1343,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -10225,8 +10783,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -10365,8 +10922,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -1342,7 +1352,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -10261,15 +10817,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -10401,15 +10956,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -1363,7 +1373,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -10277,25 +10835,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -10417,25 +10974,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1394,7 +1404,7 @@ index a2d219157e81a9e140b07ad5d505a4bbc030b96e..48764cee0fb277a9aba02b3f50c2b479
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -10305,33 +10862,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -10445,33 +11001,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1445,7 +1455,7 @@ index e04fc3da5d0c7eb12584f0ead760d02e7c558825..f7a3118a46072a209975f7445ccd9726
      app.active_thread_id = Some(thread_id);
      app.chat_widget
 diff --git a/codex-rs/tui/src/app_backtrack.rs b/codex-rs/tui/src/app_backtrack.rs
-index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a527477063b65 100644
+index 03ede0382347977fdbe8cd5ce19c17bb29e2add3..86276fe1c6e27c88181a5e525ae8614b90a21dba 100644
 --- a/codex-rs/tui/src/app_backtrack.rs
 +++ b/codex-rs/tui/src/app_backtrack.rs
 @@ -59,7 +59,17 @@ const NO_PREVIOUS_MESSAGE_TO_EDIT: &str = "No previous message to edit.";
@@ -1533,7 +1543,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
              });
      }
  
-@@ -266,9 +314,6 @@ impl App {
+@@ -271,9 +319,6 @@ impl App {
          self.backtrack.primed = true;
          self.backtrack.nth_user_message = usize::MAX;
          self.backtrack.base_id = self.chat_widget.thread_id();
@@ -1543,7 +1553,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
      }
  
      /// Open overlay and begin backtrack preview flow (first step + highlight).
-@@ -284,8 +329,6 @@ impl App {
+@@ -289,8 +334,6 @@ impl App {
          self.open_transcript_overlay(tui);
          self.backtrack.overlay_preview_active = true;
          self.set_browsing_details(/*detailed*/ false);
@@ -1552,7 +1562,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
          self.step_backtrack_and_highlight(tui);
      }
  
-@@ -487,14 +530,42 @@ impl App {
+@@ -492,14 +535,42 @@ impl App {
          Ok(())
      }
  
@@ -1599,7 +1609,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
          tui.frame_requester().schedule_frame();
      }
  
-@@ -513,14 +584,21 @@ impl App {
+@@ -518,14 +589,21 @@ impl App {
          self.backtrack.overlay_preview_active = false;
          self.backtrack.base_id = None;
          self.backtrack.nth_user_message = usize::MAX;
@@ -1624,7 +1634,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
              return None;
          }
  
-@@ -538,7 +616,7 @@ impl App {
+@@ -543,7 +621,7 @@ impl App {
              .collect();
  
          Some(BacktrackSelection {
@@ -1633,7 +1643,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
              nth_user_message,
              prompt: UserMessage {
                  text: selected.message.clone(),
-@@ -549,6 +627,23 @@ impl App {
+@@ -554,6 +632,23 @@ impl App {
              },
          })
      }
@@ -1657,7 +1667,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
  }
  
  /// Find the persisted turn that contains a selected transcript prompt.
-@@ -720,6 +815,20 @@ pub(crate) fn nth_user_position(
+@@ -725,6 +820,20 @@ pub(crate) fn nth_user_position(
          .find_map(|(i, idx)| (i == nth).then_some(idx))
  }
  
@@ -1679,7 +1689,7 @@ index 691136baafab616f69775ec6d2582a0c6a9e1f2a..5f755ee0072688b530ae0bc8587a5274
      cells: &[Arc<dyn crate::history_cell::HistoryCell>],
  ) -> impl Iterator<Item = usize> + '_ {
 diff --git a/codex-rs/tui/src/app_event.rs b/codex-rs/tui/src/app_event.rs
-index 2adc3036ae932a2cf873062c13b2775da3c8333a..5d7f7ba2d21ad78edcc049fecf5f7a9303df9420 100644
+index 9c848858c6db4c4ccbb827bda612f6761fc69879..b65902e0e21011ccdf72c9425adab3a8e82d01d8 100644
 --- a/codex-rs/tui/src/app_event.rs
 +++ b/codex-rs/tui/src/app_event.rs
 @@ -261,6 +261,17 @@ pub(crate) enum TranscriptExportDestination {
@@ -1700,7 +1710,7 @@ index 2adc3036ae932a2cf873062c13b2775da3c8333a..5d7f7ba2d21ad78edcc049fecf5f7a93
  /// Deliver a generated title to its originating automatic rename or editable prompt.
  #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
  pub(crate) enum ThreadTitleDestination {
-@@ -664,10 +675,46 @@ pub(crate) enum AppEvent {
+@@ -671,10 +682,46 @@ pub(crate) enum AppEvent {
      },
  
      /// Revert before a selected prompt, retaining its identity across queued history pages.
@@ -1747,7 +1757,7 @@ index 2adc3036ae932a2cf873062c13b2775da3c8333a..5d7f7ba2d21ad78edcc049fecf5f7a93
      },
      FinishPromptRevert {
          thread_id: ThreadId,
-@@ -884,11 +931,6 @@ pub(crate) enum AppEvent {
+@@ -893,11 +940,6 @@ pub(crate) enum AppEvent {
          url: String,
      },
  
@@ -1760,10 +1770,10 @@ index 2adc3036ae932a2cf873062c13b2775da3c8333a..5d7f7ba2d21ad78edcc049fecf5f7a93
      PetSelected {
          pet_id: String,
 diff --git a/codex-rs/tui/src/chatwidget.rs b/codex-rs/tui/src/chatwidget.rs
-index 68868be0c7d48ee0fc1160863ffb39976ee8eb9d..648cd1be2df354543f69f3ea01bc66bd7ba2b341 100644
+index d2962e8001347574e9a5bf680de4f18eb858dfea..5a2b9a68a375a883d42816b56a4389c8ea8d5b69 100644
 --- a/codex-rs/tui/src/chatwidget.rs
 +++ b/codex-rs/tui/src/chatwidget.rs
-@@ -724,6 +724,9 @@ pub(crate) struct ChatWidget {
+@@ -727,6 +727,9 @@ pub(crate) struct ChatWidget {
      /// We require the second press to match this key so `Ctrl+C` followed by
      /// `Ctrl+D` (or vice versa) doesn't quit accidentally.
      quit_shortcut_key: Option<KeyBinding>,
@@ -1773,7 +1783,7 @@ index 68868be0c7d48ee0fc1160863ffb39976ee8eb9d..648cd1be2df354543f69f3ea01bc66bd
      // Runtime metrics accumulated across delta snapshots for the active turn.
      turn_runtime_metrics: RuntimeMetricsSummary,
      last_rendered_width: std::cell::Cell<Option<u16>>,
-@@ -1766,9 +1769,18 @@ impl ChatWidget {
+@@ -1769,9 +1772,18 @@ impl ChatWidget {
          self.bottom_pane.composer_is_vim_enabled()
      }
  
@@ -1793,7 +1803,7 @@ index 68868be0c7d48ee0fc1160863ffb39976ee8eb9d..648cd1be2df354543f69f3ea01bc66bd
      }
  
      pub(crate) fn toggle_vim_mode_and_notify(&mut self) {
-@@ -1823,14 +1835,6 @@ impl ChatWidget {
+@@ -1826,14 +1838,6 @@ impl ChatWidget {
          self.bottom_pane.has_active_modal()
      }
  
@@ -1886,10 +1896,10 @@ index 7d0c7403b50611b9b1a15fb4eb8a695bb3f3a3be..a319c36b54ff31380f57244a4a564f7b
 +    }
  }
 diff --git a/codex-rs/tui/src/chatwidget/slash_dispatch.rs b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-index 79a90185372e2941a374eb00703bcb0fae7e0ad5..eee56bdb8fad1704b058bda4359a62e8e557d425 100644
+index 44f3c879e27620cb7102161e286a310b2522d7cc..8318fd443cbd0dfe54f6e11b520f879c41fdc16b 100644
 --- a/codex-rs/tui/src/chatwidget/slash_dispatch.rs
 +++ b/codex-rs/tui/src/chatwidget/slash_dispatch.rs
-@@ -315,15 +315,8 @@ impl ChatWidget {
+@@ -310,15 +310,8 @@ impl ChatWidget {
              SlashCommand::Worktree => {
                  self.show_managed_worktree_picker();
              }
@@ -1907,7 +1917,7 @@ index 79a90185372e2941a374eb00703bcb0fae7e0ad5..eee56bdb8fad1704b058bda4359a62e8
              }
              SlashCommand::Init => {
                  const INIT_PROMPT: &str = include_str!("../../assets/prompt_for_init_command.md");
-@@ -1308,7 +1301,6 @@ impl ChatWidget {
+@@ -1303,7 +1296,6 @@ impl ChatWidget {
              | SlashCommand::Vim
              | SlashCommand::Daybreak
              | SlashCommand::Diff
@@ -1915,7 +1925,7 @@ index 79a90185372e2941a374eb00703bcb0fae7e0ad5..eee56bdb8fad1704b058bda4359a62e8
              | SlashCommand::Rename
              | SlashCommand::Voice
              | SlashCommand::Recap
-@@ -1333,6 +1325,7 @@ impl ChatWidget {
+@@ -1328,6 +1320,7 @@ impl ChatWidget {
              | SlashCommand::Clear
              | SlashCommand::Resume
              | SlashCommand::Fork
@@ -1945,10 +1955,10 @@ index 0000000000000000000000000000000000000000..d5da994d33ec97b7a59c16515837f671
 +
 +  enter select · esc back
 diff --git a/codex-rs/tui/src/chatwidget/tests/app_server.rs b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-index c6dc2d4c6b4dc170b034d106af7569e4b9e37083..0f07af0fd83ed9f250cb9adfa9225386ccc35f72 100644
+index 2c3f9b000a903d0c6038cdf99a48bee86bd6ecba..35a88461713984a3997e5af7caf19b917860733c 100644
 --- a/codex-rs/tui/src/chatwidget/tests/app_server.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/app_server.rs
-@@ -829,6 +829,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
+@@ -860,6 +860,9 @@ async fn live_app_server_user_message_item_completed_does_not_duplicate_rendered
      let (mut chat, mut rx, mut op_rx) = make_chatwidget_manual(/*model_override*/ None).await;
      chat.thread_id = Some(ThreadId::new());
  
@@ -1959,7 +1969,7 @@ index c6dc2d4c6b4dc170b034d106af7569e4b9e37083..0f07af0fd83ed9f250cb9adfa9225386
          .set_composer_text("Hi, are you there?".to_string(), Vec::new(), Vec::new());
      chat.handle_key_event(KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE));
 diff --git a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
-index 4b77a7722db2ba338e1c7034a54bc7ac59ae8f65..0d75df084f0f53890e3d29dc085f8ab20fc92165 100644
+index 47c6985de141758b5627e7ba914136db95bac3ba..0cb775acc792a992ab95ee709dfc6045e5a234c5 100644
 --- a/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/composer_submission.rs
 @@ -1741,7 +1741,7 @@ fn interrupted_history(
@@ -2027,7 +2037,7 @@ index 4b77a7722db2ba338e1c7034a54bc7ac59ae8f65..0d75df084f0f53890e3d29dc085f8ab2
  
      match op_rx.try_recv() {
          Ok(Op::Interrupt) => {}
-@@ -2858,11 +2861,17 @@ fn image_preparation_keeps_input_responsive_and_preserves_pending_input() {
+@@ -2859,11 +2862,17 @@ fn image_preparation_keeps_input_responsive_and_preserves_pending_input() {
                      assert_eq!(chat.bottom_pane.composer_text(), "describe\nnew draft");
                  } else if scenario == "escape" || scenario == "ctrl_c" {
                      chat.on_task_started();
@@ -2050,7 +2060,7 @@ index 4b77a7722db2ba338e1c7034a54bc7ac59ae8f65..0d75df084f0f53890e3d29dc085f8ab2
                      if scenario == "escape" {
                          chat.on_interrupted_turn(TurnAbortReason::Interrupted);
 diff --git a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
-index e68d202b007614de41c22a49b88014626ae2b0f2..8fc2aff385d934a7e3ccb23c373aba803fee5d09 100644
+index dc5d14e86f1a0d5dadf5067de4315d080e4dc167..cef88b861ec63c1492c29f3fb1810daaae22f87b 100644
 --- a/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 +++ b/codex-rs/tui/src/chatwidget/tests/slash_commands.rs
 @@ -1272,7 +1272,8 @@ async fn interrupted_merged_message_history_encodes_mentions_once() {
@@ -2063,7 +2073,7 @@ index e68d202b007614de41c22a49b88014626ae2b0f2..8fc2aff385d934a7e3ccb23c373aba80
      next_interrupt_op(&mut op_rx);
      chat.on_interrupted_turn(TurnAbortReason::Interrupted);
  
-@@ -3305,32 +3306,11 @@ async fn slash_fork_with_name_requests_named_fork() {
+@@ -3327,32 +3328,11 @@ async fn slash_fork_with_name_requests_named_fork() {
  }
  
  #[tokio::test]
