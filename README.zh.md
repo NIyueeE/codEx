@@ -4,17 +4,16 @@
 [![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
 [![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
-[![patch queue](https://img.shields.io/badge/patch%20queue-7%20modules-6f42c1?style=flat-square)](#patch-queue-模型)
+[![patch queue](https://img.shields.io/badge/patch%20queue-6%20modules-6f42c1?style=flat-square)](#patch-queue-模型)
 [![CI](https://img.shields.io/github/actions/workflow/status/NIyueeE/codEx/blocking-ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NIyueeE/codEx/actions/workflows/blocking-ci.yml)
 
 codEx 是 [openai/codex](https://github.com/openai/codex) 的社区分支,面向 Linux
-与 Windows 独立用户保持 CLI 的顺滑体验:更少的组件、默认不进行联网更新检查,
-内置的 `codex update` 会从本分支的 release 下载经过校验的二进制。
+与 Windows 独立用户:组件更少,默认不进行联网更新检查,内置的 `codex update`
+会从本分支的 release 下载经过校验的二进制。
 
-本仓库采用 **patch-queue 模型**:不复制上游代码树,只保存分支的改动(以
-`git format-patch` 补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。
-真正的代码在上游;`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为
-`rust-v0.166.0`)。
+本仓库采用 **patch-queue 模型**:只保存分支的改动(以 `git format-patch`
+补丁系列形式)以及从上游 tag 重建完整 codex 代码树的脚本。代码本身在上游;
+`BASE_TAG` 固定了当前补丁队列所基于的上游 tag(当前为 `rust-v0.166.0`)。
 
 ## 从 Release 安装
 
@@ -58,7 +57,7 @@ Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msv
 无法用 `codex update` 迁移到包布局:旧二进制会在归档根查找 `codex`,并以
 `release archive is missing codex or bwrap` 拒绝新包。
 
-请改为重新运行一次安装脚本 —— 它会把扁平发布目录替换为包发布目录并重新指向
+请改为重新运行一次安装脚本,它会把扁平发布目录替换为包发布目录并重新指向
 `current`,此后 `codex update` 即可正常工作:
 
 ```sh
@@ -67,48 +66,46 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 环境变量:
 
-- `CODEX_RELEASE` - 要安装的版本,如 `0.166.0`(默认:`latest`)
-- `CODEX_INSTALL_DIR` - `codex` 符号链接目录(默认:`~/.local/bin`)
-- `CODEX_HOME` - codex 主目录(默认:`~/.codex`)
+- `CODEX_RELEASE`:要安装的版本,如 `0.166.0`(默认:`latest`)
+- `CODEX_INSTALL_DIR`:`codex` 符号链接目录(默认:`~/.local/bin`)
+- `CODEX_HOME`:codex 主目录(默认:`~/.codex`)
 
 ## 与上游的差异
 
-codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融入现有工作流,但
-改变了周边体验:
+codEx 保留了上游 `codex` 的二进制名称和配置格式,现有配置可以直接沿用;不同
+之处如下:
 
 - **回滚**:`/rewind` 无需 git 即可撤销对话轮次和/或工作区文件改动。
 - **输入**:Esc 不再误触中断;双击可停止正在进行的回复。
 - **更新**:`codex update` 是纯 Rust 实现的下载器,带校验和验证;不再依赖
   `curl | sh`、npm 或 brew。
 - **隐私**:默认启动时不检查更新、不拉取公告。
-- **纯无头**:彻底移除了指向闭源桌面应用的所有入口 —— 启动器 `codex app`、
+- **纯无头**:彻底移除了指向闭源桌面应用的所有入口:`codex app` 启动器、
   `codex://` 深链、Codex Cloud 浏览器、远程控制中继,以及远程插件市场。
   codEx 只提供 TUI/CLI,没有图形界面,也不连厂商中继服务。
 - **发行**:为 Linux 与 Windows 提供规范 Codex 包(与上游发布的
   `codex-package.json` 布局一致),没有 macOS/app-server 包。
 - **身份**:CLI 和 TUI 以 codEx 自居,`codex --version` 指向本分支的仓库。
 
-详见下文。
+### `/rewind`:回滚对话与工作区文件
 
-### `/rewind` - 回滚对话与工作区文件
-
-核心功能。`/rewind` 让你撤销某一轮对话和/或该轮造成的文件改动,不需要 git。
+`/rewind` 可以撤销某一轮对话和/或该轮造成的文件改动,不需要 git。
 
 **用法**:输入 `/rewind`,然后选择范围:
 
-1. **文件与对话** - 在对话记录中挑选一条过往消息;聊天会就地回滚到该消息
+1. **文件与对话**:在对话记录中挑选一条过往消息;聊天会就地回滚到该消息
    之前(对话截断到那里,prompt 恢复到输入框),同时工作区文件会恢复到
    该消息之前拍摄的快照。执行前会先确认并预览将要恢复/删除的文件数量;
    若找不到匹配快照,对话仍会回滚,只是不碰文件。
-2. **仅对话** - 在对话记录中挑选一条过往消息并就地回滚到它之前;文件保持不变。
-3. **仅文件** - 选择一个编号快照;执行前会确认并预览将要恢复/删除的文件
+2. **仅对话**:在对话记录中挑选一条过往消息并就地回滚到它之前;文件保持不变。
+3. **仅文件**:选择一个编号快照;执行前会确认并预览将要恢复/删除的文件
    数量。
 
 两种对话范围都复用对话记录选择器(即旧的双击 Esc 回溯所用的完整历史视图):
 最新用户消息开始处于高亮状态,**Left** 向前翻更早的消息,**Right** 向后翻,
 **Enter** 确认回滚,**Esc** 取消。
 
-**快照原理**(纯文件,不涉及 git):
+**快照原理**:
 
 - 每个主线程用户回合提交前,TUI 将工作区快照到
   `~/.codex/snapshots/<workspace-hash>/threads/<对话>/<turn>/`(或
@@ -118,7 +115,7 @@ codEx 保留了上游 `codex` 的二进制名称和配置格式,可以无缝融�
   大小、mtime、对象 id,外加 prompt 摘要、用于精确匹配消息的完整 prompt
   哈希、快照时的 `.gitignore` 设置,以及非 UTF-8 文件名的原始路径字节)
   以及 `files/` 下的文件内容。
-- 存储采用小型**内容寻址对象库**(同样不涉及 git):每个唯一文件内容在
+- 存储采用小型**内容寻址对象库**:每个唯一文件内容在
   `objects/` 下只保存一份,每个快照的 `files/` 条目都是指向对象库的硬链接。
   未变化的文件直接从上一份快照链接、无需重新读取,任何早期回合出现过的
   相同内容也绝不会重复存储。对话的第一份快照还会从同一工作区其它对话的
@@ -177,13 +174,11 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
 
 ### Esc:单击无操作,双击停止回复
 
-- 在主界面/输入框中的单次 **Esc** 是**无操作** - 不再中断对话轮次,也不再
-  进入任何回溯模式。
-- 回复进行中时,第一次 **Esc** 会显示底部提示("esc again to stop reply")
-  并开启 **400 ms** 窗口;窗口内的第二次 **Esc** 会中断当前轮次(与旧行为
-  一致,先提交挂起的 steers)。
-- 在需要 Esc 的地方,原有行为全部保留:模态框、弹出层、`?` 快捷键浮层、
-  历史搜索、bash 模式提示、vim 插入模式以及请求用户输入面板仍照常使用 Esc。
+- 单次 Esc 无操作。回复进行中时,第一次 **Esc** 会显示底部提示
+  ("esc again to stop reply")并开启 **400 ms** 窗口;窗口内的第二次 **Esc**
+  会中断当前轮次(与旧行为一致,先提交挂起的 steers)。
+- Esc 在模态框、弹出层、`?` 快捷键浮层、历史搜索、bash 模式提示、vim
+  插入模式以及请求用户输入面板中仍照常使用。
 - 全屏对话记录模式(`tui.fullscreen_transcript`,默认开启)同样如此:Esc 不会
   进入回溯浏览;没有回复在跑时,它只会把暂停的视口带回最新一条。
 - `chat.interrupt_turn` 键位**默认不绑定**(可在 `/keymap` 中重新绑定;模态
@@ -202,16 +197,15 @@ rewind_max_snapshots = 200       # 每个对话保留 200 份快照
      **整个包**覆盖安装到当前 release:先写辅助程序与资源,再换 `codex`
      入口,最后写清单;替换二进制期间保留 `.old` 备份。清单与可执行文件保持
      同一版本,`codex app-server daemon` 才能从这个包安装共享后台服务。没有
-     清单的归档会被拒绝,并提示重新运行 `install.sh` —— 那是一次性迁移到包
-     布局的方式。
+     清单的归档会被拒绝,并提示重新运行 `install.sh` 完成一次性迁移。
 - 由于归档由分支的 release 工作流构建,新二进制内嵌的 bwrap 摘要始终与
   随附的新 bwrap 匹配。
 - Windows 无法替换正在运行的可执行文件,因此更新会先暂存到安装目录旁,再交给
   新二进制的分离副本:它等待 codEx 退出后替换整个包并重新启动 codEx。
-- 非独立安装(npm/brew/...)会得到明确提示,指向分支 release 供手动下载。
+- 非独立安装(npm/brew/...)会得到提示,指向分支 release 供手动下载。
 - 后台 daemon 同样不会从远程脚本安装:其更新循环只负责看守受管安装,并在外部
   更新替换了二进制后重新执行;`codex app-server daemon update` 必须带
-  `--from-cli`——它复制并固定**当前 CLI 自己的包**,而不是拉取上游安装脚本。
+  `--from-cli`:它复制并固定**当前 CLI 自己的包**,不拉取上游安装脚本。
 
 ### 无更新打扰、无公告
 
@@ -237,12 +231,12 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
   `persistent.oaistatic.com`。
 - **桌面应用提示语**:任何平台都不再宣传桌面应用;只保留上游的本地提示语。
 - **`codex cloud`**(Codex Cloud 任务浏览)与 **`codex remote-control`**
-  及守护进程的 `enable-remote-control` / `disable-remote-control` 开关
-  —— 它们会把本地守护进程与厂商中继配对。
+  及守护进程的 `enable-remote-control` / `disable-remote-control` 开关均已
+  移除,它们会把本地守护进程与厂商中继配对。
 - **远程插件市场**(`openai-curated-remote`,由 chatgpt.com 后端提供)会被
   拒绝;本地与 Git 市场不受影响。
 
-有意保留:agent 实际通信的模型/API 后端,以及 Windows 沙箱相关代码 —— 后者
+有意保留:agent 实际通信的模型/API 后端,以及 Windows 沙箱相关代码;后者
 引用厂商包标识仅用于授权同机沙箱 IPC。
 
 ### 品牌
@@ -283,8 +277,8 @@ codEx 面向无头、自托管场景,只提供 TUI 与 CLI。所有会引入 Ope
   依赖沙箱的核心集成套件(`suite::*`)与依赖 V8 辅助二进制的
   `code_mode_host::*` 需要托管 CI 不提供的前置条件,已从 core 单元测试运行中
   排除,与上游自己的自托管 runner 配置一致。
-- 工作流是 bootstrap-aware 的:在完整检出和本精简仓库中都能工作(先
-  bootstrap,再在 `tree/` 内构建/测试/发布)。
+- 工作流在代码树缺失时会自行 bootstrap,因此在完整检出和本精简仓库中都能
+  工作:先 bootstrap,再在 `tree/` 内构建/测试/发布。
 
 ### 本地门禁(同样的命令,先于远端执行)
 
@@ -300,7 +294,7 @@ bash scripts/gates.sh heavy # tree + full:CI 合并后跑的那一档
 bash scripts/gates.sh all   # light + heavy
 ```
 
-装好 hook 后,`git commit` 跑轻门、`git push` 再加跑重门——本地这一档先
+装好 hook 后,`git commit` 跑轻门、`git push` 再加跑重门。本地这一档先
 跑,多数问题不会走到远端 CI:
 
 ```sh
@@ -315,9 +309,7 @@ pre-commit install --hook-type pre-push   # 推送 hook:重门
 
 ### Patch-queue 模型
 
-本仓库刻意**不**复制上游代码,不同于携带完整代码树并定期合并上游的经典
-fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个提交一个补丁)
-组织:
+分支的增量按**每个特性模块一个补丁**(而非每个提交一个补丁)组织:
 
 | 组成部分 | 用途 |
 | --- | --- |
@@ -325,16 +317,21 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 | `patches/` | 每个特性模块一个 `git format-patch` 补丁,顺序固定 |
 | `scripts/patch-modules.conf` | 模块清单:顺序、subject 与文件归属 |
 | `scripts/check-patch-modules.sh` | 用清单机器校验代码树与 `patches/` |
-| `scripts/bootstrap.sh` | 浅克隆 `openai/codex@BASE_TAG` 并 `git am` 应用补丁 |
+| `scripts/bootstrap.sh` | 稀疏克隆 `openai/codex@BASE_TAG` 并 `git am` 应用补丁 |
 | `scripts/update.sh` | 升级到新的上游 tag(应用补丁、与 CI 相同的检查、重新生成) |
 | `scripts/gen-patches.sh` | 从代码树历史重新生成 `patches/`;拒绝导出违反清单的布局 |
 | `scripts/gates.sh` | 唯一的门禁执行器(`light` / `tree` / `full` / `heavy` / `all`),git hook 与 CI 都调用它 |
 | `scripts/asciicheck.py`、`scripts/check_blob_size.py` | 上游的 README 与 blob 预算检查器,按字节原样携带,使轻门无需 bootstrap |
 
-七个模块为 `infra`(补丁队列工具、锁文件、README)、`rollback`(`/rewind`)、
+队列**只覆盖分支对上游编译期源码的改动**,因此每个模块拥有的文件都在
+`codex-rs/` 之下,没有例外。分支自己的基础设施(`scripts/`、`.github/`、
+`install.sh`、两份 README、`AGENTS.md`)就是本仓库根目录上的普通 fork 文件,
+不进队列:bootstrap 出来的代码树是一次性构建目录,不对外发布,把这些文件复制
+进去只会造成漂移。
+
+六个模块为 `infra`(workspace 锁文件与 cargo 配置)、`rollback`(`/rewind`)、
 `updates`(纯 Rust 自更新)、`input`(双击 Esc 中断)、`privacy`(启动无网络
-请求)、`distribution`(Linux CI + Windows 检查,release 含 Linux + Windows)与
-`identity`(品牌标识)。
+请求)与 `identity`(品牌标识)。
 分支改动的每个文件都归属且仅归属一个模块;`check-patch-modules.sh` 在导出
 (gen-patches)、升级(update.sh)、CI(rust-ci)和本地门禁(`gates.sh tree`)
 四处强制校验这一划分。
@@ -343,8 +340,11 @@ fork。它只保存增量,并按**每个特性模块一个补丁**(而非每个�
 建对应提交;**修改已有特性** = 将改动 rebase/折叠进该模块的提交。直接手改
 `patches/` 会被检查器拒绝。
 
-`bootstrap.sh` + `git am` 会生成完整、可构建的 codEx 代码树;CI 和 release
-工作流在构建前正是这么做的。参见下面的
+`bootstrap.sh` + `git am` 会生成可构建的 codEx 代码树;CI 和 release
+工作流在构建前正是这么做的。克隆是稀疏的:树里只带 `codex-rs/`、`scripts/`、
+`.github/scripts/`、`.github/actions/setup-msvc-env/`、`third_party/` 和
+`.cargo/`,也就是构建、门禁和发布打包会读到的全部内容;上游的 Bazel 配置、
+Python SDK、npm 包和 macOS 签名都不进树。参见下面的
 [构建](#building-from-this-repository)和
 [升级](#upgrading-to-a-new-upstream-tag)。
 

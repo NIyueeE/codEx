@@ -39,6 +39,13 @@ rm -rf "${work_dir}"
 echo "Cloning https://github.com/${repo}.git at ${upstream_tag} ..."
 git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" "${work_dir}"
 
+# Same sparse set scripts/bootstrap.sh uses: update-work/ is the same kind of
+# scratch build directory, and the heavy gate runs against it. Keep the two
+# lists in step.
+git -C "${work_dir}" sparse-checkout set --no-cone \
+  /codex-rs/ /scripts/ /.github/scripts/ /.github/actions/setup-msvc-env/ \
+  /third_party/ /.cargo/
+
 # `git am --3way` rebuilds a fake ancestor from the blob SHAs recorded in each
 # patch. A shallow clone of the *new* tag only carries that tag's blobs, so any
 # patched file that changed since the current BASE_TAG makes `git am` fail with

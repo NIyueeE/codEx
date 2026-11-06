@@ -7,8 +7,17 @@ patch queue: only the delta lives here. `BASE_TAG` selects the upstream tag;
 ## Layout and workflow
 
 - `patches/` contains exactly one generated patch per feature module, in order:
-  `infra`, `rollback`, `updates`, `input`, `privacy`, `distribution`,
-  `identity` (see `scripts/patch-modules.conf`). Never hand-edit it.
+  `infra`, `rollback`, `updates`, `input`, `privacy`, `identity` (see
+  `scripts/patch-modules.conf`). Never hand-edit it.
+- The queue carries **only the fork's changes to upstream's compile-time
+  sources**, so every manifest pattern is rooted at `codex-rs/`. Fork
+  infrastructure (`scripts/`, `.github/`, `install.sh`, `README*`, `AGENTS.md`,
+  `.codespell*`, `.gitignore`) lives here as ordinary fork files and is never
+  routed through the queue: the bootstrapped tree is a scratch build directory
+  that nothing publishes, and duplicating those files into it only produced
+  drift that the `--slim` check had to police. That check now has nothing to
+  compare and always passes; keep it, so a root file can never quietly re-enter
+  a module.
 - `scripts/` owns bootstrap, upgrades, patch export, ownership checks, and the
   single gate runner. `scripts/gates.sh` is the authority for check contents;
   hooks and CI select tiers from it.
@@ -18,13 +27,18 @@ patch queue: only the delta lives here. `BASE_TAG` selects the upstream tag;
 - `README.md` is ASCII-only (U+2728 allowed) and `README.zh.md` is its Chinese
   counterpart. Update both when documenting behaviour.
 - Rust sources exist only after bootstrapping, under `tree/` (or `update-work/`
-  during an upgrade). Both are gitignored and never committed.
-- The seven patch modules own disjoint files, machine-checked by
+  during an upgrade). Both are gitignored and never committed. `bootstrap.sh`
+  sparse-checks out only what the fork builds, tests, and packages with
+  (`codex-rs/`, `scripts/`, `.github/scripts/`,
+  `.github/actions/setup-msvc-env/`, `third_party/`, `.cargo/`) and writes
+  `BASE_TAG` into the tree, which `check-patch-modules.sh` reads back to
+  confirm the queue was applied to the tag it was exported against. Widen that
+  list only when a build, gate, or release step starts resolving a path through
+  `TREE_DIR` that is no longer there.
+- The six patch modules own disjoint files, machine-checked by
   `check-patch-modules.sh`. A feature adds one manifest section and one tree
   commit; a change is rebased/`--fixup`ed into the owning module, not a new
-  module patch. Fork-owned files at the slim root and tree must be identical
-  (README, scripts, `.github/*`, `.codespell*`, `install.sh`); `.gitignore` is
-  the only intentional exception. This guide is slim-only: edit it directly.
+  module patch. This guide is slim-only: edit it directly.
 - Commits use conventional prefixes (`docs:`, `fix:`, `ci:`, `release:`,
   `patches:`, `rewind:`) with an ASCII bulleted body. Keep messages ASCII.
 
@@ -116,6 +130,23 @@ CI file ownership belongs to the fork, but upstream owns their content: jobs,
 steps, commands, and prerequisites. Narrow, never re-derive. A red check is
 diagnosed, not edited; only a genuine runner divergence justifies an edit.
 
+- `.github/` is the fork's own copy, refreshed from upstream on every
+  `update.sh` run: diff each workflow, action, and script the fork keeps
+  against the new base tag and carry upstream's version forward unless the
+  fork deliberately changed it. Today only `.github/scripts/install-musl-build-tools.sh`
+  is deliberately changed (it adds `linux-libc-dev`, hoists the tool-root setup
+  above the OpenSSL step, and groups the `GITHUB_ENV` redirects), so it is the
+  one file to re-diff by hand. The rest of the build tooling the fork resolves
+  through `TREE_DIR` (`setup-msvc-env.ps1`, `rusty_v8_bazel.py`,
+  `archive-release-symbols-and-strip-binaries.sh`, `verify_tui_core_boundary.py`)
+  is upstream's verbatim, so following upstream keeps it current for free.
+- Narrowing is not weakening. Dropping a whole job that does not apply here
+  (macOS signing, Bazel, the Python SDK, npm and R2 publishing, voice tooling)
+  is narrowing. Dropping a step or loosening a condition inside a job the fork
+  keeps is weakening, and a weakened gate is how an upstream regression reaches
+  a release. When upstream adds a check, port it; when upstream tightens one,
+  tighten ours. The fork's gates exist to be at least as strict as upstream's
+  on everything that still applies to Linux + Windows.
 - Do not weaken what a check verifies: no artifact-shaping `CARGO_PROFILE_*`
   overrides, skipped runnable checks, silenced lints, or inflated timeouts.
   Runner limits change job count, target directory, or timeout headroom only.
@@ -130,7 +161,7 @@ diagnosed, not edited; only a genuine runner divergence justifies an edit.
   cannot reproduce its toolchain. Treat a red Windows job as a regression,
   not CI noise. A cargo git checkout with chromium submodules needs long
   paths on Windows; runner OOM and disk exhaustion need resource fixes, not
-  artifact changes. A shutdown signal is not automatically an OOM - inspect
+  artifact changes. A shutdown signal is not automatically an OOM. Inspect
   step timing and competing jobs before changing anything.
 - Snapshot work uses `env -u NO_COLOR TERM=xterm-256color` and
   `INSTA_UPDATE=always`. Take upstream `.snap` content, regenerate, and review

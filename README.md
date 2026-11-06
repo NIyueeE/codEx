@@ -4,19 +4,19 @@
 [![release](https://img.shields.io/github/v/release/NIyueeE/codEx?style=flat-square&label=release&color=2ea44f)](https://github.com/NIyueeE/codEx/releases/latest)
 [![license](https://img.shields.io/badge/license-Apache--2.0-003478?style=flat-square)](LICENSE)
 [![platforms](https://img.shields.io/badge/platforms-Linux%20%7C%20Windows-0078D6?style=flat-square&logo=linux&logoColor=white)](https://github.com/NIyueeE/codEx/releases/latest)
-[![patch queue](https://img.shields.io/badge/patch%20queue-7%20modules-6f42c1?style=flat-square)](#patch-queue-model)
+[![patch queue](https://img.shields.io/badge/patch%20queue-6%20modules-6f42c1?style=flat-square)](#patch-queue-model)
 [![CI](https://img.shields.io/github/actions/workflow/status/NIyueeE/codEx/blocking-ci.yml?branch=main&style=flat-square&label=CI)](https://github.com/NIyueeE/codEx/actions/workflows/blocking-ci.yml)
 
 codEx is a community fork of [openai/codex](https://github.com/openai/codex)
-that keeps the CLI happy-path for standalone Linux and Windows users: fewer
-moving parts, no phone-home update checks, and a built-in `codex update` that
-downloads verified binaries from this fork's releases.
+aimed at standalone Linux and Windows users. It has fewer moving parts, no
+phone-home update checks, and a built-in `codex update` that downloads
+verified binaries from this fork's releases.
 
-This repository follows a **patch-queue model**: instead of vendoring the
-upstream tree, it stores only the fork's changes as a `git format-patch`
-series plus the scripts that rebuild a full codex tree from an upstream tag.
-The actual code lives upstream; `BASE_TAG` pins the upstream tag the current
-patch queue applies to (currently `rust-v0.166.0`).
+This repository follows a **patch-queue model**: it stores only the fork's
+changes as a `git format-patch` series, plus the scripts that rebuild a full
+codex tree from an upstream tag. The code itself lives upstream; `BASE_TAG`
+pins the upstream tag the current patch queue applies to (currently
+`rust-v0.166.0`).
 
 ## Installing from a release
 
@@ -68,7 +68,7 @@ plus `bwrap`). Such an install cannot move to the package layout with
 `codex update`: the old binary looks for `codex` at the archive root and
 rejects the new package with `release archive is missing codex or bwrap`.
 
-Re-run the installer once instead - it replaces the flat release directory
+Re-run the installer once instead: it replaces the flat release directory
 with a package release directory and repoints `current`, after which
 `codex update` works normally:
 
@@ -78,14 +78,14 @@ curl -fsSL https://raw.githubusercontent.com/NIyueeE/codEx/main/install.sh | sh
 
 Environment overrides:
 
-- `CODEX_RELEASE` - version to install, e.g. `0.166.0` (default: `latest`)
-- `CODEX_INSTALL_DIR` - directory for the `codex` symlink (default: `~/.local/bin`)
-- `CODEX_HOME` - codex home (default: `~/.codex`)
+- `CODEX_RELEASE`: version to install, e.g. `0.166.0` (default: `latest`)
+- `CODEX_INSTALL_DIR`: directory for the `codex` symlink (default: `~/.local/bin`)
+- `CODEX_HOME`: codex home (default: `~/.codex`)
 
 ## What changes versus upstream
 
-codEx keeps the upstream `codex` binary name and configuration format, so it
-drops into existing workflows, but changes the surrounding experience:
+codEx keeps the upstream `codex` binary name and configuration format, so
+existing setups keep working. What changes is everything around the binary:
 
 - **Rollback**: `/rewind` undoes conversation turns and/or workspace file
   changes without git.
@@ -103,25 +103,23 @@ drops into existing workflows, but changes the surrounding experience:
 - **Identity**: the CLI and TUI brand themselves as codEx, and
   `codex --version` points at this fork's repository.
 
-Details below.
+### `/rewind`: roll back conversation and workspace files
 
-### `/rewind` - roll back conversation and workspace files
-
-The headline feature. `/rewind` lets you undo a conversation turn and/or the
-file changes a turn made, without needing git.
+`/rewind` undoes a conversation turn and/or the file changes that turn made,
+without needing git.
 
 **Usage**: type `/rewind`, then choose a scope:
 
-1. **Files and conversation** - pick a past message in the transcript; the chat
+1. **Files and conversation**: pick a past message in the transcript; the chat
    is rewound to just before that message (the conversation is truncated there
    in place, prompt restored into the composer) and the workspace files are
    restored to the snapshot taken right before that message. A confirmation
    shows how many files would be restored and deleted before anything is
    applied; if no matching snapshot exists, the conversation still rewinds
    without touching files.
-2. **Conversation only** - pick a past message in the transcript and rewind the
+2. **Conversation only**: pick a past message in the transcript and rewind the
    chat to just before it; files are left untouched.
-3. **Files only** - pick a numbered snapshot; a confirmation shows how many
+3. **Files only**: pick a numbered snapshot; a confirmation shows how many
    files would be restored and deleted before the workspace is touched.
 
 Both conversation scopes reuse the transcript picker (the same full-history
@@ -129,7 +127,7 @@ view the old double-Esc backtrack used): the newest user message starts
 highlighted, **Left** steps to older messages, **Right** steps newer,
 **Enter** confirms the rewind, and **Esc** cancels it.
 
-**How snapshots work** (pure files, no git involved):
+**How snapshots work**:
 
 - Before each main-thread user turn is submitted, the TUI snapshots the
   workspace into `~/.codex/snapshots/<workspace-hash>/threads/<conversation>/<turn>/`
@@ -141,13 +139,13 @@ highlighted, **Left** steps to older messages, **Right** steps newer,
   id for every file, plus a prompt excerpt, a full-prompt hash for exact
   message matching, the snapshot-time `.gitignore` setting, and raw path
   bytes for non-UTF-8 file names) and the file contents under `files/`.
-- Storage is a small **content-addressed store** (no git involved): each
-  unique file content is saved once under `objects/` and every snapshot's
-  `files/` entries are hardlinks into it. Unchanged files are linked from the
-  previous snapshot without being re-read, and identical content from any
-  earlier turn is never stored twice. A conversation's first snapshot also
-  seeds from the newest snapshot of any conversation in the same workspace,
-  so resumed and forked conversations stay cheap.
+- Storage is a small **content-addressed store**: each unique file content is
+  saved once under `objects/` and every snapshot's `files/` entries are
+  hardlinks into it. Unchanged files are linked from the previous snapshot
+  without being re-read, and identical content from any earlier turn is never
+  stored twice. A conversation's first snapshot also seeds from the newest
+  snapshot of any conversation in the same workspace, so resumed and forked
+  conversations stay cheap.
 - The walk skips `.git` and, by default, respects `.gitignore` files.
 - The most recent **100 snapshots per conversation** are kept by default
   (configurable via `rewind_max_snapshots`); older ones are pruned per
@@ -162,9 +160,9 @@ highlighted, **Left** steps to older messages, **Right** steps newer,
   `.gitignore` setting against the current workspace's `.gitignore` rules, so
   the confirmation preview and the actual restore always agree. Restored
   files keep their original mtime so later snapshots stay cheap.
-- Restore is preflighted before anything is touched: a missing physical copy,
-  a directory in the way, an unsafe recorded path, or a symbolic link above a
-  target aborts the restore without modifying anything. A symbolic link at a
+- Before anything is touched, a restore is preflighted: a missing physical
+  copy, a directory in the way, an unsafe recorded path, or a symbolic link
+  above a target aborts it without modifying anything. A symbolic link at a
   target path is replaced by the restored regular file (never written
   through), and read-only targets are replaced atomically via a temporary
   file and rename.
@@ -218,22 +216,20 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 
 ### Esc: single press does nothing, double press stops the reply
 
-- A single **Esc** in the main UI/composer is a **no-op** - it no longer
-  interrupts a turn or arms any backtrack mode.
-- While a reply is running, the **first Esc** shows a footer hint
-  ("esc again to stop reply") and arms a **400 ms** window; a **second Esc**
-  inside that window interrupts the turn (pending steers are submitted first,
-  like the old behavior).
-- Existing Esc behavior is preserved everywhere it matters: modals, popups, the
-  `?` shortcut overlay, history search, bash-mode prompts, vim-insert mode, and
-  the request-user-input panel all still use Esc as before.
+- A single Esc does nothing. While a reply is running, the **first Esc** shows
+  a footer hint ("esc again to stop reply") and arms a **400 ms** window; a
+  **second Esc** inside that window interrupts the turn (pending steers are
+  submitted first, like the old behavior).
+- Esc still works as before in modals, popups, the `?` shortcut overlay,
+  history search, bash-mode prompts, vim-insert mode, and the
+  request-user-input panel.
 - The `chat.interrupt_turn` keybinding is **unbound by default** (you can bind
   it again in `/keymap`; modal views honor it), and the old "Esc-Esc to edit
   previous message" backtrack was removed from the main UI; `/rewind` now
   reuses its transcript picker for message selection.
 - The same rule holds in the fullscreen transcript (`tui.fullscreen_transcript`,
-  on by default): Esc never arms backlog browsing there either - with no reply
-  running it only returns a paused viewport to the latest entry.
+  on by default): Esc does not arm backlog browsing there either. With no reply
+  running, it only returns a paused viewport to the latest entry.
 
 ### `codex update`: pure-Rust self-update
 
@@ -258,8 +254,8 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
 - Windows cannot replace a running executable, so the update is staged beside
   the install and handed to a detached copy of the new binary. That helper
   waits for codEx to exit, swaps the complete package, and relaunches codEx.
-- Non-standalone installs (npm/brew/... ) get a clear message pointing at the
-  fork releases for manual download.
+- Non-standalone installs (npm/brew/...) get a message pointing at the fork
+  releases for manual download.
 - The background daemon never installs from a remote script either: its updater
   loop only supervises the managed install and re-executes when an external
   update replaced the binary, and `codex app-server daemon update` requires
@@ -295,7 +291,7 @@ removed, not merely disabled:
   on any platform; only upstream's local tooltips remain.
 - **`codex cloud`** (Codex Cloud task browser) and **`codex remote-control`**
   plus the daemon's `enable-remote-control` / `disable-remote-control` toggles,
-  which paired a local daemon with the vendor relay.
+  which paired a local daemon with the vendor relay, are gone.
 - **The remote plugin marketplace** (`openai-curated-remote`, served from the
   chatgpt.com backend) is refused. Local and Git marketplaces still work.
 
@@ -344,8 +340,9 @@ authorize sandbox IPC on the same machine.
   core integration suite (`suite::*`) and V8-linked `code_mode_host::*` tests
   need prerequisites that hosted CI does not provide and are excluded from
   the core unit-test run, mirroring upstream's own self-hosted-runner setup.
-- The workflows are bootstrap-aware: they work both in a full checkout and in
-  this slim repo (bootstrap first, then build/test/release inside `tree/`).
+- The workflows bootstrap the tree when it is missing, so they work both in a
+  full checkout and in this slim repo: bootstrap first, then build, test, and
+  release inside `tree/`.
 
 ### Local gates (the same commands, before the remote sees them)
 
@@ -362,7 +359,7 @@ bash scripts/gates.sh all   # light + heavy
 ```
 
 Install the hooks so `git commit` runs the light gate and `git push` adds the
-heavy one, so the local tier runs first and most problems never reach remote
+heavy one. The local tier runs first, so most problems never reach remote
 CI:
 
 ```sh
@@ -379,10 +376,8 @@ their jobs.
 
 ### Patch-queue model
 
-This repo deliberately does **not** vendor upstream code, unlike a classic
-fork that carries the full tree and periodically merges upstream. Instead it
-stores only the delta, organized as **one patch per feature module** (not one
-per commit):
+The fork's delta is organized as **one patch per feature module** (not one per
+commit):
 
 | Piece | Purpose |
 | --- | --- |
@@ -390,17 +385,24 @@ per commit):
 | `patches/` | one `git format-patch` per feature module, in fixed order |
 | `scripts/patch-modules.conf` | the module manifest: order, subjects, and file ownership |
 | `scripts/check-patch-modules.sh` | machine-checks the manifest against the tree and `patches/` |
-| `scripts/bootstrap.sh` | shallow-clone `openai/codex@BASE_TAG` and `git am` the patches |
+| `scripts/bootstrap.sh` | sparse-clone `openai/codex@BASE_TAG` and `git am` the patches |
 | `scripts/update.sh` | upgrade to a new upstream tag (apply, CI-equivalent checks, regen) |
 | `scripts/gen-patches.sh` | regenerate `patches/` from the tree history; refuses to export a layout that violates the manifest |
 | `scripts/gates.sh` | the single gate runner (`light` / `tree` / `full` / `heavy` / `all`) that the git hooks and CI both call |
 | `scripts/asciicheck.py`, `scripts/check_blob_size.py` | upstream's README and blob-budget checkers, carried byte-identically so the light gate needs no bootstrapped tree |
 
-The seven modules are `infra` (patch-queue tooling, lockfile, README),
+The queue covers **only the fork's changes to upstream's compile-time
+sources**, so every module owns files under `codex-rs/` and nothing else. The
+fork's own infrastructure (`scripts/`, `.github/`, `install.sh`, the READMEs,
+`AGENTS.md`) lives at the root of this repository as ordinary fork files and
+never goes through the queue: the bootstrapped tree is a scratch build
+directory that nothing publishes, and duplicating those files into it only
+created drift.
+
+The six modules are `infra` (workspace lockfile and cargo config),
 `rollback` (`/rewind`), `updates` (pure-Rust self-update), `input` (double-Esc
-interrupt), `privacy` (no startup network chatter), `distribution` (Linux CI +
-Windows check, Linux + Windows releases), and `identity` (branding). Every
-file changed by the fork is owned by exactly one module;
+interrupt), `privacy` (no startup network chatter), and `identity` (branding).
+Every file changed by the fork is owned by exactly one module;
 `check-patch-modules.sh` enforces the partition at export time (gen-patches),
 during upgrades (update.sh), in CI (rust-ci), and locally (`gates.sh tree`).
 
@@ -409,9 +411,13 @@ matching commit in the bootstrapped tree; a **change to an existing feature**
 is rebased/folded into that module's commit. Hand-editing `patches/` is
 rejected by the checker.
 
-`bootstrap.sh` + `git am` produce the complete, buildable codEx tree; the CI
-and release workflows do exactly that before building. See
-[Building](#building-from-this-repository) and
+`bootstrap.sh` + `git am` produce the buildable codEx tree; the CI and release
+workflows do exactly that before building. The clone is sparse: the tree
+carries only `codex-rs/`, `scripts/`, `.github/scripts/`,
+`.github/actions/setup-msvc-env/`, `third_party/`, and `.cargo/`, which is
+everything the build, the gates, and the release packaging read. Upstream's
+Bazel configuration, Python SDK, npm package, and macOS signing stay out.
+See [Building](#building-from-this-repository) and
 [Upgrading](#upgrading-to-a-new-upstream-tag) below.
 
 ## Building from this repository

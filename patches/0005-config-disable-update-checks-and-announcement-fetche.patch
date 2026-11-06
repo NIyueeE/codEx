@@ -1,10 +1,9 @@
-From 7486a2827735d50b5096c27df9b5672ac5576fc6 Mon Sep 17 00:00:00 2001
+From 6c7698d3aa260b74329db9cf7f1ac7b420688a46 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
 
 ---
- announcement_tip.toml                         |  17 -
  .../src/request_processors/plugins.rs         |  14 +-
  .../src/request_processors/plugins/search.rs  |  11 +-
  .../core-plugins/src/marketplace_context.rs   |  13 +-
@@ -14,36 +13,12 @@ Subject: config: disable update checks and announcement fetches by default
  ...ooltips__tests__desktop_app_tip_macos.snap |   7 -
  ...ltips__tests__desktop_app_tip_windows.snap |   8 -
  codex-rs/tui/src/tooltips.rs                  | 573 +-----------------
- 10 files changed, 53 insertions(+), 738 deletions(-)
- delete mode 100644 announcement_tip.toml
+ 9 files changed, 53 insertions(+), 721 deletions(-)
  delete mode 100644 codex-rs/tui/src/npm_registry.rs
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_linux.snap
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_macos.snap
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 
-diff --git a/announcement_tip.toml b/announcement_tip.toml
-deleted file mode 100644
-index 79c0daea761e0f634960dd39e2dff6bdbfd02f63..0000000000000000000000000000000000000000
---- a/announcement_tip.toml
-+++ /dev/null
-@@ -1,17 +0,0 @@
--# Example announcement tips for Codex TUI.
--# Each [[announcements]] entry is evaluated in order; the last matching one is shown.
--# Dates are UTC, formatted as YYYY-MM-DD. The from_date is inclusive and the to_date is exclusive.
--# version_regex matches against the CLI version (env!("CARGO_PKG_VERSION")); omit to apply to all versions.
--# target_app specify which app should display the announcement (cli, vsce, ...).
--
--# Test announcement only for local build version until 2027-05-10 excluded
--[[announcements]]
--content = "This is a test announcement"
--version_regex = "^0\\.0\\.0$"
--to_date = "2027-05-10"
--
--[[announcements]]
--content = "Update Required - This version will no longer be supported starting May 8th. Please upgrade to the latest version (https://github.com/openai/codex/releases/latest) using your preferred package manager."
--# Matches 0.x.y versions from 0.0.y through 0.119.y; excludes 0.120.0 and newer.
--version_regex = "^0\\.(?:[0-9]|[1-9][0-9]|1[01][0-9])\\."
--to_date = "2026-05-08"
 diff --git a/codex-rs/app-server/src/request_processors/plugins.rs b/codex-rs/app-server/src/request_processors/plugins.rs
 index 159641f0bd93f9a69f28fb4afb4f5a0e171b8be0..97dd78ffd488a496c6ca17b1e8a69b133fa7c7e6 100644
 --- a/codex-rs/app-server/src/request_processors/plugins.rs

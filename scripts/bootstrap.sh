@@ -38,6 +38,33 @@ fi
 echo "Cloning https://github.com/${repo}.git at ${base_tag} ..."
 git clone --depth 1 --branch "${base_tag}" "https://github.com/${repo}.git" "${output_dir}"
 
+# The tree is a scratch build directory, so it carries only what the fork
+# actually builds, tests, and packages with. Upstream's Bazel configuration,
+# Python SDK, npm package, macOS signing, and voice tooling are never read
+# here, and checking them out only adds noise that has to be re-synced on
+# every upstream bump. Keep this list in step with what scripts/gates.sh and
+# .github/workflows/rust-release.yml resolve through TREE_DIR.
+#
+# BASE_TAG is written rather than cloned: it is the fork's own pin, and
+# scripts/check-patch-modules.sh reads it back out of the tree to confirm the
+# queue was applied to the tag it was exported against.
+# --no-cone, not the default cone mode: cone mode always materializes every
+# file in the repository root, which would drag in upstream's Bazel, npm,
+# Nix, and Prettier configuration. These patterns are gitignore-style and
+# anchored at the root, so nothing outside them is checked out.
+sparse_patterns=(
+  /codex-rs/
+  /scripts/
+  /.github/scripts/
+  /.github/actions/setup-msvc-env/
+  /third_party/
+  /.cargo/
+)
+git -C "${output_dir}" sparse-checkout set --no-cone "${sparse_patterns[@]}"
+
+echo "${base_tag}" > "${output_dir}/BASE_TAG"
+echo "/BASE_TAG" >> "${output_dir}/.git/info/exclude"
+
 echo "Applying fork patches ..."
 cd "${output_dir}"
 git config user.name "codEx Fork Bot"
