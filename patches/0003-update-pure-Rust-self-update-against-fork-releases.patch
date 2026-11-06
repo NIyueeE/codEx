@@ -1,4 +1,4 @@
-From aac7c72f2b8f4a6fb54f28780853dbf9a94a22ba Mon Sep 17 00:00:00 2001
+From a73e7b9f297eac7a2153af696aedb0cefafabbdf Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -14,7 +14,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/app_cmd.rs                   |   25 -
  codex-rs/cli/src/daemon_install.rs            |    2 +-
  codex-rs/cli/src/daemon_install_tests.rs      |    2 +-
- codex-rs/cli/src/daemon_update_tests.rs       |   60 +-
+ codex-rs/cli/src/daemon_update_tests.rs       |   59 +-
  codex-rs/cli/src/desktop_app/mac.rs           |  513 ------
  codex-rs/cli/src/desktop_app/mod.rs           |   22 -
  codex-rs/cli/src/desktop_app/windows.rs       |  133 --
@@ -28,7 +28,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/doctor/desktop_tests.rs      |   97 --
  codex-rs/cli/src/doctor/output.rs             |   54 -
  codex-rs/cli/src/doctor/updates.rs            |  469 +-----
- codex-rs/cli/src/main.rs                      |  489 ++----
+ codex-rs/cli/src/main.rs                      |  478 ++----
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  859 ----------
@@ -65,7 +65,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1660 insertions(+), 6779 deletions(-)
+ 61 files changed, 1657 insertions(+), 6770 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -3080,10 +3080,10 @@ index 700c23784e13e843d05b3dc82ae5ad30ead5f030..de39c8ae9466ffdc30e2a89442786ba0
      ");
  }
 diff --git a/codex-rs/cli/src/daemon_update_tests.rs b/codex-rs/cli/src/daemon_update_tests.rs
-index 5991829b9f0d96387e84e6686bd15d16768c39a8..44b750fe92159ac7f8d62ce95fe6421f4fe1fec5 100644
+index 5991829b9f0d96387e84e6686bd15d16768c39a8..b8f76e08dbd9ee8c851d969774eaf7fe0a0dc154 100644
 --- a/codex-rs/cli/src/daemon_update_tests.rs
 +++ b/codex-rs/cli/src/daemon_update_tests.rs
-@@ -5,39 +5,8 @@ use codex_tui::DaemonUpdateSource;
+@@ -5,38 +5,8 @@ use codex_tui::DaemonUpdateSource;
  use pretty_assertions::assert_eq;
  use std::os::unix::fs::PermissionsExt;
  
@@ -3119,13 +3119,12 @@ index 5991829b9f0d96387e84e6686bd15d16768c39a8..44b750fe92159ac7f8d62ce95fe6421f
 -
 -#[test]
 -fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::Result<()> {
--    let dir = tempfile::tempdir()?;
 +#[tokio::test]
-+async fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::Result<()> {    let dir = tempfile::tempdir()?;
++async fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::Result<()> {
+     let dir = tempfile::tempdir()?;
      let executable = dir.path().join("launching CLI");
      let receipt = dir.path().join("launching CLI.args");
-     codex_utils_cargo_bin::write_executable(
-@@ -45,24 +14,23 @@ fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::R
+@@ -45,24 +15,23 @@ fn daemon_handoff_uses_selected_executable_and_propagates_failure() -> anyhow::R
          "#!/bin/sh\nprintf '%s\\n' \"$@\" > \"$0.args\"\n",
      )?;
      std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(/*mode*/ 0o700))?;
@@ -5904,7 +5903,7 @@ index fbad7d91ce5a95769a8b45412d6178cff08e9577..1e1fd1de3377e617dd8ac59d4cd666ff
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de793526ee10df 100644
+index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f887f5a12 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -6061,7 +6060,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      exit_info: AppExitInfo,
      cli_executable: Option<&std::path::Path>,
  ) -> anyhow::Result<()> {
-@@ -785,99 +776,55 @@ fn handle_app_exit(
+@@ -785,99 +776,56 @@ fn handle_app_exit(
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -6119,20 +6118,6 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
 -                .args(args)
 -                .current_dir(update_cwd.path())
 -                .status()?
--        }
--        #[cfg(not(windows))]
--        {
--            let (cmd, args) = action.command_args();
--            let command_path = crate::wsl_paths::normalize_for_wsl(cmd);
--            let normalized_args: Vec<String> = args
--                .iter()
--                .map(crate::wsl_paths::normalize_for_wsl)
--                .collect();
--            std::process::Command::new(&command_path)
--                .args(&normalized_args)
--                // Package managers search parent directories for project config and hooks.
--                .current_dir("/")
--                .status()?
 +    match action {
 +        UpdateAction::Daemon(source) => {
 +            let executable = cli_executable
@@ -6148,14 +6133,28 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
 +            );
 +            println!("Relaunch Codex to reconnect.");
          }
--    };
--    if !status.success() {
--        anyhow::bail!("`{cmd_str}` failed with status {status}");
+-        #[cfg(not(windows))]
+-        {
+-            let (cmd, args) = action.command_args();
+-            let command_path = crate::wsl_paths::normalize_for_wsl(cmd);
+-            let normalized_args: Vec<String> = args
+-                .iter()
+-                .map(crate::wsl_paths::normalize_for_wsl)
+-                .collect();
+-            std::process::Command::new(&command_path)
+-                .args(&normalized_args)
+-                // Package managers search parent directories for project config and hooks.
+-                .current_dir("/")
+-                .status()?
 +        UpdateAction::StandaloneUnix | UpdateAction::StandaloneWindows => {
 +            println!();
 +            println!("Downloading codEx {} update...", env!("CARGO_PKG_VERSION"));
 +            self_update::run().await?;
-+            println!("\n🎉 Update ran successfully! Please restart codEx.");        }
++            println!("\n🎉 Update ran successfully! Please restart codEx.");
+         }
+-    };
+-    if !status.success() {
+-        anyhow::bail!("`{cmd_str}` failed with status {status}");
      }
 -    println!("\n🎉 Update ran successfully! Please restart Codex.");
      Ok(())
@@ -6195,7 +6194,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -889,10 +836,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -889,10 +837,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -6208,7 +6207,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      }
  }
  
-@@ -1097,6 +1044,9 @@ async fn dispatch_cli(
+@@ -1097,6 +1045,9 @@ async fn dispatch_cli(
          .shared
          .take_auto_review_config_overrides(&mut root_config_overrides);
      reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
@@ -6218,17 +6217,16 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      if let Some(subcommand) = subcommand.as_ref() {
          profile_v2_for_subcommand(&interactive, subcommand)?;
      }
-@@ -1143,8 +1093,7 @@ async fn dispatch_cli(
-                 root_remote,
-                 root_remote_auth_token_env,
-                 arg0_paths,
--            )));
--        }
-+            )));        }
-         Some(Subcommand::TcpTunnel(args)) => {
-             codex_tcp_tunnel::run(args).await?;
-         }
-@@ -1374,10 +1323,17 @@ async fn dispatch_cli(
+@@ -1104,7 +1055,7 @@ async fn dispatch_cli(
+     let launch_tui = move |interactive, remote, auth_token_env, arg0_paths| async move {
+         let exit_info =
+             run_interactive_tui(interactive, remote, auth_token_env, arg0_paths).await?;
+-        handle_app_exit(exit_info, daemon_cli_executable.as_deref())
++        handle_app_exit(exit_info, daemon_cli_executable.as_deref()).await
+     };
+     let open_agents_overview = matches!(&subcommand, Some(Subcommand::Agents(_)));
+     match subcommand {
+@@ -1374,10 +1325,17 @@ async fn dispatch_cli(
                          })
                          .await?;
                      }
@@ -6250,7 +6248,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
                          let result = codex_app_server_daemon::update_from_cli(|request| {
                              daemon_install::confirm_install(request, yes)
                          })
-@@ -1393,31 +1349,12 @@ async fn dispatch_cli(
+@@ -1393,31 +1351,13 @@ async fn dispatch_cli(
                              println!("{}", serde_json::to_string(&output)?);
                          }
                      }
@@ -6273,19 +6271,18 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
                      AppServerDaemonSubcommand::PidUpdateLoop {
                          check_package_ownership: true,
                          ..
--                    } => return Ok(None),
+                     } => return Ok(None),
 -                    AppServerDaemonSubcommand::Update {
 -                        from_cli: false, ..
 -                    }
 -                    | AppServerDaemonSubcommand::PidUpdateLoop {
--                        check_package_ownership: false,
-+                    } => return Ok(()),
-+                    AppServerDaemonSubcommand::PidUpdateLoop {                        check_package_ownership: false,
++                    AppServerDaemonSubcommand::PidUpdateLoop {
+                         check_package_ownership: false,
 +                        restore_release,
                          ..
                      } => {
                          let cli_overrides = root_config_overrides
-@@ -1429,36 +1366,15 @@ async fn dispatch_cli(
+@@ -1429,36 +1369,15 @@ async fn dispatch_cli(
                              .await
                              .map_err(anyhow::Error::from);
                          let http_client_factory = updater_http_client_factory(config)?;
@@ -6331,7 +6328,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
                      }
                  },
                  Some(AppServerSubcommand::Proxy(proxy_cli)) => {
-@@ -1493,30 +1409,6 @@ async fn dispatch_cli(
+@@ -1493,30 +1412,6 @@ async fn dispatch_cli(
                  }
              }
          }
@@ -6362,27 +6359,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1540,8 +1432,7 @@ async fn dispatch_cli(
-                 remote.remote.or(root_remote),
-                 remote.remote_auth_token_env.or(root_remote_auth_token_env),
-                 arg0_paths,
--            )));
--        }
-+            )));        }
-         Some(Subcommand::Archive(cmd)) => {
-             let output = run_session_archive_cli_command(
-                 codex_tui::SessionArchiveAction::Archive,
-@@ -1636,8 +1527,7 @@ async fn dispatch_cli(
-                 remote.remote.or(root_remote),
-                 remote.remote_auth_token_env.or(root_remote_auth_token_env),
-                 arg0_paths,
--            )));
--        }
-+            )));        }
-         Some(Subcommand::Login(mut login_cli)) => {
-             reject_remote_mode_for_subcommand(
-                 root_remote.as_deref(),
-@@ -1702,13 +1592,13 @@ async fn dispatch_cli(
+@@ -1702,13 +1597,13 @@ async fn dispatch_cli(
              )?;
              print_completion(completion_cli);
          }
@@ -6398,7 +6375,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1724,19 +1614,6 @@ async fn dispatch_cli(
+@@ -1724,19 +1619,6 @@ async fn dispatch_cli(
              )
              .await?;
          }
@@ -6418,7 +6395,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
          Some(Subcommand::Sandbox(SandboxCommand {
              host: mut sandbox_cli,
              subcommand,
-@@ -2305,6 +2182,24 @@ fn reject_unsupported_worktree_for_subcommand(
+@@ -2305,6 +2187,24 @@ fn reject_unsupported_worktree_for_subcommand(
      }
  }
  
@@ -6443,7 +6420,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
  fn reject_root_strict_config_for_subcommand(
      strict_config: bool,
      subcommand: &Option<Subcommand>,
-@@ -2353,18 +2248,14 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2353,18 +2253,14 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -6463,7 +6440,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2416,12 +2307,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2416,12 +2312,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
              AppServerDaemonSubcommand::Update { .. } => "app-server daemon update",
@@ -6476,7 +6453,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop { .. } => "app-server daemon pid-update-loop",
-@@ -2449,14 +2334,6 @@ fn updater_http_client_factory(
+@@ -2449,14 +2339,6 @@ fn updater_http_client_factory(
      Ok(config.http_client_factory())
  }
  
@@ -6491,7 +6468,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
  fn read_remote_auth_token_from_env_var_with<F>(
      env_var_name: &str,
      get_var: F,
-@@ -2802,52 +2679,6 @@ mod tests {
+@@ -2802,52 +2684,6 @@ mod tests {
          assert!(size < 64 * 1024, "interactive TUI future is {size} bytes");
      }
  
@@ -6544,7 +6521,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      #[tokio::test]
      async fn updater_http_client_factory_honors_respect_system_proxy() {
          let codex_home = tempfile::tempdir().expect("temporary Codex home");
-@@ -3590,7 +3421,24 @@ enabled = true
+@@ -3590,7 +3426,24 @@ enabled = true
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -6570,7 +6547,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      }
  
      #[test]
-@@ -4367,17 +4215,17 @@ enabled = true
+@@ -4367,17 +4220,17 @@ enabled = true
              "`--strict-config` is not supported for `codex mcp`"
          );
  
@@ -6591,7 +6568,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
          );
      }
  
-@@ -4398,31 +4246,31 @@ enabled = true
+@@ -4398,31 +4251,31 @@ enabled = true
      }
  
      #[test]
@@ -6646,7 +6623,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..82d184091ada4f2e556d42a1b4de7935
      }
  
      #[test]
-@@ -4737,24 +4585,17 @@ enabled = true
+@@ -4737,24 +4590,17 @@ enabled = true
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));

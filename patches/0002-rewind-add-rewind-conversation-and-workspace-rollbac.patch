@@ -1,4 +1,4 @@
-From 67783ae9815dfc47e1cf355573b5345a1956a568 Mon Sep 17 00:00:00 2001
+From ac2d4ef63d989a26f805ea644bcc24f8ca5f02c4 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:22 +0000
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -17,7 +17,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/app/session_lifecycle.rs     |    5 +
  ...ts__desktop_thread_open_error_history.snap |    5 -
  ..._tests__desktop_thread_opened_history.snap |    5 -
- codex-rs/tui/src/app/tests.rs                 |  635 +++++++-
+ codex-rs/tui/src/app/tests.rs                 |  632 +++++++-
  codex-rs/tui/src/app/tests/turn_submission.rs |    3 +
  codex-rs/tui/src/app_backtrack.rs             |  137 +-
  codex-rs/tui/src/app_event.rs                 |   52 +-
@@ -32,7 +32,7 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 28 files changed, 4042 insertions(+), 324 deletions(-)
+ 28 files changed, 4041 insertions(+), 322 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
@@ -676,7 +676,7 @@ index 8e34f8e8a64508e0ac897e8a6eab8bea1b429015..00000000000000000000000000000000
 ----
 -• Opened this session in the Desktop app.
 diff --git a/codex-rs/tui/src/app/tests.rs b/codex-rs/tui/src/app/tests.rs
-index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2e13bff3e 100644
+index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..6e7e671628f588666566e3865558514e3d875eec 100644
 --- a/codex-rs/tui/src/app/tests.rs
 +++ b/codex-rs/tui/src/app/tests.rs
 @@ -6479,7 +6479,7 @@ async fn ctrl_l_preserves_the_transcript_and_draft_after_clearing_the_screen() -
@@ -688,17 +688,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      assert!(compact.contains("New exchange"));
      assert!(!compact.contains("Earlier exchange"));
      let ctrl_t = KeyEvent::new(KeyCode::Char('t'), KeyModifiers::CONTROL);
-@@ -6525,8 +6525,7 @@ async fn ctrl_l_preserves_the_transcript_and_draft_after_clearing_the_screen() -
-         .collect::<Vec<_>>()
-         .join("\n");
-     assert!(replay.contains("New exchange"));
--    assert!(!replay.contains("Earlier exchange"));
--    assert_eq!(
-+    assert!(!replay.contains("Earlier exchange"));    assert_eq!(
-         app.chat_widget.composer_text_with_pending(),
-         "draft survives"
-     );
-@@ -8210,13 +8209,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -8210,13 +8210,9 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              rollout_path: Some(PathBuf::new()),
          });
  
@@ -715,7 +705,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      let expected = BacktrackSelection {
          thread_id: base_id,
          nth_user_message: 1,
-@@ -8243,6 +8238,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
+@@ -8243,6 +8239,7 @@ async fn backtrack_selection_preserves_selected_prompt_and_requests_branch() {
              thread_id,
              selected_cell,
              prompt,
@@ -723,7 +713,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
          } if thread_id == expected.thread_id
              && Arc::ptr_eq(&selected_cell, &app.transcript_cells[nth_user_position(&app.transcript_cells, expected.nth_user_message).unwrap()])
              && prompt == expected.prompt
-@@ -8280,6 +8276,569 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
+@@ -8280,6 +8277,569 @@ async fn backtrack_branch_failure_restores_selected_prompt_snapshot() {
      );
  }
  
@@ -1293,7 +1283,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
  #[tokio::test]
  async fn remote_resume_current_cwd_rejection_snapshot() -> Result<()> {
      let (mut app, mut app_event_rx, _op_rx) = make_test_app_with_channels().await;
-@@ -9078,6 +9637,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9078,6 +9638,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
                          [nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
                  ),
                  prompt: remote_prompt,
@@ -1301,7 +1291,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
              },
          ))
          .await?;
-@@ -9097,6 +9657,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9097,6 +9658,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
              &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 1).unwrap()],
          ),
          prompt: prompt.clone(),
@@ -1309,7 +1299,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      };
      // A queued page shifts both identical prompts before confirmation is dispatched.
      let cursor = app_server
-@@ -9222,6 +9783,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
+@@ -9222,6 +9784,7 @@ async fn prompt_edit_reverts_earlier_and_first_visible_prompts_in_place_scenario
                  &app.transcript_cells[nth_user_position(&app.transcript_cells, /*nth*/ 0).unwrap()],
              ),
              prompt: "retained prompt".into(),
@@ -1317,7 +1307,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
          },
      ))
      .await?;
-@@ -9641,7 +10203,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9641,7 +10204,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          app.enqueue_primary_thread_session(started.session, started.turns)
              .await
              .expect("primary thread should be registered");
@@ -1325,7 +1315,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
          let op = AppCommand::interrupt();
  
          let handled = Box::pin(app.try_submit_active_thread_op_via_app_server(
-@@ -9653,7 +10214,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
+@@ -9653,7 +10215,6 @@ async fn interrupt_without_active_turn_is_treated_as_handled() {
          .expect("interrupt submission should not fail");
  
          assert_eq!(handled, true);
@@ -1333,7 +1323,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      })
      .await;
  }
-@@ -10354,9 +10914,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -10354,9 +10915,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      ));
      app.deferred_history_lines = vec![Line::from("stale buffered line").into()];
      app.has_emitted_history_lines = true;
@@ -1343,7 +1333,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      app.backtrack_render_pending = true;
  
      app.reset_app_ui_state_after_clear();
-@@ -10365,8 +10922,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
+@@ -10365,8 +10923,6 @@ async fn clear_only_ui_reset_preserves_chat_session_state() {
      assert!(app.transcript_cells.is_empty());
      assert!(app.deferred_history_lines.is_empty());
      assert!(!app.has_emitted_history_lines);
@@ -1352,7 +1342,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
      assert!(!app.backtrack_render_pending);
      assert_eq!(app.chat_widget.thread_id(), Some(thread_id));
      assert_eq!(app.chat_widget.composer_text_with_pending(), "draft prompt");
-@@ -10401,15 +10956,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
+@@ -10401,15 +10957,17 @@ async fn clear_only_ui_reset_allows_active_skill_warning_to_render_again() {
  }
  
  #[tokio::test]
@@ -1373,7 +1363,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
  
      app.chat_widget
          .handle_key_event(crossterm::event::KeyEvent::new(
-@@ -10417,25 +10974,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
+@@ -10417,25 +10975,24 @@ async fn backtrack_esc_does_not_steal_empty_vim_insert_escape() {
              KeyModifiers::NONE,
          ));
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
@@ -1404,7 +1394,7 @@ index f8d8f9a90927c3c8982945a5e80eb8d0fa8dbf21..4346b4ce25d166474f6bb6a90b4174d2
  
      app.chat_widget.toggle_vim_mode_and_notify();
      app.chat_widget
-@@ -10445,33 +11001,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
+@@ -10445,33 +11002,10 @@ async fn side_conversations_reject_backtrack_esc_without_stealing_vim_insert_esc
          ));
  
      assert!(app.chat_widget.should_handle_vim_insert_escape(esc));
