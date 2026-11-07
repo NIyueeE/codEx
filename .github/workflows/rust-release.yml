@@ -300,20 +300,62 @@ jobs:
           export STABLE_GIT_COMMIT
           cargo build --target "$target" --release --timings "${helpers[@]}"
 
-      # The symbols script only exists in the bootstrapped tree (the slim repo
-      # carries just check_ci_results.py), so resolve it through TREE_DIR - as
-      # an absolute path, because this step runs from CODE_DIR.
-      - name: Build symbols archive and strip binaries
-        if: matrix.platform == 'linux'
+      # MSVC names some PDBs with underscores where the crate uses dashes, and
+      # the symbols script looks for `<binary>.pdb`. Upstream normalises the
+      # names in its Windows release workflow before archiving symbols, so do
+      # the same here. The release directory has to be resolved the same way
+      # the symbols step resolves it: a bare `target/...` is relative to the
+      # workspace root, while the build wrote into CARGO_TARGET_DIR.
+      - name: Normalize Windows PDB filenames
+        if: matrix.platform == 'windows'
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+        run: |
+          set -euo pipefail
+          tree_dir="${GITHUB_WORKSPACE}"
+          [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
+          release_root="${CARGO_TARGET_DIR:-target}"
+          if [[ "${release_root}" = /* ]]; then
+            release_dir="${release_root}/${TARGET}/release"
+          else
+            release_dir="${tree_dir}/codex-rs/${release_root}/${TARGET}/release"
+          fi
+          for binary in codex codex-code-mode-host codex-exec-server codex-windows-sandbox-setup codex-command-runner; do
+            expected="${release_dir}/${binary}.pdb"
+            [[ -f "$expected" ]] && continue
+            underscored="${release_dir}/${binary//-/_}.pdb"
+            if [[ ! -f "$underscored" ]]; then
+              echo "PDB for ${binary} not found at ${expected} or ${underscored}" >&2
+              exit 1
+            fi
+            cp "$underscored" "$expected"
+          done
+
+      # The symbols script only exists in the bootstrapped tree (the slim repo
+      # carries just check_ci_results.py), so resolve it through TREE_DIR - as
+      # an absolute path, because this step runs from CODE_DIR.
+      #
+      # Upstream keeps the Windows pass in its own rust-release-windows.yml,
+      # where a dedicated job archives the PDBs of the Windows binaries. The
+      # fork builds both platforms in this one job, so the pass runs here for
+      # both. Its Windows branch only copies the PDBs - the binaries keep the
+      # embedded line tables the profile asks for - so the packaged bytes are
+      # unchanged either way.
+      - name: Build symbols archive and strip binaries
+        shell: bash
+        env:
+          TARGET: ${{ matrix.target }}
+          PLATFORM: ${{ matrix.platform }}
         run: |
           set -euo pipefail
           # Resolve before any `cd`: TREE_DIR is relative to the workspace root.
           tree_dir="${GITHUB_WORKSPACE}"
           [[ -d "${tree_dir}/codex-rs" ]] || tree_dir="${tree_dir}/tree"
           binaries="codex codex-code-mode-host codex-exec-server"
+          if [[ "${PLATFORM}" == "windows" ]]; then
+            binaries+=" codex-command-runner codex-windows-sandbox-setup"
+          fi
           # bootstrap-tree exports CARGO_TARGET_DIR as an absolute path for the
           # shared build root, so resolve it before joining anything onto it.
           release_root="${CARGO_TARGET_DIR:-target}"
@@ -439,7 +481,6 @@ jobs:
       # released binary stays symbolicateable. bwrap is hashed after stripping,
       # so its symbols are not part of this archive.
       - name: Upload symbols archive
-        if: matrix.platform == 'linux'
         uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7.0.0
         with:
           name: ${{ matrix.target }}-symbols
