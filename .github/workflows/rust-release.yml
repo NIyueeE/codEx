@@ -364,11 +364,17 @@ jobs:
           else
             release_dir="${tree_dir}/codex-rs/${release_root}/${TARGET}/release"
           fi
+          # The archive directory stays relative to the workspace root on
+          # purpose: the script ends in `tar -czf "$archive_path"`, and GNU tar
+          # reads a leading `D:` in an absolute Windows path as a remote host,
+          # which fails with "Cannot connect to D: resolve failed". A relative
+          # path has no colon, and this step does not cd, so the archive still
+          # lands where "Upload symbols archive" looks for it.
           bash "${tree_dir}/.github/scripts/archive-release-symbols-and-strip-binaries.sh" \
             --target "$TARGET" \
             --artifact-name "$TARGET" \
             --release-dir "${release_dir}" \
-            --archive-dir "${GITHUB_WORKSPACE}/symbols-dist/${TARGET}" \
+            --archive-dir "symbols-dist/${TARGET}" \
             --binaries "$binaries"
       - name: Assemble package archive
         shell: bash
