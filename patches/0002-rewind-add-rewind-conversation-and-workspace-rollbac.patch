@@ -1,4 +1,4 @@
-From 183ff06c954622bec119e99a3a2a37a48a8169da Mon Sep 17 00:00:00 2001
+From f328ead1a3f7cc52fb274e39f0fefea6003447ae Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:22 +0000
 Subject: rewind: add /rewind conversation and workspace rollback
@@ -22,17 +22,17 @@ Subject: rewind: add /rewind conversation and workspace rollback
  codex-rs/tui/src/app_backtrack.rs             |  137 +-
  codex-rs/tui/src/app_event.rs                 |   52 +-
  codex-rs/tui/src/chatwidget.rs                |   22 +-
- .../tui/src/chatwidget/input_submission.rs    |   61 +
+ .../tui/src/chatwidget/input_submission.rs    |   71 +
  codex-rs/tui/src/chatwidget/slash_dispatch.rs |   13 +-
  ...hatwidget__tests__rewind_scope_picker.snap |   15 +
  .../tui/src/chatwidget/tests/app_server.rs    |    3 +
  .../chatwidget/tests/composer_submission.rs   |   49 +-
  .../src/chatwidget/tests/slash_commands.rs    |   34 +-
  codex-rs/tui/src/rewind/actions.rs            |  392 +++++
- codex-rs/tui/src/rewind/mod.rs                | 1364 +++++++++++++++++
+ codex-rs/tui/src/rewind/mod.rs                | 1374 +++++++++++++++++
  codex-rs/tui/src/rewind/rewind_tests.rs       | 1203 +++++++++++++++
  codex-rs/tui/src/slash_command.rs             |    8 +-
- 28 files changed, 4041 insertions(+), 322 deletions(-)
+ 28 files changed, 4061 insertions(+), 322 deletions(-)
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_open_error_history.snap
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__history_ui__tests__desktop_thread_opened_history.snap
  create mode 100644 codex-rs/tui/src/chatwidget/snapshots/codex_tui__chatwidget__tests__rewind_scope_picker.snap
@@ -1809,7 +1809,7 @@ index d2962e8001347574e9a5bf680de4f18eb858dfea..5a2b9a68a375a883d42816b56a4389c8
          self.cancel_image_submission();
          self.blocks_direct_input = true;
 diff --git a/codex-rs/tui/src/chatwidget/input_submission.rs b/codex-rs/tui/src/chatwidget/input_submission.rs
-index 7d0c7403b50611b9b1a15fb4eb8a695bb3f3a3be..a319c36b54ff31380f57244a4a564f7b212b44ba 100644
+index 7d0c7403b50611b9b1a15fb4eb8a695bb3f3a3be..e5735e93c474dececfc71384f73aba33bb504932 100644
 --- a/codex-rs/tui/src/chatwidget/input_submission.rs
 +++ b/codex-rs/tui/src/chatwidget/input_submission.rs
 @@ -266,6 +266,15 @@ impl ChatWidget {
@@ -1828,7 +1828,7 @@ index 7d0c7403b50611b9b1a15fb4eb8a695bb3f3a3be..a319c36b54ff31380f57244a4a564f7b
          for image_url in &remote_image_urls {
              items.push(UserInput::Image {
                  image: ImageReference::Inline {
-@@ -626,4 +635,56 @@ impl ChatWidget {
+@@ -626,4 +635,66 @@ impl ChatWidget {
          ));
          self.request_redraw();
      }
@@ -1840,6 +1840,16 @@ index 7d0c7403b50611b9b1a15fb4eb8a695bb3f3a3be..a319c36b54ff31380f57244a4a564f7b
 +    /// but they are surfaced in the transcript so a silently broken rewind
 +    /// chain cannot pass unnoticed.
 +    pub(super) fn snapshot_workspace_before_turn(&mut self, text: &str) {
++        // A filesystem root is not a workspace: snapshotting one would copy the
++        // entire filesystem into CODEX_HOME. Skip it instead of walking it, and
++        // say so in the log so a missing rewind chain is still traceable.
++        if !crate::rewind::is_snapshotable_workspace(&self.config.cwd) {
++            tracing::warn!(
++                cwd = %self.config.cwd.display(),
++                "skipping rewind snapshot: workspace root is not a project directory"
++            );
++            return;
++        }
 +        let Some(thread_id) = self.thread_id.as_ref().map(|id| id.to_string()) else {
 +            tracing::warn!("failed to take rewind snapshot: no active thread");
 +            return;
@@ -2501,10 +2511,10 @@ index 0000000000000000000000000000000000000000..7b560029af47b8c3165dfbb9874d6a7f
 +}
 diff --git a/codex-rs/tui/src/rewind/mod.rs b/codex-rs/tui/src/rewind/mod.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..fdb69c05f150443cf8caa8d3ceea1b0d86a6358b
+index 0000000000000000000000000000000000000000..84d457099ec6974b3f6dfd1b51e612a7e4639c6a
 --- /dev/null
 +++ b/codex-rs/tui/src/rewind/mod.rs
-@@ -0,0 +1,1364 @@
+@@ -0,0 +1,1374 @@
 +//! File snapshots for `/rewind`.
 +//!
 +//! Before each user turn the TUI snapshots the workspace so the user can roll
@@ -2710,6 +2720,16 @@ index 0000000000000000000000000000000000000000..fdb69c05f150443cf8caa8d3ceea1b0d
 +        max_snapshots,
 +    )
 +    .map(|(snapshot_dir, _skipped)| snapshot_dir)
++}
++
++/// Whether `cwd` can hold a file snapshot.
++///
++/// A snapshot copies every file it walks into `CODEX_HOME`, so a filesystem
++/// root (`/`, `C:\`) is never a valid workspace: snapshotting one would try to
++/// copy the entire filesystem. Sessions whose recorded cwd is such a root keep
++/// working; they simply have no file snapshots to roll back to.
++pub(crate) fn is_snapshotable_workspace(cwd: &Path) -> bool {
++    cwd.parent().is_some()
 +}
 +
 +/// Takes a snapshot and additionally reports which paths were skipped
