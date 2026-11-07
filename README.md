@@ -241,14 +241,15 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
      fork's latest GitHub release.
   3. Verifies the sha256 checksum **before** touching anything.
   4. Reads the archive's `codex-package.json`, checks that the package is
-     complete for this target, then installs the **complete package** over the
-     current release: helper binaries and resources first, the `codex`
-     entrypoint next, and the manifest last, keeping a `.old` backup during the
-     binary swap. Keeping the manifest in sync with the executable is what
-     lets `codex app-server daemon` install the shared background server from
-     this package. An archive without a manifest is rejected with a pointer to
-     a fresh `install.sh` run, which performs the one-time move to the package
-     layout.
+     complete for this target, then installs the **complete package** into its
+     own `releases/<version>-<target>/` directory and repoints `current` at it,
+     dropping the release it replaces: helper binaries and resources first, the
+     `codex` entrypoint next, and the manifest last, keeping a `.old` backup
+     during the binary swap. Keeping the manifest in sync with the executable
+     is what lets `codex app-server daemon` install the shared background
+     server from this package. An archive without a manifest is rejected with a
+     pointer to a fresh `install.sh` run, which performs the one-time move to
+     the package layout.
 - Because the archive is built by the fork's release workflow, the new
   binary's embedded bwrap digest always matches the new bwrap it ships with.
 - Windows cannot replace a running executable, so the update is staged beside
