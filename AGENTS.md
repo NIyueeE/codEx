@@ -136,7 +136,11 @@ diagnosed, not edited; only a genuine runner divergence justifies an edit.
   fork deliberately changed it. Today only `.github/scripts/install-musl-build-tools.sh`
   is deliberately changed (it adds `linux-libc-dev`, hoists the tool-root setup
   above the OpenSSL step, and groups the `GITHUB_ENV` redirects), so it is the
-  one file to re-diff by hand. The rest of the build tooling the fork resolves
+  one file to re-diff by hand. `bootstrap.sh` and `update.sh` overlay that file
+  onto the tree, because it calls upstream's sibling `install-musl-openssl.sh`
+  and the workflow resolves the pair through `TREE_DIR`; running it from the
+  slim repo root instead is what broke the 0.167.0 release, since the sibling
+  only exists in the tree. The rest of the build tooling the fork resolves
   through `TREE_DIR` (`setup-msvc-env.ps1`, `rusty_v8_bazel.py`,
   `archive-release-symbols-and-strip-binaries.sh`, `verify_tui_core_boundary.py`)
   is upstream's verbatim, so following upstream keeps it current for free.

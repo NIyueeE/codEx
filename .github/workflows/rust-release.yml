@@ -129,10 +129,13 @@ jobs:
         if: matrix.platform == 'linux'
         env:
           TARGET: ${{ matrix.target }}
-        # The fork carries its own copy of this script: it adds linux-libc-dev
-        # and hoists the tool-root setup above the OpenSSL step. The rest of the
-        # build scripts stay upstream's and are resolved through TREE_DIR.
-        run: bash .github/scripts/install-musl-build-tools.sh
+        # The fork changes this one script (it adds linux-libc-dev and hoists
+        # the tool-root setup above the OpenSSL step), and it calls upstream's
+        # sibling install-musl-openssl.sh. bootstrap.sh overlays the changed
+        # copy onto the tree, so resolving the pair through TREE_DIR is what
+        # puts both halves in one directory. The rest of the build scripts stay
+        # upstream's verbatim and are resolved the same way.
+        run: bash "${TREE_DIR}/.github/scripts/install-musl-build-tools.sh"
 
       # The symbols/strip script shells out to objcopy, which the musl
       # dependency list does not pull in. Upstream installs binutils for the

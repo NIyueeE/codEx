@@ -115,4 +115,18 @@ rm -rf ".github/actions/build-bazel-package-binaries" \
   ".github/ISSUE_TEMPLATE" \
   ".github/CODEOWNERS"
 
+# Overlay the build scripts the fork deliberately changes. They live here as
+# ordinary fork files, because the queue only ever carries upstream's
+# compile-time sources. The release workflow resolves them through TREE_DIR
+# like the rest of the build tooling, and install-musl-build-tools.sh shells
+# out to upstream's sibling install-musl-openssl.sh, which the tree already
+# carries from the sparse checkout. Copying the changed one in is the only way
+# both halves meet in the same directory.
+fork_build_scripts=(
+  .github/scripts/install-musl-build-tools.sh
+)
+for script in "${fork_build_scripts[@]}"; do
+  install -D "${repo_root}/${script}" "${PWD:?}/${script}"
+done
+
 echo "✅ Bootstrapped tree ready at ${output_dir} (base ${base_tag})"

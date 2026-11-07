@@ -145,6 +145,16 @@ rm -rf ".github/actions/build-bazel-package-binaries" \
   ".github/ISSUE_TEMPLATE" \
   ".github/CODEOWNERS"
 
+# Same overlay as scripts/bootstrap.sh: the fork's changed build scripts have
+# to sit next to the upstream siblings they call, and the workflow resolves
+# them through TREE_DIR.
+fork_build_scripts=(
+  .github/scripts/install-musl-build-tools.sh
+)
+for script in "${fork_build_scripts[@]}"; do
+  install -D "${repo_root}/${script}" "${PWD:?}/${script}"
+done
+
 if ! bash "${script_dir}/check-patch-modules.sh" --tree "${work_dir}"; then
   echo "The applied patch queue does not match the patch-module manifest." >&2
   exit 1
