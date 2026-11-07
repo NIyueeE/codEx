@@ -254,7 +254,8 @@ rewind_max_snapshots = 200       # keep 200 snapshots per conversation
   binary's embedded bwrap digest always matches the new bwrap it ships with.
 - Windows cannot replace a running executable, so the update is staged beside
   the install and handed to a detached copy of the new binary. That helper
-  waits for codEx to exit, swaps the complete package, and relaunches codEx.
+  waits for codEx to exit, swaps the complete package, and reports the finished
+  update; run codEx again to start it.
 - Non-standalone installs (npm/brew/...) get a message pointing at the fork
   releases for manual download.
 - The background daemon never installs from a remote script either: its updater
