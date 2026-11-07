@@ -1,4 +1,4 @@
-From 5070aad1b366a1ed44d18a7eb13e7094a366d661 Mon Sep 17 00:00:00 2001
+From a309984354fbde49516f384b791c7714bfc1a365 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -32,7 +32,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  859 ----------
- codex-rs/cli/src/self_update.rs               |  875 +++++++++++
+ codex-rs/cli/src/self_update.rs               | 1143 ++++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
@@ -65,7 +65,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1657 insertions(+), 6770 deletions(-)
+ 61 files changed, 1925 insertions(+), 6770 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -7704,10 +7704,10 @@ index 21cff3a7a6731c557ceed99b3edc34505f4cd1bc..00000000000000000000000000000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3132fe043
+index 0000000000000000000000000000000000000000..0f84d494e9d1b7c55b98c067282f8c980c879399
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,875 @@
+@@ -0,0 +1,1143 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -7746,6 +7746,8 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +const CODEX_BINARY_NAME: &str = "codex";
 +/// Directory beside the running binary that holds a pending update.
 +const STAGING_DIR_NAME: &str = "codex-update-staging";
++/// Selection link inside the packages root that names the live release.
++const CURRENT_LINK_NAME: &str = "current";
 +/// HTTP timeout for a single release asset download.
 +const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 +
@@ -7892,7 +7894,9 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +        // rejects it unless the manifest version matches the executable. Swap
 +        // the complete package, not just the binary: the manifest, the helper
 +        // binaries, and the resources must describe the same release.
-+        let result = install_package(&staging_dir, package_layout.package_dir.as_path(), &staged);
++        let destination = release_dir_for(package_layout.package_dir.as_path(), &staged)?;
++        let result = install_package(&staging_dir, &destination, &staged)
++            .and_then(|()| adopt_release(package_layout.package_dir.as_path(), &destination));
 +        let _ = std::fs::remove_dir_all(&staging_dir);
 +        result
 +    }
@@ -8035,6 +8039,199 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +        &package_root.join(manifest_name),
 +    )?;
 +    Ok(())
++}
++
++/// The release directory a staged package belongs in.
++///
++/// Upstream's installer names a release `<version>-<target>` and repoints
++/// `current` at it (`app-server-daemon/src/prepare_install.rs`), and
++/// `app-server-daemon/src/release_pruning.rs` reclaims only a directory whose
++/// name matches the version in its own manifest. Installing over the running
++/// directory instead left it named after the *previous* version, so pruning
++/// could never reclaim it and the layout misreported what was installed.
++fn release_dir_for(package_dir: &Path, staged: &StagedPackage) -> anyhow::Result<PathBuf> {
++    let releases_root = package_dir.parent().with_context(|| {
++        format!(
++            "package directory {} is not inside a releases directory",
++            package_dir.display()
++        )
++    })?;
++    Ok(releases_root.join(format!("{}-{}", staged.version, staged.target)))
++}
++
++/// Makes `new_release` the selected release and drops the one it replaces.
++fn adopt_release(previous_release: &Path, new_release: &Path) -> anyhow::Result<()> {
++    let releases_root = new_release.parent().with_context(|| {
++        format!(
++            "release directory {} is not inside a releases directory",
++            new_release.display()
++        )
++    })?;
++    let standalone_root = releases_root.parent().with_context(|| {
++        format!(
++            "releases directory {} is not inside a packages root",
++            releases_root.display()
++        )
++    })?;
++
++    create_entrypoint_alias(new_release)?;
++    select_release(standalone_root, new_release)?;
++
++    if previous_release != new_release {
++        remove_superseded_release(previous_release);
++    }
++    Ok(())
++}
++
++/// Creates the `codex` alias at the package root when it is missing.
++///
++/// A release archive carries no symlinks, and `codex update` plus manual
++/// invocations resolve the binary through `<release>/codex`, so the alias has
++/// to be recreated rather than copied. `CodexPackageLayout` and the daemon's
++/// package hash both ignore it, the same way the installer's alias is ignored.
++#[cfg(unix)]
++fn create_entrypoint_alias(release_dir: &Path) -> anyhow::Result<()> {
++    let alias = release_dir.join(CODEX_BINARY_NAME);
++    if alias.symlink_metadata().is_ok() {
++        return Ok(());
++    }
++    let relative = Path::new("bin").join(CODEX_BINARY_NAME);
++    std::os::unix::fs::symlink(&relative, &alias)
++        .with_context(|| format!("failed to create the {} alias", alias.display()))
++}
++
++#[cfg(windows)]
++fn create_entrypoint_alias(_release_dir: &Path) -> anyhow::Result<()> {
++    // Windows reaches the entrypoint through `bin/codex.exe`; the root alias is
++    // a Unix convenience the installer adds.
++    Ok(())
++}
++
++/// Points `<packages root>/current` at `release`.
++#[cfg(unix)]
++fn select_release(standalone_root: &Path, release: &Path) -> anyhow::Result<()> {
++    let current = standalone_root.join(CURRENT_LINK_NAME);
++    // Replace the link atomically so a concurrent reader never observes a
++    // half-updated selection, the way the installer does.
++    let temporary = tempfile::TempDir::new_in(standalone_root)
++        .context("failed to create a temporary directory for the current link")?;
++    let link = temporary.path().join(CURRENT_LINK_NAME);
++    std::os::unix::fs::symlink(release, &link)
++        .with_context(|| format!("failed to stage the current link for {}", release.display()))?;
++    std::fs::rename(&link, &current)
++        .with_context(|| format!("failed to point {} at the new release", current.display()))?;
++    Ok(())
++}
++
++/// Points `<packages root>/current` at `release` on Windows, where the
++/// selection is a directory junction rather than a symbolic link.
++///
++/// The replacement is staged beside the selection and swapped in with renames,
++/// so a reader never observes a missing `current` and a failed swap restores
++/// the previous junction. That is the sequence upstream's installer uses for
++/// its managed releases (`app-server-daemon/src/prepare_install_windows.rs`).
++#[cfg(windows)]
++fn select_release(standalone_root: &Path, release: &Path) -> anyhow::Result<()> {
++    let current = standalone_root.join(CURRENT_LINK_NAME);
++    let replacing = match current.symlink_metadata() {
++        Ok(metadata) => {
++            // Only ever move the link itself: a real directory here means a
++            // hand-made install that the updater must not guess about.
++            anyhow::ensure!(
++                metadata.file_type().is_symlink(),
++                "{} is not a release selection link; reinstall from https://github.com/{FORK_REPO}/releases",
++                current.display()
++            );
++            true
++        }
++        Err(error) if error.kind() == std::io::ErrorKind::NotFound => false,
++        Err(error) => {
++            return Err(error).with_context(|| format!("failed to inspect {}", current.display()));
++        }
++    };
++
++    let temporary = tempfile::TempDir::new_in(standalone_root)
++        .context("failed to create a temporary directory for the current link")?;
++    let junction = temporary.path().join(CURRENT_LINK_NAME);
++    match std::os::windows::fs::symlink_dir(release, &junction) {
++        Ok(()) => {}
++        Err(error) if error.kind() == std::io::ErrorKind::PermissionDenied => {
++            // Some Windows policies deny creating a reparse point in-process
++            // while allowing the system junction creator.
++            install_junction_via_shell(&junction, release)?;
++        }
++        Err(error) => {
++            return Err(error).with_context(|| {
++                format!("failed to stage the current link for {}", release.display())
++            });
++        }
++    }
++
++    if !replacing {
++        std::fs::rename(&junction, &current)
++            .with_context(|| format!("failed to point {} at the new release", current.display()))?;
++        return Ok(());
++    }
++
++    let previous = temporary.path().join("previous");
++    std::fs::rename(&current, &previous)
++        .with_context(|| format!("failed to move the old {} aside", current.display()))?;
++    if let Err(error) = std::fs::rename(&junction, &current) {
++        if let Err(restore_error) = std::fs::rename(&previous, &current) {
++            let preserved = temporary.keep();
++            anyhow::bail!(
++                "failed to point {} at the new release: {error}; also failed to restore the previous selection from {}: {restore_error}",
++                current.display(),
++                preserved.display()
++            );
++        }
++        return Err(error)
++            .with_context(|| format!("failed to point {} at the new release", current.display()));
++    }
++    if let Err(error) = std::fs::remove_dir(&previous) {
++        eprintln!("warning: failed to remove the previous release selection: {error}");
++    }
++    Ok(())
++}
++
++/// Creates a junction with `mklink /J`, passing both paths through the
++/// environment so cmd metacharacters stay quoted.
++#[cfg(windows)]
++fn install_junction_via_shell(link: &Path, release: &Path) -> anyhow::Result<()> {
++    use std::os::windows::process::CommandExt;
++    use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
++
++    let system_root = std::env::var_os("SystemRoot").context("SystemRoot is not set")?;
++    let command_shell = Path::new(&system_root).join("System32").join("cmd.exe");
++    let output = std::process::Command::new(command_shell)
++        .env("CODEX_UPDATE_JUNCTION_LINK", link)
++        .env("CODEX_UPDATE_JUNCTION_TARGET", release)
++        .args(["/d", "/s", "/e:on", "/v:off", "/c"])
++        .raw_arg(r#""mklink /J "%CODEX_UPDATE_JUNCTION_LINK%" "%CODEX_UPDATE_JUNCTION_TARGET%""#)
++        .creation_flags(CREATE_NO_WINDOW)
++        .output()
++        .context("failed to run cmd.exe to create the release junction")?;
++    anyhow::ensure!(
++        output.status.success(),
++        "mklink /J failed for {}: {}",
++        link.display(),
++        String::from_utf8_lossy(&output.stderr).trim()
++    );
++    Ok(())
++}
++
++/// Drops the release the selection moved off of.
++///
++/// A failure is not fatal: the directory keeps a manifest that matches its own
++/// name, so `release_pruning.rs` can still reclaim it later. On Windows an
++/// executable that is still running from inside it is the usual reason.
++fn remove_superseded_release(release_dir: &Path) {
++    if let Err(error) = std::fs::remove_dir_all(release_dir) {
++        eprintln!(
++            "warning: left the superseded release {} in place ({error}); the next prune will reclaim it",
++            release_dir.display()
++        );
++    }
 +}
 +
 +/// Collect regular files from a staged package, rejecting links and other
@@ -8180,7 +8377,7 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +    let current_exe =
 +        std::env::current_exe().context("failed to resolve the staged updater path")?;
 +    let staging_dir = staging_dir(&current_exe)?;
-+    let target_dir = staging_dir
++    let previous_release = staging_dir
 +        .parent()
 +        .context("update staging directory has no parent")?
 +        .to_path_buf();
@@ -8188,7 +8385,8 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +    // layout: `bin/codex.exe` with `codex-resources/` beside it.
 +    let target = target_triple().map_err(anyhow::Error::msg)?;
 +    let staged = StagedPackage::read(&staging_dir, target)?;
-+    let relaunch = staged.entrypoint_in(&target_dir);
++    let destination = release_dir_for(&previous_release, &staged)?;
++    let relaunch = staged.entrypoint_in(&destination);
 +
 +    // Wait on the process handle rather than polling so a slow shutdown cannot
 +    // race the swap; the handle closes on exit even when the process fails.
@@ -8205,9 +8403,12 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +
 +    // Swap the complete package: helpers and resources first, the entrypoint
 +    // next, and the manifest last, so the shared background server can install
-+    // from a package whose manifest matches its executable.
-+    install_package(&staging_dir, &target_dir, &staged)?;
++    // from a package whose manifest matches its executable. The package lands
++    // in its own `<version>-<target>` release and the selection moves onto it,
++    // which is what keeps the layout and the pruner honest about the version.
++    install_package(&staging_dir, &destination, &staged)?;
 +    let _ = std::fs::remove_dir_all(&staging_dir);
++    adopt_release(&previous_release, &destination)?;
 +
 +    std::process::Command::new(&relaunch)
 +        .creation_flags(CREATE_NO_WINDOW)
@@ -8525,6 +8726,73 @@ index 0000000000000000000000000000000000000000..667da58bf284155855226f8dc4dbbea3
 +                .file_type()
 +                .is_symlink()
 +        );
++    }
++
++    #[test]
++    fn release_dir_for_names_the_directory_after_the_manifest() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let package_dir = temp
++            .path()
++            .join("packages/standalone/releases/0.166.0-x86_64-unknown-linux-musl");
++        let staging = temp.path().join("staging");
++        write_package(&staging, "0.167.0", b"new");
++        let staged = StagedPackage::read(&staging, host_target()).expect("read package");
++
++        let destination = release_dir_for(&package_dir, &staged).expect("release dir");
++
++        assert_eq!(
++            destination,
++            temp.path()
++                .join("packages/standalone/releases/0.167.0-x86_64-unknown-linux-musl")
++        );
++        assert_ne!(destination, package_dir);
++    }
++
++    #[test]
++    fn adopt_release_moves_the_selection_and_drops_the_old_directory() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let releases = temp.path().join("packages/standalone/releases");
++        let previous = releases.join("0.166.0-x86_64-unknown-linux-musl");
++        let next = releases.join("0.167.0-x86_64-unknown-linux-musl");
++        let staging = temp.path().join("staging");
++        write_package(&staging, "0.167.0", b"new");
++        write_package(&previous, "0.166.0", b"old");
++        let staged = StagedPackage::read(&staging, host_target()).expect("read package");
++
++        install_package(&staging, &next, &staged).expect("install package");
++        adopt_release(&previous, &next).expect("adopt release");
++
++        let standalone = temp.path().join("packages/standalone");
++        let selected = std::fs::canonicalize(standalone.join(CURRENT_LINK_NAME))
++            .expect("the selection resolves");
++        assert_eq!(selected, next.canonicalize().expect("canonical release"));
++        assert!(!previous.exists(), "the superseded release is dropped");
++        // The alias lets `codex update` resolve the binary through the release.
++        #[cfg(unix)]
++        assert!(
++            next.join(CODEX_BINARY_NAME)
++                .symlink_metadata()
++                .expect("alias")
++                .file_type()
++                .is_symlink()
++        );
++    }
++
++    #[test]
++    fn adopt_release_is_idempotent_for_the_selected_release() {
++        let temp = tempfile::tempdir().expect("temp dir");
++        let releases = temp.path().join("packages/standalone/releases");
++        let selected = releases.join("0.167.0-x86_64-unknown-linux-musl");
++        write_package(&selected, "0.167.0", b"new");
++        let standalone = temp.path().join("packages/standalone");
++        std::fs::create_dir_all(&standalone).expect("create packages root");
++        #[cfg(unix)]
++        std::os::unix::fs::symlink(&selected, standalone.join(CURRENT_LINK_NAME))
++            .expect("create selection");
++
++        adopt_release(&selected, &selected).expect("adopt release");
++
++        assert!(selected.exists(), "the selected release survives");
 +    }
 +
 +    fn write_package(root: &Path, version: &str, body: &[u8]) {
