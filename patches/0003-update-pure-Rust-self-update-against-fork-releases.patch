@@ -1,4 +1,4 @@
-From a73e7b9f297eac7a2153af696aedb0cefafabbdf Mon Sep 17 00:00:00 2001
+From 18a7b027bb22328c6d65d807ec7e537f887b2b2e Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -8938,7 +8938,7 @@ index 0498495092a94fe97b683f199f01501e9bde21f5..871526ae4176d1984dca1876e404cb04
      app.daemon_cli_executable = None;
      app.open_daemon_menu();
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
-index 4a946119946cae246bfb2721f7abc9b363c1df3b..f78ae6231e2842e5e213ee4356b8d5cb900fc37e 100644
+index 4a946119946cae246bfb2721f7abc9b363c1df3b..e18c21139fffb4731eefbd51b8114bb3605f4e49 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 @@ -1,18 +1,17 @@
@@ -8958,7 +8958,7 @@ index 4a946119946cae246bfb2721f7abc9b363c1df3b..f78ae6231e2842e5e213ee4356b8d5cb
                  Update daemon and exit Codex?
 -                Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the
 -                complete package and pin it against automatic updates.
-+                Update the daemon to this CLI package v0.166.0 from /x/cli-build/
++                Update the daemon to this CLI package v0.167.0 from /x/cli-build/
 +                bin/codex. Copy the complete package and pin it against automatic
 +                updates.
                  This may restart the daemon and interrupt active or queued work.
@@ -9227,7 +9227,7 @@ index a9dd9cac784bd0993eb09bc518071a1e253f0ae2..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..5a17111420ff418bbee84286899ad8ef34dc46e4 100644
+index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..4d53cf41c3dd9bc0e7efa0463322580d72d23d07 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,10 +1,9 @@
@@ -9238,12 +9238,12 @@ index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..5a17111420ff418bbee84286899ad8ef
  ---
  
 -  >_ OpenAI Codex (v0.0.0)
-+  >_ codEx (v0.166.0)
++  >_ codEx (v0.167.0)
       /tmp/project
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..64a3c8673212ad8351dc719fdf94764e8021b4a5 100644
+index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..8336b18e5d210beb4a1360ec1d811a6f4e97083e 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,11 +2,10 @@
@@ -9259,7 +9259,7 @@ index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..64a3c8673212ad8351dc719fdf94764e
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.166.0 -> 9.9.9            │
++│ ✨ Update available! 0.167.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -9313,7 +9313,7 @@ index d0e70b0574adc8112d2db99bf7fd0d36f7ae1c32..e48ab05f055c0161fb2c5ccaa88c8e55
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053051ed137cd64a19611d6f7dee8ca284a1..bc5c65839056cbfbb8013dc2c06c2a7214e2d9a6 100644
+index 53c8053051ed137cd64a19611d6f7dee8ca284a1..d3074e533a876bcf5149d51f7dbee330f7307fcd 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
@@ -9323,7 +9323,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..bc5c65839056cbfbb8013dc2c06c2a72
 -  Update available · 0.0.0
 -  → 9.9.9
 +  Update available ·
-+  0.166.0 → 9.9.9
++  0.167.0 → 9.9.9
    Release notes:
 -  https://github.com/opena
 -  i/codex/releases/latest
@@ -9333,7 +9333,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..bc5c65839056cbfbb8013dc2c06c2a72
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642270e9b9c612d1b62ccedf6d305b9b84d0..6e2a254fada4c351c2e0bb7c8f2da3f32ac0889c 100644
+index b547642270e9b9c612d1b62ccedf6d305b9b84d0..c24b5b910f0b281a48ca2d3d265730dd3888c4a7 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
@@ -9342,7 +9342,7 @@ index b547642270e9b9c612d1b62ccedf6d305b9b84d0..6e2a254fada4c351c2e0bb7c8f2da3f3
  
 -  Update available · 0.0.0 → 9.9.9
 -  Release notes: https://github.com/openai/codex/releases/latest
-+  Update available · 0.166.0 → 9.9.9
++  Update available · 0.167.0 → 9.9.9
 +  Release notes: https://github.com/NIyueeE/codEx/releases/latest
  
 -› 1. Update now (runs `npm install -g @openai/codex`)                           

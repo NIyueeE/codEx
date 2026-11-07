@@ -1,4 +1,4 @@
-From 7a4abaa2a26adc2d047879e359c2b73e3f7e163b Mon Sep 17 00:00:00 2001
+From 0bf40c5ab0a2159af18d734bb4dc77f1ab038149 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:20 +0000
 Subject: chore: codEx workspace lockfile and cargo config
