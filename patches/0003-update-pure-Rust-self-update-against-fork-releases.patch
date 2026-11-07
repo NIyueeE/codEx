@@ -1,4 +1,4 @@
-From a309984354fbde49516f384b791c7714bfc1a365 Mon Sep 17 00:00:00 2001
+From f046ebed78ea55c66c43120247cee608ac9c0964 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -32,7 +32,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  859 ----------
- codex-rs/cli/src/self_update.rs               | 1143 ++++++++++++++
+ codex-rs/cli/src/self_update.rs               | 1156 ++++++++++++++
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
@@ -65,7 +65,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1925 insertions(+), 6770 deletions(-)
+ 61 files changed, 1938 insertions(+), 6770 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -7704,10 +7704,10 @@ index 21cff3a7a6731c557ceed99b3edc34505f4cd1bc..00000000000000000000000000000000
 -}
 diff --git a/codex-rs/cli/src/self_update.rs b/codex-rs/cli/src/self_update.rs
 new file mode 100644
-index 0000000000000000000000000000000000000000..0f84d494e9d1b7c55b98c067282f8c980c879399
+index 0000000000000000000000000000000000000000..dd53e5f525731c848b79c7aeaa7129931efaf60c
 --- /dev/null
 +++ b/codex-rs/cli/src/self_update.rs
-@@ -0,0 +1,1143 @@
+@@ -0,0 +1,1156 @@
 +//! Pure-Rust self-update for standalone codEx fork installs.
 +//!
 +//! `codex update` downloads the `codex-<target>.tar.gz` archive for the
@@ -7790,10 +7790,17 @@ index 0000000000000000000000000000000000000000..0f84d494e9d1b7c55b98c067282f8c98
 +}
 +
 +/// Parses the published checksum asset (sha256sum format) for the archive.
++///
++/// `sha256sum` escapes a line whose file name needs it by prefixing the whole
++/// line with `\`, which a Windows workspace path triggers, so the marker lands
++/// directly in front of the digest with no separator between them. Both the
++/// escaped and the plain spelling are published, so the marker comes off
++/// before the digest is validated.
 +pub fn parse_checksum(checksum_contents: &str) -> Result<String, String> {
 +    checksum_contents
 +        .split_whitespace()
 +        .next()
++        .map(|token| token.strip_prefix('\\').unwrap_or(token))
 +        .filter(|token| token.len() == 64 && token.chars().all(|c| c.is_ascii_hexdigit()))
 +        .map(str::to_owned)
 +        .ok_or_else(|| "checksum asset does not contain a valid sha256 digest".to_string())
@@ -8605,6 +8612,12 @@ index 0000000000000000000000000000000000000000..0f84d494e9d1b7c55b98c067282f8c98
 +        let digest = "ab".repeat(32);
 +        assert_eq!(
 +            parse_checksum(&format!("{digest}  codex-x86_64-unknown-linux-musl.tar.gz")),
++            Ok(digest.clone())
++        );
++        // The Windows release job hands `sha256sum` a workspace path, so the
++        // published asset carries coreutils' leading `\` escape marker.
++        assert_eq!(
++            parse_checksum(&format!("\\{digest}  codex-x86_64-pc-windows-msvc.tar.gz")),
 +            Ok(digest)
 +        );
 +        assert!(parse_checksum("not-a-checksum").is_err());
