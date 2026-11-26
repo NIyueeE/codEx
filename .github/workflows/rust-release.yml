@@ -113,7 +113,7 @@ jobs:
 
       - uses: ./.github/actions/bootstrap-tree
 
-      - uses: dtolnay/rust-toolchain@e081816240890017053eacbb1bdf337761dc5582 # 1.95.0
+      - uses: dtolnay/rust-toolchain@d124f86f28ff42855784ff3319f48ac182c248f8 # 1.99.1
         with:
           targets: ${{ matrix.target }}
 
@@ -129,6 +129,9 @@ jobs:
         if: matrix.platform == 'linux'
         env:
           TARGET: ${{ matrix.target }}
+          # Fold identical code and pack relocations for the x86-64 musl release
+          # packages, as upstream does since 0.172.0.
+          CODEX_MUSL_RELEASE_LINK_FLAGS: "1"
         # The fork changes this one script (it adds linux-libc-dev and hoists
         # the tool-root setup above the OpenSSL step), and it calls upstream's
         # sibling install-musl-openssl.sh. bootstrap.sh overlays the changed
