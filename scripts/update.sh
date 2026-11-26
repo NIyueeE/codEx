@@ -46,6 +46,10 @@ git clone --depth 1 --branch "${upstream_tag}" "https://github.com/${repo}.git" 
 git -C "${work_dir}" sparse-checkout set --cone \
   codex-rs scripts .github third_party .cargo
 
+# The clone is a scratch build directory, so prune upstream's root files that
+# the fork does not build, test, or package. These paths must resolve inside
+# ${work_dir}: a relative path or ${PWD} here would delete the fork's own root
+# files (.gitignore, LICENSE, README.md, .codespell*) from the slim repository.
 root_junk=(
   .bazelignore .bazelrc .bazelversion .codespellignore .codespellrc
   .gitignore .markdownlint-cli2.yaml .npmrc .nvmrc .prettierignore
@@ -56,24 +60,26 @@ root_junk=(
   workspace_root_test_launcher.bat.tpl workspace_root_test_launcher.sh.tpl
 )
 for junk in "${root_junk[@]}"; do
-  rm -rf "${PWD:?}/${junk}"
+  rm -rf "${work_dir:?}/${junk}"
 done
-rm -rf ".github/actions/build-bazel-package-binaries" \
-  ".github/actions/build-bazel-release" \
-  ".github/actions/build-cargo-package-binaries" \
-  ".github/actions/build-codex-packages" \
-  ".github/actions/linux-code-sign" \
-  ".github/actions/prepare-bazel-ci" \
-  ".github/actions/publish-dotslash" \
-  ".github/actions/run-argument-comment-lint" \
-  ".github/actions/setup-akv-pkcs11-codesigning" \
-  ".github/actions/setup-ci" \
-  ".github/actions/setup-python-release-tools" \
-  ".github/actions/setup-rusty-v8" \
-  ".github/actions/windows-code-sign" \
-  ".github/scripts/macos-signing" \
-  ".github/ISSUE_TEMPLATE" \
-  ".github/CODEOWNERS"
+# Same for the upstream actions and scripts the fork does not keep. These are
+# rooted in ${work_dir} as well: this block runs before the `cd` below.
+rm -rf "${work_dir:?}/.github/actions/build-bazel-package-binaries" \
+  "${work_dir:?}/.github/actions/build-bazel-release" \
+  "${work_dir:?}/.github/actions/build-cargo-package-binaries" \
+  "${work_dir:?}/.github/actions/build-codex-packages" \
+  "${work_dir:?}/.github/actions/linux-code-sign" \
+  "${work_dir:?}/.github/actions/prepare-bazel-ci" \
+  "${work_dir:?}/.github/actions/publish-dotslash" \
+  "${work_dir:?}/.github/actions/run-argument-comment-lint" \
+  "${work_dir:?}/.github/actions/setup-akv-pkcs11-codesigning" \
+  "${work_dir:?}/.github/actions/setup-ci" \
+  "${work_dir:?}/.github/actions/setup-python-release-tools" \
+  "${work_dir:?}/.github/actions/setup-rusty-v8" \
+  "${work_dir:?}/.github/actions/windows-code-sign" \
+  "${work_dir:?}/.github/scripts/macos-signing" \
+  "${work_dir:?}/.github/ISSUE_TEMPLATE" \
+  "${work_dir:?}/.github/CODEOWNERS"
 
 # The same pruning runs again after `git am`, because cone mode's /* rule
 # re-materializes the root files on every applied commit.
