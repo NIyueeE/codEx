@@ -1,4 +1,4 @@
-From b0449e0aa4a4431e130f4dcfaa65c0489d572139 Mon Sep 17 00:00:00 2001
+From 0369f8c62741bf039d07cc5e245b9d358d016a37 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:30 +0000
 Subject: config: disable update checks and announcement fetches by default
@@ -20,10 +20,10 @@ Subject: config: disable update checks and announcement fetches by default
  delete mode 100644 codex-rs/tui/src/snapshots/codex_tui__tooltips__tests__desktop_app_tip_windows.snap
 
 diff --git a/codex-rs/app-server/src/request_processors/plugins.rs b/codex-rs/app-server/src/request_processors/plugins.rs
-index 159641f0bd93f9a69f28fb4afb4f5a0e171b8be0..97dd78ffd488a496c6ca17b1e8a69b133fa7c7e6 100644
+index 7a6b99f80aec90ec29ed7def137ccf5f5d64bb3c..6389c170313b3f007fc929a6a1cf4d0e4ef5fb22 100644
 --- a/codex-rs/app-server/src/request_processors/plugins.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins.rs
-@@ -49,6 +49,15 @@ mod local;
+@@ -50,6 +50,15 @@ mod local;
  mod reconcile;
  mod search;
  
@@ -39,8 +39,8 @@ index 159641f0bd93f9a69f28fb4afb4f5a0e171b8be0..97dd78ffd488a496c6ca17b1e8a69b13
  fn plugin_redirect_mode(plugin_root: &Path) -> StreamableHttpRedirectMode {
      if is_agent_plugin_manifest(plugin_root) {
          StreamableHttpRedirectMode::AgentPluginV1
-@@ -678,7 +687,10 @@ impl PluginRequestProcessor {
- 
+@@ -691,7 +700,10 @@ impl PluginRequestProcessor {
+         let mut remote_marketplaces = Vec::new();
          // TODO(remote plugins): Remove this once remote plugins are ready and vertical plugins are
          // served directly from the normal remote catalog.
 -        if include_vertical && !config.features.enabled(Feature::RemotePlugin) {
@@ -52,7 +52,7 @@ index 159641f0bd93f9a69f28fb4afb4f5a0e171b8be0..97dd78ffd488a496c6ca17b1e8a69b13
                  &remote_plugin_service_config,
                  auth.as_ref(),
 diff --git a/codex-rs/app-server/src/request_processors/plugins/search.rs b/codex-rs/app-server/src/request_processors/plugins/search.rs
-index b3d3de93c7b23315839b51e036276bc1c389bfe1..4e57eb65f5a4919a5bfd3857d694b4ba584c9772 100644
+index aa93ac2de078b5ed69a56ede8a8a67996627b1da..3bdb062908a31795879f9b46c269fd0f3b24a44f 100644
 --- a/codex-rs/app-server/src/request_processors/plugins/search.rs
 +++ b/codex-rs/app-server/src/request_processors/plugins/search.rs
 @@ -12,6 +12,14 @@ const MAX_PLUGIN_SEARCH_LIMIT: u32 = 1_000;
@@ -81,7 +81,7 @@ index b3d3de93c7b23315839b51e036276bc1c389bfe1..4e57eb65f5a4919a5bfd3857d694b4ba
              remote_plugin_enabled && auth_mode.is_some_and(DomainAuthMode::uses_codex_backend);
          let remote_scope = if remote_plugin_enabled {
 diff --git a/codex-rs/core-plugins/src/marketplace_context.rs b/codex-rs/core-plugins/src/marketplace_context.rs
-index bab5781777146a1aa18ab48c7b54c3d38adbf91e..b43e55116f793a9ddeba6d13b7eca8b698d81b21 100644
+index 107da6a477740e50bd87ef8a878be9b0ce022e76..4383f45a9e2422d9eb932865d300230c2c91c294 100644
 --- a/codex-rs/core-plugins/src/marketplace_context.rs
 +++ b/codex-rs/core-plugins/src/marketplace_context.rs
 @@ -5,6 +5,15 @@
@@ -112,10 +112,10 @@ index bab5781777146a1aa18ab48c7b54c3d38adbf91e..b43e55116f793a9ddeba6d13b7eca8b6
  
      pub(super) fn list_marketplaces(
 diff --git a/codex-rs/tui/src/app/background_requests.rs b/codex-rs/tui/src/app/background_requests.rs
-index 999931d53b9cd9f622ba81589ec6ffa5b2f49782..82a107df293c9b5a8215153c31ef83fa3291a4b2 100644
+index bfc796b1f3a0a48d424fb86f7c0a5cc8fad9c7d2..c2fbc1de6b98a8be2ec35865dcf70c13c4f8eb6d 100644
 --- a/codex-rs/tui/src/app/background_requests.rs
 +++ b/codex-rs/tui/src/app/background_requests.rs
-@@ -11,6 +11,13 @@ use crate::app_event::ConnectorsSnapshot;
+@@ -13,6 +13,13 @@ use crate::app_event::FeedbackReceipt;
  use crate::app_info::app_info_from_api;
  use crate::chatwidget::ThreadUsageOutcome;
  use crate::config_update::format_config_error;
@@ -129,7 +129,7 @@ index 999931d53b9cd9f622ba81589ec6ffa5b2f49782..82a107df293c9b5a8215153c31ef83fa
  use codex_app_server_protocol::AppsListParams;
  use codex_app_server_protocol::AppsListResponse;
  use codex_app_server_protocol::ConsumeAccountRateLimitResetCreditParams;
-@@ -298,7 +305,8 @@ impl App {
+@@ -327,7 +334,8 @@ impl App {
          let request_handle = app_server.request_handle();
          let app_event_tx = self.app_event_tx.clone();
          let plugin_sharing_enabled = self.config.features.enabled(Feature::PluginSharing);

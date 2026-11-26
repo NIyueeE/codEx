@@ -1,4 +1,4 @@
-From 8f8f4821a68279a43c3497621ae1e4acb38e1022 Mon Sep 17 00:00:00 2001
+From 7f830d1ddcf13fa1354c9668ecffaf1c1f30e413 Mon Sep 17 00:00:00 2001
 From: ref <ref@localhost>
 Date: Sat, 3 Oct 2026 03:22:24 +0000
 Subject: update: pure-Rust self-update against fork releases
@@ -9,7 +9,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/app-server-daemon/src/migration.rs   |  193 ---
  .../app-server-daemon/src/prepare_install.rs  |    4 +-
  codex-rs/app-server-daemon/src/update_loop.rs |  770 +--------
- .../src/update_loop_tests.rs                  | 1385 +----------------
+ .../src/update_loop_tests.rs                  | 1391 +----------------
  codex-rs/cli/Cargo.toml                       |    4 +
  codex-rs/cli/src/app_cmd.rs                   |   25 -
  codex-rs/cli/src/daemon_install.rs            |    2 +-
@@ -28,7 +28,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/doctor/desktop_tests.rs      |   97 --
  codex-rs/cli/src/doctor/output.rs             |   54 -
  codex-rs/cli/src/doctor/updates.rs            |  469 +-----
- codex-rs/cli/src/main.rs                      |  478 ++----
+ codex-rs/cli/src/main.rs                      |  494 +++---
  codex-rs/cli/src/plugin_cmd.rs                |   23 +
  codex-rs/cli/src/release_metadata.rs          |  124 ++
  codex-rs/cli/src/remote_control_cmd.rs        |  859 ----------
@@ -36,8 +36,11 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/cli/src/wsl_paths.rs                 |   59 -
  codex-rs/cli/tests/app_server_daemon.rs       |   23 +-
  codex-rs/cli/tests/worktree.rs                |    2 +-
+ codex-rs/tui/src/app.rs                       |    3 -
  codex-rs/tui/src/app/daemon_menu.rs           |   50 +-
  codex-rs/tui/src/app/daemon_menu_tests.rs     |  104 +-
+ codex-rs/tui/src/app/remote_control.rs        |  375 -----
+ codex-rs/tui/src/app/remote_control_tests.rs  |  124 --
  ..._menu__tests__daemon_cli_confirmation.snap |    9 +-
  ...emon_menu__tests__daemon_disconnected.snap |    3 +-
  ..._app__daemon_menu__tests__daemon_menu.snap |    5 +-
@@ -46,7 +49,10 @@ Subject: update: pure-Rust self-update against fork releases
  ...nu__tests__daemon_stable_confirmation.snap |   28 -
  ..._daemon_menu__tests__daemon_unmanaged.snap |    4 +-
  ...on_menu__tests__daemon_unpackaged_cli.snap |    4 +-
+ ...__app__remote_control__tests__rc_menu.snap |   48 -
  ...urn_tips__tests__working_tip_selected.snap |    3 +-
+ codex-rs/tui/src/app/startup.rs               |   10 -
+ codex-rs/tui/src/app/test_support.rs          |    1 -
  .../src/app/tests/active_reconnect_tests.rs   |    7 +
  ...e_reconnect__unavailable_conversation.snap |    2 -
  codex-rs/tui/src/history_cell/notices.rs      |   25 +-
@@ -65,7 +71,7 @@ Subject: update: pure-Rust self-update against fork releases
  codex-rs/utils/cli/src/fork.rs                |   59 +
  codex-rs/utils/cli/src/fork_tests.rs          |   32 +
  codex-rs/utils/cli/src/lib.rs                 |    6 +
- 61 files changed, 1939 insertions(+), 6770 deletions(-)
+ 67 files changed, 1957 insertions(+), 7335 deletions(-)
  delete mode 100644 codex-rs/app-server-daemon/src/manual_update.rs
  delete mode 100644 codex-rs/app-server-daemon/src/migration.rs
  delete mode 100644 codex-rs/cli/src/app_cmd.rs
@@ -83,17 +89,20 @@ Subject: update: pure-Rust self-update against fork releases
  delete mode 100644 codex-rs/cli/src/remote_control_cmd.rs
  create mode 100644 codex-rs/cli/src/self_update.rs
  delete mode 100644 codex-rs/cli/src/wsl_paths.rs
+ delete mode 100644 codex-rs/tui/src/app/remote_control.rs
+ delete mode 100644 codex-rs/tui/src/app/remote_control_tests.rs
  delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_stable_confirmation.snap
+ delete mode 100644 codex-rs/tui/src/app/snapshots/codex_tui__app__remote_control__tests__rc_menu.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__pnpm_update_available_history_cell_snapshot.snap
  delete mode 100644 codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_windows_update_available_history_cell_snapshot.snap
  create mode 100644 codex-rs/utils/cli/src/fork.rs
  create mode 100644 codex-rs/utils/cli/src/fork_tests.rs
 
 diff --git a/codex-rs/app-server-daemon/src/lib.rs b/codex-rs/app-server-daemon/src/lib.rs
-index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01c605f74e 100644
+index ce7d58e04de01a320d60a72c2dc2bebad1f596cd..7dc1da7cae9dc61adee77c9288ee00ed9d27e959 100644
 --- a/codex-rs/app-server-daemon/src/lib.rs
 +++ b/codex-rs/app-server-daemon/src/lib.rs
-@@ -314,15 +314,6 @@ pub fn maintain_stderr_log() -> Result<()> {
+@@ -319,15 +319,6 @@ pub fn maintain_stderr_log() -> Result<()> {
      Ok(())
  }
  
@@ -109,7 +118,7 @@ index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01
  #[cfg(any(unix, windows))]
  fn ensure_supported_platform() -> Result<()> {
      Ok(())
-@@ -876,19 +867,6 @@ impl Daemon {
+@@ -901,19 +892,6 @@ impl Daemon {
          backend::pid_update_loop_backend(self.backend_paths(&settings))
              .stop()
              .await?;
@@ -129,7 +138,7 @@ index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01
          if let Some(backend) = self.running_backend_instance(&settings).await? {
              if let Err(err) = thread_recovery::discard_pending(self) {
                  eprintln!("warning: failed to clear stale daemon recovery before bootstrap: {err}");
-@@ -902,46 +880,6 @@ impl Daemon {
+@@ -927,46 +905,6 @@ impl Daemon {
          backend.start().await?;
          let info = self.wait_until_ready().await?;
          let auto_update_enabled = managed.ensure_managed_updater(&settings).await?;
@@ -176,7 +185,7 @@ index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01
          let managed_codex_version = managed.managed_codex_version_best_effort().await;
          Ok(BootstrapOutput {
              status: BootstrapStatus::Bootstrapped,
-@@ -1081,7 +1019,11 @@ impl Daemon {
+@@ -1106,7 +1044,11 @@ impl Daemon {
  
          let managed_codex_path = self.managed_codex_bin.display();
          Err(anyhow!(
@@ -189,7 +198,7 @@ index 51b9c72e72f8f7bc9ccaeae7659d96fec0e461d3..9a07b1b5b9659a54fde1b05caefb4e01
          ))
      }
  
-@@ -1113,10 +1055,6 @@ impl Daemon {
+@@ -1138,10 +1080,6 @@ impl Daemon {
          }
      }
  
@@ -1588,10 +1597,10 @@ index 344aba56e502dc80abe0dc3bac679f667dc526a1..7bd2c1e833f062644f18b102474ad8f7
  mod tests;
  
 diff --git a/codex-rs/app-server-daemon/src/update_loop_tests.rs b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae61bb5658 100644
+index 97c82480816471b78397c02a4cc9881f7ed6d8b2..819efc4603de1c20e535831ea8912cae61bb5658 100644
 --- a/codex-rs/app-server-daemon/src/update_loop_tests.rs
 +++ b/codex-rs/app-server-daemon/src/update_loop_tests.rs
-@@ -1,1384 +1,27 @@
+@@ -1,1390 +1,27 @@
 -use std::sync::Mutex;
 -#[cfg(unix)]
 -use std::time::Duration;
@@ -1648,7 +1657,7 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -}
 -
 -#[cfg(unix)]
--#[test]
+ #[test]
 -fn updater_reexec_preserves_paths_and_recovers_deleted_working_directory() {
 -    use std::os::unix::ffi::OsStrExt;
 -    use std::os::unix::fs::PermissionsExt;
@@ -1752,7 +1761,7 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -}
 -
 -#[cfg(unix)]
- #[test]
+-#[test]
 -fn updater_reexec_child() {
 -    use std::os::unix::process::CommandExt;
 -
@@ -2100,8 +2109,7 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -            .await
 -            .expect("send response");
 -    });
-+fn unchanged_updater_uses_version_based_restart() {
-     assert_eq!(
+-    assert_eq!(
 -        super::manual_update::request(&daemon)
 -            .await
 -            .expect("request survives handoff"),
@@ -2252,7 +2260,8 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -        .expect("rejected request");
 -    tokio::time::sleep(Duration::from_millis(100)).await;
 -    assert!(!worker.is_finished(), "malformed request stopped updater");
--    assert_eq!(
++fn unchanged_updater_uses_version_based_restart() {
+     assert_eq!(
 -        super::manual_update::request(&daemon)
 -            .await
 -            .expect("unsupported response")
@@ -2415,12 +2424,7 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -    assert_ne!(
 -        std::fs::read(&daemon.pid_file).expect("daemon PID record"),
 -        previous_pid_record
-+        update_modes_for_identities(
-+            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
-+            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
-+        ),
-+        RestartMode::IfVersionChanged
-     );
+-    );
 -    backend.stop().await.expect("stop daemon");
 -    server.abort();
 -}
@@ -2441,6 +2445,17 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -    backend.start().await.unwrap();
 -
 -    tokio::time::pause();
+-    // The process is alive but has no listening socket throughout the first deadline.
+-    let error = daemon.wait_until_ready().await.unwrap_err();
+-    assert_eq!(
+-        crate::telemetry::StartError::from(error).failure_reason(),
+-        "readiness_timeout"
++        update_modes_for_identities(
++            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
++            &executable_identity_from_reader(b"same".as_slice()).expect("executable identity"),
++        ),
++        RestartMode::IfVersionChanged
+     );
 -    let (ready, listener) = tokio::join!(daemon.wait_until_ready(), async {
 -        // Model a cold start that takes longer than the old Linux readiness deadline.
 -        tokio::time::sleep(Duration::from_secs(15)).await;
@@ -2528,8 +2543,8 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -        assert_eq!(restarted.unwrap().status, crate::LifecycleStatus::Restarted);
 -        assert_eq!(args.unwrap(), expected);
 -    }
- }
- 
+-}
+-
 -#[cfg(unix)]
 -#[tokio::test]
 -async fn confirmed_feature_restart_preserves_ownership_and_skips_matching_settings() {
@@ -2602,8 +2617,8 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -#[tokio::test]
 -async fn manual_update_restarts_local_daemon_with_automatic_updates_disabled() {
 -    check_manual_update_restart("app-server-daemon").await;
--}
--
+ }
+ 
 -#[cfg(unix)]
 -async fn check_manual_update_restart(package_directory: &str) {
 -    use tokio::io::AsyncReadExt;
@@ -2991,10 +3006,10 @@ index 3eaf610e3d9e41f136bf87b786a9d18aef29c123..819efc4603de1c20e535831ea8912cae
 -    }
  }
 diff --git a/codex-rs/cli/Cargo.toml b/codex-rs/cli/Cargo.toml
-index ffff79d3312d781d02b959ec36902822c4cb87da..10496b56240da63695ab650a5957520c3d20a35d 100644
+index 0a90b46866eddc8895c3381d622f592dbe7d6e57..42927408842e8f2cad57f476ea9d97c357685011 100644
 --- a/codex-rs/cli/Cargo.toml
 +++ b/codex-rs/cli/Cargo.toml
-@@ -84,6 +84,7 @@ codex-utils-path-uri = { workspace = true }
+@@ -85,6 +85,7 @@ codex-utils-path-uri = { workspace = true }
  codex-utils-redacted-string = { workspace = true }
  codex-websocket-auth = { workspace = true }
  crossterm = { workspace = true, features = ["event-stream"] }
@@ -3002,7 +3017,7 @@ index ffff79d3312d781d02b959ec36902822c4cb87da..10496b56240da63695ab650a5957520c
  futures = { workspace = true }
  http = { workspace = true }
  libc = { workspace = true }
-@@ -92,9 +93,11 @@ owo-colors = { workspace = true }
+@@ -93,9 +94,11 @@ owo-colors = { workspace = true }
  regex-lite = { workspace = true }
  serde = { workspace = true, features = ["derive"] }
  serde_json = { workspace = true }
@@ -3014,7 +3029,7 @@ index ffff79d3312d781d02b959ec36902822c4cb87da..10496b56240da63695ab650a5957520c
  tempfile = { workspace = true }
  tokio = { workspace = true, features = [
      "io-std",
-@@ -120,6 +123,7 @@ tikv-jemallocator = { workspace = true }
+@@ -123,6 +126,7 @@ tikv-jemallocator = { workspace = true }
  codex_windows_sandbox = { package = "codex-windows-sandbox", path = "../windows-sandbox-rs" }
  windows-sys = { workspace = true, features = [
      "Win32_Foundation",
@@ -3848,10 +3863,10 @@ index ab0f757321c806cf8e93e74fff6961c7d442cbd9..00000000000000000000000000000000
 -    }
 -}
 diff --git a/codex-rs/cli/src/doctor.rs b/codex-rs/cli/src/doctor.rs
-index af478a9d12ed2ecc3933ec616a9e9a57b779413e..307b0c33db53c68622002265defa3a56b731b57d 100644
+index dffd3215de1e38bfb64b75d30f74c570e7d4c5d2..4899c366c6542d8945372478fe97703007c2a038 100644
 --- a/codex-rs/cli/src/doctor.rs
 +++ b/codex-rs/cli/src/doctor.rs
-@@ -74,7 +74,6 @@ use serde::Serialize;
+@@ -75,7 +75,6 @@ use serde::Serialize;
  use supports_color::Stream;
  
  mod background;
@@ -3859,7 +3874,7 @@ index af478a9d12ed2ecc3933ec616a9e9a57b779413e..307b0c33db53c68622002265defa3a56
  mod disk;
  mod filesystem_paths;
  mod git;
-@@ -91,10 +90,6 @@ mod updates;
+@@ -92,10 +91,6 @@ mod updates;
  #[cfg(target_os = "windows")]
  mod windows_dev_drive;
  
@@ -3870,7 +3885,7 @@ index af478a9d12ed2ecc3933ec616a9e9a57b779413e..307b0c33db53c68622002265defa3a56
  use background::background_server_check;
  use git::git_check;
  use output::HumanOutputOptions;
-@@ -566,17 +561,6 @@ async fn build_report(
+@@ -567,17 +562,6 @@ async fn build_report(
          }
      }
  
@@ -5903,7 +5918,7 @@ index fbad7d91ce5a95769a8b45412d6178cff08e9577..1e1fd1de3377e617dd8ac59d4cd666ff
          assert_eq!(
              update_action_label(&InstallContext {
 diff --git a/codex-rs/cli/src/main.rs b/codex-rs/cli/src/main.rs
-index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f887f5a12 100644
+index 0e01eab976c245d00608e2dbd71eb239e28dfe4a..2a4171ba89d9760620f6be9b29c554dff066aaae 100644
 --- a/codex-rs/cli/src/main.rs
 +++ b/codex-rs/cli/src/main.rs
 @@ -5,7 +5,6 @@ use clap_complete::Shell;
@@ -5922,12 +5937,13 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  use codex_exec::Cli as ExecCli;
  use codex_exec::Command as ExecCommand;
  use codex_exec::ReviewArgs;
-@@ -51,13 +49,9 @@ use supports_color::Stream;
+@@ -52,14 +50,10 @@ use supports_color::Stream;
  #[global_allocator]
  static ALLOCATOR: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
  
 -#[cfg(any(target_os = "macos", target_os = "windows"))]
 -mod app_cmd;
+ mod app_server_proxy;
  mod config_override_args;
  mod daemon_install;
  mod daemon_telemetry;
@@ -5936,7 +5952,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  mod doctor;
  #[cfg(test)]
  #[path = "exec_args_tests.rs"]
-@@ -72,19 +66,17 @@ mod migrate_nfs_db;
+@@ -74,19 +68,17 @@ mod migrate_nfs_db;
  mod migrate_rollouts;
  mod plugin_cmd;
  mod queue_cmd;
@@ -5958,7 +5974,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  use codex_exec_server_cli::ExecServerCommand;
  use doctor::DoctorCommand;
  use state_db_recovery as local_state_db;
-@@ -109,13 +101,17 @@ use codex_protocol::protocol::AskForApproval;
+@@ -112,13 +104,17 @@ use codex_protocol::protocol::AskForApproval;
  use codex_protocol::user_input::UserInput;
  use codex_terminal_detection::TerminalName;
  
@@ -5978,7 +5994,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      // If a sub‑command is given, ignore requirements of the default args.
      subcommand_negates_reqs = true,
      // The executable is sometimes invoked via a platform‑specific name like
-@@ -141,6 +137,14 @@ struct MultitoolCli {
+@@ -144,6 +140,14 @@ struct MultitoolCli {
      subcommand: Option<Subcommand>,
  }
  
@@ -5993,7 +6009,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  #[derive(Debug, clap::Subcommand)]
  enum Subcommand {
      /// Open the agent command center to browse and switch sessions.
-@@ -171,18 +175,11 @@ enum Subcommand {
+@@ -179,18 +183,11 @@ enum Subcommand {
      /// [experimental] Run the app server or related tooling.
      AppServer(AppServerCommand),
  
@@ -6014,7 +6030,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  
      /// Diagnose local Codex installation, config, auth, and runtime health.
      Doctor(DoctorCommand),
-@@ -225,10 +222,6 @@ enum Subcommand {
+@@ -233,10 +230,6 @@ enum Subcommand {
      /// Fork a previous interactive session (picker by default; use --last to fork the most recent).
      Fork(ForkCommand),
  
@@ -6025,7 +6041,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      /// Internal: run the responses API proxy.
      #[clap(hide = true)]
      ResponsesApiProxy(ResponsesApiProxyArgs),
-@@ -667,7 +660,11 @@ enum AppServerDaemonSubcommand {
+@@ -679,7 +672,11 @@ enum AppServerDaemonSubcommand {
      /// Restart the local app server daemon.
      Restart,
  
@@ -6038,7 +6054,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      Update {
          /// Copy and pin this CLI package.
          #[arg(long)]
-@@ -677,12 +674,6 @@ enum AppServerDaemonSubcommand {
+@@ -689,12 +686,6 @@ enum AppServerDaemonSubcommand {
          yes: bool,
      },
  
@@ -6051,7 +6067,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      /// Stop the local app server daemon.
      Stop,
  
-@@ -761,7 +752,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
+@@ -766,7 +757,7 @@ fn parse_socket_path(raw: &str) -> Result<AbsolutePathBuf, String> {
  }
  
  /// Handle the app exit and print the results. Optionally run the update action.
@@ -6060,7 +6076,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      exit_info: AppExitInfo,
      cli_executable: Option<&std::path::Path>,
  ) -> anyhow::Result<()> {
-@@ -785,99 +776,56 @@ fn handle_app_exit(
+@@ -794,99 +785,56 @@ fn handle_app_exit(
          std::process::exit(1);
      }
      if let Some(action) = update_action {
@@ -6194,7 +6210,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      #[cfg(debug_assertions)]
      {
          anyhow::bail!(
-@@ -889,10 +837,10 @@ fn run_update_command() -> anyhow::Result<()> {
+@@ -898,10 +846,10 @@ fn run_update_command() -> anyhow::Result<()> {
      {
          let Some(action) = codex_tui::get_update_action() else {
              anyhow::bail!(
@@ -6207,7 +6223,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      }
  }
  
-@@ -1097,6 +1045,9 @@ async fn dispatch_cli(
+@@ -1123,6 +1071,9 @@ async fn dispatch_cli(
          .shared
          .take_auto_review_config_overrides(&mut root_config_overrides);
      reject_root_strict_config_for_subcommand(root_strict_config, &subcommand)?;
@@ -6217,7 +6233,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      if let Some(subcommand) = subcommand.as_ref() {
          profile_v2_for_subcommand(&interactive, subcommand)?;
      }
-@@ -1104,7 +1055,7 @@ async fn dispatch_cli(
+@@ -1130,7 +1081,7 @@ async fn dispatch_cli(
      let launch_tui = move |interactive, remote, auth_token_env, arg0_paths| async move {
          let exit_info =
              run_interactive_tui(interactive, remote, auth_token_env, arg0_paths).await?;
@@ -6226,9 +6242,9 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      };
      let open_agents_overview = matches!(&subcommand, Some(Subcommand::Agents(_)));
      match subcommand {
-@@ -1374,10 +1325,17 @@ async fn dispatch_cli(
-                         })
-                         .await?;
+@@ -1442,10 +1393,17 @@ async fn dispatch_cli(
+                         };
+                         print_app_server_daemon_output(command).await?;
                      }
 -                    AppServerDaemonSubcommand::Update {
 -                        from_cli: true,
@@ -6248,7 +6264,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
                          let result = codex_app_server_daemon::update_from_cli(|request| {
                              daemon_install::confirm_install(request, yes)
                          })
-@@ -1393,31 +1351,13 @@ async fn dispatch_cli(
+@@ -1461,31 +1419,13 @@ async fn dispatch_cli(
                              println!("{}", serde_json::to_string(&output)?);
                          }
                      }
@@ -6282,7 +6298,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
                          ..
                      } => {
                          let cli_overrides = root_config_overrides
-@@ -1429,36 +1369,15 @@ async fn dispatch_cli(
+@@ -1497,36 +1437,15 @@ async fn dispatch_cli(
                              .await
                              .map_err(anyhow::Error::from);
                          let http_client_factory = updater_http_client_factory(config)?;
@@ -6328,7 +6344,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
                      }
                  },
                  Some(AppServerSubcommand::Proxy(proxy_cli)) => {
-@@ -1493,30 +1412,6 @@ async fn dispatch_cli(
+@@ -1561,30 +1480,6 @@ async fn dispatch_cli(
                  }
              }
          }
@@ -6359,7 +6375,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
          Some(Subcommand::Resume(ResumeCommand {
              session_id,
              last,
-@@ -1702,13 +1597,13 @@ async fn dispatch_cli(
+@@ -1783,13 +1678,13 @@ async fn dispatch_cli(
              )?;
              print_completion(completion_cli);
          }
@@ -6375,7 +6391,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
          }
          Some(Subcommand::Doctor(doctor_cli)) => {
              reject_remote_mode_for_subcommand(
-@@ -1724,19 +1619,6 @@ async fn dispatch_cli(
+@@ -1805,19 +1700,6 @@ async fn dispatch_cli(
              )
              .await?;
          }
@@ -6395,7 +6411,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
          Some(Subcommand::Sandbox(SandboxCommand {
              host: mut sandbox_cli,
              subcommand,
-@@ -2305,6 +2187,24 @@ fn reject_unsupported_worktree_for_subcommand(
+@@ -2391,6 +2273,24 @@ fn reject_unsupported_worktree_for_subcommand(
      }
  }
  
@@ -6420,7 +6436,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
  fn reject_root_strict_config_for_subcommand(
      strict_config: bool,
      subcommand: &Option<Subcommand>,
-@@ -2353,18 +2253,14 @@ fn unsupported_subcommand_name_for_strict_config(
+@@ -2439,19 +2339,15 @@ fn unsupported_subcommand_name_for_strict_config(
          Some(Subcommand::AppServer(app_server)) => {
              Some(app_server_subcommand_name(app_server.subcommand.as_ref()))
          }
@@ -6432,6 +6448,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
 -        #[cfg(any(target_os = "macos", target_os = "windows"))]
 -        Some(Subcommand::App(_)) => Some("app"),
          Some(Subcommand::Login(_)) => Some("login"),
+         Some(Subcommand::GitCredential(_)) => Some("git-credential"),
          Some(Subcommand::Logout(_)) => Some("logout"),
          Some(Subcommand::Completion(_)) => Some("completion"),
 -        Some(Subcommand::Update) => Some("update"),
@@ -6440,7 +6457,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
          Some(Subcommand::Sandbox(_)) => Some("sandbox"),
          Some(Subcommand::Debug(_)) => Some("debug"),
          Some(Subcommand::Execpolicy(_)) => Some("execpolicy"),
-@@ -2416,12 +2312,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
+@@ -2502,12 +2398,6 @@ fn app_server_subcommand_name(subcommand: Option<&AppServerSubcommand>) -> &'sta
              AppServerDaemonSubcommand::Start => "app-server daemon start",
              AppServerDaemonSubcommand::Restart => "app-server daemon restart",
              AppServerDaemonSubcommand::Update { .. } => "app-server daemon update",
@@ -6453,7 +6470,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
              AppServerDaemonSubcommand::Stop => "app-server daemon stop",
              AppServerDaemonSubcommand::Version => "app-server daemon version",
              AppServerDaemonSubcommand::PidUpdateLoop { .. } => "app-server daemon pid-update-loop",
-@@ -2449,14 +2339,6 @@ fn updater_http_client_factory(
+@@ -2535,12 +2425,24 @@ fn updater_http_client_factory(
      Ok(config.http_client_factory())
  }
  
@@ -6463,12 +6480,28 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
 -    let output = codex_app_server_daemon::set_remote_control(mode).await?;
 -    println!("{}", serde_json::to_string(&output)?);
 -    Ok(())
--}
--
- fn read_remote_auth_token_from_env_var_with<F>(
-     env_var_name: &str,
-     get_var: F,
-@@ -2802,52 +2684,6 @@ mod tests {
++fn read_remote_auth_token_from_env_var_with<F>(
++    env_var_name: &str,
++    get_var: F,
++) -> anyhow::Result<String>
++where
++    F: FnOnce(&str) -> Result<String, std::env::VarError>,
++{
++    let auth_token = get_var(env_var_name)
++        .map_err(|_| anyhow::anyhow!("environment variable `{env_var_name}` is not set"))?;
++    let auth_token = auth_token.trim().to_string();
++    if auth_token.is_empty() {
++        anyhow::bail!("environment variable `{env_var_name}` is empty");
++    }
++    Ok(auth_token)
++}
++
++fn read_remote_auth_token_from_env_var(env_var_name: &str) -> anyhow::Result<String> {
++    read_remote_auth_token_from_env_var_with(env_var_name, |name| std::env::var(name))
+ }
+ 
+ async fn run_interactive_tui(
+@@ -2833,52 +2735,6 @@ mod tests {
          assert!(size < 64 * 1024, "interactive TUI future is {size} bytes");
      }
  
@@ -6521,7 +6554,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      #[tokio::test]
      async fn updater_http_client_factory_honors_respect_system_proxy() {
          let codex_home = tempfile::tempdir().expect("temporary Codex home");
-@@ -3590,7 +3426,24 @@ enabled = true
+@@ -3607,7 +3463,24 @@ enabled = true
      #[test]
      fn update_parses_as_update_subcommand() {
          let cli = MultitoolCli::try_parse_from(["codex", "update"]).expect("parse");
@@ -6547,7 +6580,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      }
  
      #[test]
-@@ -4367,17 +4220,17 @@ enabled = true
+@@ -4404,17 +4277,17 @@ enabled = true
              "`--strict-config` is not supported for `codex mcp`"
          );
  
@@ -6568,7 +6601,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
          );
      }
  
-@@ -4398,31 +4251,31 @@ enabled = true
+@@ -4435,31 +4308,31 @@ enabled = true
      }
  
      #[test]
@@ -6623,7 +6656,7 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
      }
  
      #[test]
-@@ -4737,24 +4590,17 @@ enabled = true
+@@ -4746,24 +4619,17 @@ enabled = true
                  subcommand: AppServerDaemonSubcommand::Restart
              }))
          ));
@@ -6660,10 +6693,10 @@ index 1c3fe17c1cfb536c5402453f6efabd87548ea1e9..8e3a3a76752bb33e7746922267f8805f
              app_server_from_args(["codex", "app-server", "daemon", "stop"].as_ref()).subcommand,
              Some(AppServerSubcommand::Daemon(AppServerDaemonCommand {
 diff --git a/codex-rs/cli/src/plugin_cmd.rs b/codex-rs/cli/src/plugin_cmd.rs
-index e32c1d8d1933a7415a5fb4e331859e5cbdae3bbd..4753e3411eb082f50ddfe7231bfcfa0608f9aec1 100644
+index 2b14c8e30306c3098b4199797508b0ee9ffd4669..d3034f4912688cc74ce2b877397805bd381aa554 100644
 --- a/codex-rs/cli/src/plugin_cmd.rs
 +++ b/codex-rs/cli/src/plugin_cmd.rs
-@@ -45,6 +45,13 @@ use std::sync::Arc;
+@@ -46,6 +46,13 @@ use std::sync::Arc;
  
  use crate::marketplace_cmd::MarketplaceCli;
  
@@ -6677,8 +6710,8 @@ index e32c1d8d1933a7415a5fb4e331859e5cbdae3bbd..4753e3411eb082f50ddfe7231bfcfa06
  const OPENAI_BUNDLED_ALPHA_MARKETPLACE_NAME: &str = "openai-bundled-alpha";
  const OPENAI_PRIMARY_RUNTIME_MARKETPLACE_NAME: &str = "openai-primary-runtime";
  
-@@ -691,6 +698,10 @@ pub async fn run_plugin_remove(
-     let selection = parse_plugin_selection(plugin, marketplace_name)?;
+@@ -692,6 +699,10 @@ pub async fn run_plugin_remove(
+     let context = load_plugin_command_context(overrides, Some(&selection.marketplace_name)).await?;
  
      if selection.marketplace_name == REMOTE_GLOBAL_MARKETPLACE_NAME {
 +        ensure!(
@@ -6688,7 +6721,7 @@ index e32c1d8d1933a7415a5fb4e331859e5cbdae3bbd..4753e3411eb082f50ddfe7231bfcfa06
          ensure!(
              context.plugins_input.plugins_enabled,
              "remote plugins are not enabled"
-@@ -846,6 +857,18 @@ async fn fetch_remote_marketplaces(
+@@ -853,6 +864,18 @@ async fn fetch_remote_marketplaces(
      marketplace_name: Option<&str>,
      cache_mode: RemotePluginCatalogCacheMode,
  ) -> Result<RemoteMarketplaceListing> {
@@ -8931,7 +8964,7 @@ index b90dc1e2836dfec354f2dd8706307d52c5f96bf4..00000000000000000000000000000000
 -    }
 -}
 diff --git a/codex-rs/cli/tests/app_server_daemon.rs b/codex-rs/cli/tests/app_server_daemon.rs
-index 72b10fa51b3b73615a5070f22977d00bdc2d7c34..02a8b53b62fb7cf0aca41da1ea769956794e4952 100644
+index 4a1b4c3499eb8f21944d8221626d4a0e3bfa8d60..c5ba0b74d8a3e378bce75ae8d168edd2da77b3b6 100644
 --- a/codex-rs/cli/tests/app_server_daemon.rs
 +++ b/codex-rs/cli/tests/app_server_daemon.rs
 @@ -19,6 +19,25 @@ use anyhow::ensure;
@@ -8960,7 +8993,7 @@ index 72b10fa51b3b73615a5070f22977d00bdc2d7c34..02a8b53b62fb7cf0aca41da1ea769956
  #[test]
  fn managed_daemon_restarts_from_deleted_working_directory() -> Result<()> {
      let daemon = TestDaemon::new()?;
-@@ -524,7 +543,7 @@ fn unmanaged_app_server_does_not_launch_updater() -> Result<()> {
+@@ -561,7 +580,7 @@ fn unmanaged_app_server_does_not_launch_updater() -> Result<()> {
      let output = daemon.lifecycle("start")?;
      assert_eq!(output["status"], "alreadyRunning");
      assert_eq!(output["backend"], Value::Null);
@@ -8969,7 +9002,7 @@ index 72b10fa51b3b73615a5070f22977d00bdc2d7c34..02a8b53b62fb7cf0aca41da1ea769956
      assert!(
          !daemon
              .home
-@@ -545,7 +564,7 @@ fn manual_update_rejects_an_unowned_installation() -> Result<()> {
+@@ -582,7 +601,7 @@ fn manual_update_rejects_an_unowned_installation() -> Result<()> {
              .join("packages/standalone/current/bin/codex"),
      )?;
  
@@ -8979,7 +9012,7 @@ index 72b10fa51b3b73615a5070f22977d00bdc2d7c34..02a8b53b62fb7cf0aca41da1ea769956
      assert!(daemon.pid("app-server-updater.pid").is_err());
      Ok(())
 diff --git a/codex-rs/cli/tests/worktree.rs b/codex-rs/cli/tests/worktree.rs
-index 13b6914968de2dd8789641a146d0353077825c6c..5f1195ddac703fde9b2e336b9de622e72440045b 100644
+index cff2b8fe0f64182a748375e52a1646e53a749e7c..37dac2b78923df03df4e76248a32be4a8f4c8a26 100644
 --- a/codex-rs/cli/tests/worktree.rs
 +++ b/codex-rs/cli/tests/worktree.rs
 @@ -611,7 +611,7 @@ trust_level = "trusted"
@@ -8991,11 +9024,32 @@ index 13b6914968de2dd8789641a146d0353077825c6c..5f1195ddac703fde9b2e336b9de622e7
                      ("\r", "Update and exit"),
                      ("\x1b[B\r", "Updating the local background server..."),
                  ] {
+diff --git a/codex-rs/tui/src/app.rs b/codex-rs/tui/src/app.rs
+index 766afaa4fc09f4dbe854d5a36651053ef49ba1a2..1f4e23093a5d206569d64df2ec4b710b07c57fbb 100644
+--- a/codex-rs/tui/src/app.rs
++++ b/codex-rs/tui/src/app.rs
+@@ -248,7 +248,6 @@ mod misalignment_policy;
+ mod model_defaults;
+ mod new_session;
+ mod quick_dials;
+-pub(crate) mod remote_control;
+ mod turn_tips;
+ pub(crate) use new_session::has_launch_setting;
+ mod archived_thread;
+@@ -643,8 +642,6 @@ pub(crate) struct App {
+     pub(crate) pending_update_action: Option<UpdateAction>,
+     /// Retained through all loop exits so shutdown cannot interrupt stop followed by start.
+     daemon_restart: Option<JoinHandle<anyhow::Result<codex_app_server_daemon::LifecycleOutput>>>,
+-    remote_control_pending: bool,
+-
+     /// Tracks the thread we intentionally shut down while exiting the app.
+     ///
+     /// When this matches the active thread, its `ShutdownComplete` should lead to
 diff --git a/codex-rs/tui/src/app/daemon_menu.rs b/codex-rs/tui/src/app/daemon_menu.rs
-index ada9e88080288debba15945286061c6b14c56103..929cf6bfba588194edd24375d0627baffae7bc67 100644
+index 66026d744000ef6fac9fe7b625b80c4d2c497c11..100bfe0042003ae8d73d1a9d51a249a213bb1c4a 100644
 --- a/codex-rs/tui/src/app/daemon_menu.rs
 +++ b/codex-rs/tui/src/app/daemon_menu.rs
-@@ -71,28 +71,23 @@ impl App {
+@@ -79,28 +79,23 @@ impl App {
              .package_layout
              .is_some()
          });
@@ -9041,7 +9095,7 @@ index ada9e88080288debba15945286061c6b14c56103..929cf6bfba588194edd24375d0627baf
          items.push(SelectionItem {
              name: "Restart background server".to_string(),
              is_disabled: !self
-@@ -164,12 +159,17 @@ impl App {
+@@ -175,12 +170,17 @@ impl App {
              return;
          }
          let mut explanation = match source {
@@ -9063,7 +9117,7 @@ index ada9e88080288debba15945286061c6b14c56103..929cf6bfba588194edd24375d0627baf
          };
          explanation.push_str("\nThis may restart the daemon and interrupt active or queued work.\nCodex exits to update in this terminal. Relaunch it afterward.");
 diff --git a/codex-rs/tui/src/app/daemon_menu_tests.rs b/codex-rs/tui/src/app/daemon_menu_tests.rs
-index 0498495092a94fe97b683f199f01501e9bde21f5..871526ae4176d1984dca1876e404cb041f5867a4 100644
+index 473d52b66361a91a3b454a218ea35003f2420368..9fb82df1e4c3668452578746a11d8fcf70e92479 100644
 --- a/codex-rs/tui/src/app/daemon_menu_tests.rs
 +++ b/codex-rs/tui/src/app/daemon_menu_tests.rs
 @@ -91,29 +91,19 @@ async fn daemon_menu_is_read_only_and_confirmation_can_cancel_or_handoff() {
@@ -9219,8 +9273,519 @@ index 0498495092a94fe97b683f199f01501e9bde21f5..871526ae4176d1984dca1876e404cb04
  
      app.daemon_cli_executable = None;
      app.open_daemon_menu();
+diff --git a/codex-rs/tui/src/app/remote_control.rs b/codex-rs/tui/src/app/remote_control.rs
+deleted file mode 100644
+index cf39e3778b22dbe3add905142cb37ce355dd8a5e..0000000000000000000000000000000000000000
+--- a/codex-rs/tui/src/app/remote_control.rs
++++ /dev/null
+@@ -1,375 +0,0 @@
+-//! Remote control configures the entire local daemon. Device pairing is a separate action,
+-//! and pairing codes are redacted from event diagnostics.
+-
+-use super::App;
+-use super::backend_sessions::BackendSessions;
+-use crate::app_event::AppEvent;
+-use crate::app_server_session::AppServerSession;
+-use crate::backend_id::BackendId;
+-use crate::bottom_pane::SelectionItem;
+-use crate::bottom_pane::SelectionViewParams;
+-use codex_app_server_protocol::ClientRequest;
+-use codex_app_server_protocol::RemoteControlConnectionStatus;
+-use codex_app_server_protocol::RemoteControlPairingStartParams;
+-use codex_app_server_protocol::RemoteControlPairingStartResponse;
+-use std::time::Duration;
+-
+-const OPERATION_TIMEOUT: Duration = Duration::from_secs(/*secs*/ 30);
+-
+-#[derive(Debug, Clone, Copy)]
+-pub(crate) enum Action {
+-    Menu,
+-    Enable,
+-    Disable,
+-    AddDevice,
+-}
+-
+-pub(crate) enum Outcome {
+-    Menu(RemoteControlConnectionStatus, Option<bool>),
+-    Unavailable(String),
+-    Pairing(String),
+-    Info(String),
+-    Error(String),
+-}
+-
+-impl std::fmt::Debug for Outcome {
+-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+-        match self {
+-            Self::Menu(status, saved) => f.debug_tuple("Menu").field(status).field(saved).finish(),
+-            Self::Unavailable(reason) => f.debug_tuple("Unavailable").field(reason).finish(),
+-            Self::Pairing(_) => f.write_str("Pairing([redacted])"),
+-            Self::Info(_) => f.write_str("Info([redacted])"),
+-            Self::Error(_) => f.write_str("Error([redacted])"),
+-        }
+-    }
+-}
+-
+-fn pairing(code: String) -> SelectionViewParams {
+-    SelectionViewParams {
+-        title: Some("Add device".into()),
+-        subtitle: Some(format!(
+-            "Enter this pairing code on your other device: {code}. If it expires, select Add device again."
+-        )),
+-        allow_input_when_disconnected: true,
+-        items: vec![SelectionItem {
+-            name: "Done".into(),
+-            dismiss_on_select: true,
+-            ..Default::default()
+-        }],
+-        ..SelectionViewParams::picker()
+-    }
+-}
+-
+-fn menu(
+-    connection: Option<(BackendId, RemoteControlConnectionStatus, Option<bool>)>,
+-    unavailable: &str,
+-) -> SelectionViewParams {
+-    let status = connection.map(|(_, status, _)| status);
+-    let enabled = status.is_some_and(|status| status != RemoteControlConnectionStatus::Disabled);
+-    let retry_disable = !enabled && connection.is_some_and(|(_, _, saved)| saved != Some(false));
+-    let (name, action) = if enabled || retry_disable {
+-        ("Disable", Action::Disable)
+-    } else if status.is_none() {
+-        ("Enable (disabled)", Action::Enable)
+-    } else {
+-        ("Enable", Action::Enable)
+-    };
+-    SelectionViewParams {
+-        title: Some("Remote control".into()),
+-        allow_input_when_disconnected: true,
+-        subtitle: Some(match status {
+-            None => unavailable.into(),
+-            Some(_) if retry_disable => "Remote control is off now, but may return after restart. Choose Disable to save the preference.".into(),
+-            Some(_) => "Applies to local sessions; cloud sessions are unaffected.".into(),
+-        }),
+-        items: [
+-            (name, action, None),
+-            (
+-                "Add device",
+-                Action::AddDevice,
+-                (!enabled).then(|| "Enable remote control first".into()),
+-            ),
+-        ]
+-        .into_iter()
+-        .take(if status.is_some() { 2 } else { 1 })
+-        .map(|(name, action, disabled_reason)| SelectionItem {
+-            name: name.into(),
+-            disabled_reason,
+-            is_disabled: status.is_none(),
+-            actions: vec![Box::new(move |tx| {
+-                if let Some((backend_id, _, _)) = connection {
+-                    tx.send(AppEvent::RemoteControlForBackend { backend_id, action });
+-                }
+-            })],
+-            dismiss_on_select: true,
+-            ..Default::default()
+-        })
+-        .collect(),
+-        ..SelectionViewParams::picker()
+-    }
+-}
+-
+-fn local_daemon<'a>(
+-    app: &App,
+-    backends: &'a BackendSessions,
+-) -> Option<(&'a AppServerSession, std::path::PathBuf)> {
+-    let (owner, target) = match &app.app_server_target {
+-        target @ crate::AppServerTarget::LocalDaemon { .. } => (backends.displayed_owner(), target),
+-        crate::AppServerTarget::Cloud => {
+-            backends.settings.iter().find_map(|(&owner, settings)| {
+-                matches!(settings.target, crate::AppServerTarget::LocalDaemon { .. })
+-                    .then_some((owner, &settings.target))
+-            })?
+-        }
+-        _ => return None,
+-    };
+-    let crate::AppServerTarget::LocalDaemon {
+-        endpoint: crate::RemoteAppServerEndpoint::UnixSocket { socket_path },
+-        ..
+-    } = target
+-    else {
+-        return None;
+-    };
+-    backends
+-        .session(owner)
+-        .map(|session| (session, socket_path.to_path_buf()))
+-}
+-
+-pub(super) fn handle(app: &mut App, backends: &BackendSessions, event: AppEvent) {
+-    let daemon = local_daemon(app, backends);
+-    let (action, requested_owner) = match event {
+-        AppEvent::RemoteControl(action) => (action, None),
+-        AppEvent::RemoteControlForBackend { backend_id, action } => (action, Some(backend_id)),
+-        AppEvent::RemoteControlFinished { backend_id, result } => {
+-            app.remote_control_pending = false;
+-            if daemon
+-                .as_ref()
+-                .is_some_and(|(session, _)| session.backend_id() == backend_id)
+-            {
+-                match result {
+-                    Outcome::Menu(status, saved) => app
+-                        .chat_widget
+-                        .show_selection_view(menu(Some((backend_id, status, saved)), "")),
+-                    Outcome::Unavailable(reason) => {
+-                        app.chat_widget
+-                            .show_selection_view(menu(/*connection*/ None, &reason))
+-                    }
+-                    Outcome::Pairing(code) => app.chat_widget.show_selection_view(pairing(code)),
+-                    Outcome::Info(message) => {
+-                        app.chat_widget.add_info_message(message, /*hint*/ None)
+-                    }
+-                    Outcome::Error(message) => app.chat_widget.add_error_message(message),
+-                }
+-            }
+-            return;
+-        }
+-        _ => return,
+-    };
+-    let Some((daemon, endpoint)) = daemon
+-        .filter(|(session, _)| requested_owner.is_none_or(|owner| session.backend_id() == owner))
+-    else {
+-        if matches!(action, Action::Menu) {
+-            app.chat_widget.show_selection_view(menu(
+-                /*connection*/ None,
+-                "Remote control requires the local background server",
+-            ));
+-        } else {
+-            app.chat_widget
+-                .add_error_message("Remote control requires the local background server.".into());
+-        }
+-        return;
+-    };
+-    if app.remote_control_pending {
+-        app.chat_widget.add_error_message(
+-            "A remote control operation is already in progress. Try again when it finishes.".into(),
+-        );
+-        return;
+-    }
+-    app.remote_control_pending = true;
+-    let backend_id = daemon.backend_id();
+-    let tx = app.app_event_tx.app_event_tx.clone();
+-    tokio::spawn(async move {
+-        let operation = async {
+-            match verified_daemon_session(endpoint.as_path(), backend_id).await {
+-                Ok((session, settings_file)) => {
+-                    let mut result = run(session, action).await;
+-                    let expected = match (&action, &result) {
+-                        (Action::Enable, Outcome::Menu(..)) => Some(true),
+-                        (Action::Disable, Outcome::Info(_)) => Some(false),
+-                        _ => None,
+-                    };
+-                    if expected.is_some() || matches!(result, Outcome::Menu(..)) {
+-                        let saved = match tokio::fs::read(&settings_file).await {
+-                            Ok(bytes) => serde_json::from_slice::<serde_json::Value>(&bytes)
+-                                .ok()
+-                                .and_then(|value| {
+-                                    value
+-                                        .get("remoteControlEnabled")
+-                                        .map_or(Some(false), serde_json::Value::as_bool)
+-                                }),
+-                            Err(err) if err.kind() == std::io::ErrorKind::NotFound => Some(false),
+-                            Err(_) => None,
+-                        };
+-                        if let Outcome::Menu(_, preference) = &mut result {
+-                            *preference = saved;
+-                        }
+-                        if let Some(expected) = expected
+-                            && saved != Some(expected)
+-                        {
+-                            return Outcome::Error("Remote control changed for the running daemon, but the preference could not be saved. It may revert after restart.".into());
+-                        }
+-                    }
+-                    result
+-                }
+-                Err(reason) if matches!(action, Action::Menu) => Outcome::Unavailable(reason),
+-                Err(reason) => Outcome::Error(reason),
+-            }
+-        };
+-        let result = bounded(action, operation).await;
+-        let _ = tx.send(AppEvent::RemoteControlFinished { backend_id, result });
+-    });
+-}
+-
+-async fn bounded(action: Action, operation: impl std::future::Future<Output = Outcome>) -> Outcome {
+-    tokio::time::timeout(OPERATION_TIMEOUT, operation)
+-        .await
+-        .unwrap_or_else(|_| match action {
+-            Action::Menu => Outcome::Error("Remote control status timed out. Try again.".into()),
+-            Action::Enable | Action::Disable | Action::AddDevice => Outcome::Error(
+-                "The remote control operation timed out. Its outcome is unknown; reopen /rc to check the state.".into(),
+-            ),
+-        })
+-}
+-
+-async fn verified_daemon_session(
+-    endpoint: &std::path::Path,
+-    backend_id: BackendId,
+-) -> Result<(AppServerSession, std::path::PathBuf), String> {
+-    let status = codex_app_server_daemon::run(codex_app_server_daemon::LifecycleCommand::Version)
+-        .await
+-        .map_err(|_| {
+-            "Codex could not verify that it manages the local background server.".to_string()
+-        })?;
+-    let Some(protected) =
+-        codex_app_server_client::verified_local_daemon_socket(&status.socket_path)
+-            .ok()
+-            .flatten()
+-    else {
+-        return Err("Codex could not verify that it manages the local background server.".into());
+-    };
+-    if status.backend.is_none() || endpoint != status.socket_path && endpoint != protected.as_path()
+-    {
+-        return Err("Codex could not verify that it manages the local background server.".into());
+-    }
+-    let target = crate::AppServerTarget::LocalDaemon {
+-        endpoint: crate::RemoteAppServerEndpoint::UnixSocket {
+-            socket_path: protected,
+-        },
+-        allow_embedded_fallback: false,
+-    };
+-    let client = crate::app_server_connection::connect(&target)
+-        .await
+-        .map_err(|err| {
+-            format!("Could not connect to the verified local background server: {err}")
+-        })?;
+-    let session = AppServerSession::new(
+-        backend_id,
+-        client,
+-        crate::app_server_session::ThreadParamsMode::Embedded,
+-    );
+-    let supported = session
+-        .server_version()
+-        .and_then(|v| semver::Version::parse(v).ok())
+-        .is_some_and(|v| {
+-            v == semver::Version::new(0, 0, 0)
+-                || semver::Version::parse("0.163.0-alpha.2").is_ok_and(|minimum| v >= minimum)
+-        });
+-    if !supported {
+-        return Err(
+-            "Update the background server with /daemon to use persistent remote control.".into(),
+-        );
+-    }
+-    let home = status
+-        .socket_path
+-        .parent()
+-        .and_then(std::path::Path::parent)
+-        .ok_or_else(|| "Could not locate background server settings.".to_string())?;
+-    Ok((session, home.join("app-server-daemon/settings.json")))
+-}
+-
+-async fn run(mut session: AppServerSession, action: Action) -> Outcome {
+-    let request_id = session.next_request_id();
+-    let request = match action {
+-        Action::Menu => ClientRequest::RemoteControlStatusRead {
+-            request_id,
+-            params: None,
+-        },
+-        Action::Enable => ClientRequest::RemoteControlEnable {
+-            request_id,
+-            params: None,
+-        },
+-        Action::Disable => ClientRequest::RemoteControlDisable {
+-            request_id,
+-            params: None,
+-        },
+-        Action::AddDevice => ClientRequest::RemoteControlPairingStart {
+-            request_id,
+-            params: RemoteControlPairingStartParams { manual_code: true },
+-        },
+-    };
+-    let handle = session.request_handle();
+-    if matches!(action, Action::AddDevice) {
+-        return match handle
+-            .request_typed::<RemoteControlPairingStartResponse>(request)
+-            .await
+-        {
+-            Ok(response) => response.manual_pairing_code.map_or_else(
+-                || Outcome::Error("No manual pairing code was returned.".into()),
+-                Outcome::Pairing,
+-            ),
+-            Err(_) => Outcome::Error("Could not add device. Try again.".into()),
+-        };
+-    }
+-    #[derive(serde::Deserialize)]
+-    struct Status {
+-        status: RemoteControlConnectionStatus,
+-    }
+-    let status = handle.request_typed::<Status>(request).await;
+-    match (action, status) {
+-        (Action::Menu | Action::Enable, Ok(response)) => Outcome::Menu(response.status, None),
+-        (Action::Disable, Ok(_)) => Outcome::Info(
+-            "Remote control is disabled for local sessions. Cloud sessions are unaffected.".into(),
+-        ),
+-        (Action::Menu, Err(codex_app_server_client::TypedRequestError::Server { source, .. }))
+-            if source.message == "remote control is disabled by managed requirements" =>
+-        {
+-            Outcome::Unavailable("Remote control is disabled by managed requirements.".into())
+-        }
+-        (Action::Menu, Err(_)) => Outcome::Error("Could not read remote control status.".into()),
+-        (Action::Enable, Err(err)) => Outcome::Error(mutation_error("enabling", err)),
+-        (Action::Disable, Err(err)) => Outcome::Error(mutation_error("disabling", err)),
+-        (Action::AddDevice, _) => unreachable!(),
+-    }
+-}
+-
+-fn mutation_error(operation: &str, err: codex_app_server_client::TypedRequestError) -> String {
+-    if let codex_app_server_client::TypedRequestError::Server { source, .. } = err {
+-        match source.message.as_str() {
+-            "remote control requires ChatGPT authentication"
+-            | "remote control requires ChatGPT authentication; API key auth is not supported" => {
+-                return "Sign in with ChatGPT to manage remote control.".into();
+-            }
+-            "remote control is disabled by managed requirements" => {
+-                return "Remote control is disabled by managed requirements.".into();
+-            }
+-            _ => {}
+-        }
+-    }
+-    format!(
+-        "Could not complete {operation} remote control. The running daemon may already have changed; reopen /rc to check its state."
+-    )
+-}
+-
+-#[cfg(test)]
+-#[path = "remote_control_tests.rs"]
+-mod tests;
+diff --git a/codex-rs/tui/src/app/remote_control_tests.rs b/codex-rs/tui/src/app/remote_control_tests.rs
+deleted file mode 100644
+index 785f4adf08bf7b4e4bbfb24f3ea1462473bdd198..0000000000000000000000000000000000000000
+--- a/codex-rs/tui/src/app/remote_control_tests.rs
++++ /dev/null
+@@ -1,124 +0,0 @@
+-#![cfg(test)]
+-
+-use super::*;
+-use crate::app_server_session::ThreadParamsMode;
+-use crate::chatwidget::tests::helpers::render_bottom_popup;
+-use crate::chatwidget::tests::make_chatwidget_manual_with_sender;
+-use codex_app_server_client::AppServerClient;
+-use codex_app_server_client::CloudClient;
+-use codex_app_server_client::CloudOperation;
+-use pretty_assertions::assert_eq;
+-
+-#[tokio::test]
+-async fn rc_requests_durable_changes_and_manual_pairing() {
+-    let (client, mut commands, _events) = CloudClient::channel(/*capacity*/ 3);
+-    let session = AppServerSession::new(
+-        BackendId::new(),
+-        AppServerClient::Cloud(client),
+-        ThreadParamsMode::Cloud,
+-    );
+-    for action in [Action::Enable, Action::Disable, Action::AddDevice] {
+-        let request = run(session.request_view(), action);
+-        let check = async {
+-            let command = commands.recv().await.unwrap();
+-            let CloudOperation::Request(request) = command.operation else {
+-                panic!("expected request")
+-            };
+-            assert!(matches!(
+-                (action, *request),
+-                (
+-                    Action::Enable,
+-                    ClientRequest::RemoteControlEnable { params: None, .. }
+-                ) | (
+-                    Action::Disable,
+-                    ClientRequest::RemoteControlDisable { params: None, .. }
+-                ) | (
+-                    Action::AddDevice,
+-                    ClientRequest::RemoteControlPairingStart {
+-                        params: RemoteControlPairingStartParams { manual_code: true },
+-                        ..
+-                    }
+-                )
+-            ));
+-            drop(command.response);
+-        };
+-        tokio::join!(request, check);
+-    }
+-}
+-
+-#[tokio::test]
+-async fn rc_menu_snapshot() {
+-    let (mut chat, _, _, _) = make_chatwidget_manual_with_sender().await;
+-    let mut views = Vec::new();
+-    for state in [
+-        None,
+-        Some((RemoteControlConnectionStatus::Disabled, Some(false))),
+-        Some((RemoteControlConnectionStatus::Connected, Some(true))),
+-        Some((RemoteControlConnectionStatus::Disabled, Some(true))),
+-    ] {
+-        chat.show_selection_view(menu(
+-            state.map(|(status, saved)| (crate::backend_id::BackendId::new(), status, saved)),
+-            "Remote control requires the local background server",
+-        ));
+-        views.push(render_bottom_popup(&chat, /*width*/ 80));
+-    }
+-    assert_eq!(
+-        format!("{:?}", Outcome::Pairing("ABCD-EFGH".into())),
+-        "Pairing([redacted])"
+-    );
+-    chat.show_selection_view(pairing("ABCD-EFGH".into()));
+-    views.push(render_bottom_popup(&chat, /*width*/ 80));
+-    insta::assert_snapshot!("rc_menu", views.join("\n\n"));
+-}
+-
+-#[tokio::test]
+-async fn rc_from_cloud_uses_only_the_parked_local_daemon() {
+-    use super::super::backend_sessions::BackendSessions;
+-    use super::super::test_support::make_test_app;
+-    use crate::AppServerTarget;
+-    let mut app = make_test_app().await;
+-    let (cloud, _cloud_commands, _cloud_events) = CloudClient::channel(/*capacity*/ 2);
+-    let cloud_session = AppServerSession::new(
+-        BackendId::new(),
+-        AppServerClient::Cloud(cloud),
+-        ThreadParamsMode::Cloud,
+-    );
+-    let (local, _local_commands, local_events) = CloudClient::channel(/*capacity*/ 2);
+-    let local_id = BackendId::new();
+-    let local_session = AppServerSession::new(
+-        local_id,
+-        AppServerClient::Cloud(local),
+-        ThreadParamsMode::Embedded,
+-    );
+-    let mut backends = BackendSessions::from_initial(cloud_session, vec![local_session]);
+-    let mut settings = app.backend_settings();
+-    settings.target = AppServerTarget::LocalDaemon {
+-        endpoint: crate::RemoteAppServerEndpoint::UnixSocket {
+-            socket_path: codex_utils_absolute_path::AbsolutePathBuf::relative_to_current_dir(
+-                "codex.sock",
+-            )
+-            .unwrap(),
+-        },
+-        allow_embedded_fallback: false,
+-    };
+-    backends.settings.insert(local_id, settings);
+-    app.app_server_target = AppServerTarget::Embedded;
+-    assert!(local_daemon(&app, &backends).is_none());
+-    app.app_server_target = AppServerTarget::Cloud;
+-    drop(local_events);
+-    assert_eq!(
+-        backends.next_event(/*paused_backend*/ None).await.0,
+-        local_id
+-    );
+-    assert!(!backends.is_listening(local_id));
+-    assert_eq!(
+-        local_daemon(&app, &backends).map(|(session, _)| session.backend_id()),
+-        Some(local_id)
+-    );
+-}
+-
+-#[tokio::test(start_paused = true)]
+-async fn stalled_mutation_reports_unknown_outcome() {
+-    let result = bounded(Action::Disable, std::future::pending()).await;
+-    assert_matches::assert_matches!(result, Outcome::Error(message) if message.contains("outcome is unknown"));
+-}
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
-index 4a946119946cae246bfb2721f7abc9b363c1df3b..e18c21139fffb4731eefbd51b8114bb3605f4e49 100644
+index 4a946119946cae246bfb2721f7abc9b363c1df3b..acebb25a74992dbf37bfd299d43fad994566de14 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 +++ b/codex-rs/tui/src/app/snapshots/codex_tui__app__daemon_menu__tests__daemon_cli_confirmation.snap
 @@ -1,18 +1,17 @@
@@ -9240,7 +9805,7 @@ index 4a946119946cae246bfb2721f7abc9b363c1df3b..e18c21139fffb4731eefbd51b8114bb3
                  Update daemon and exit Codex?
 -                Use this CLI package v0.0.0 from /x/cli-build/bin/codex. Copy the
 -                complete package and pin it against automatic updates.
-+                Update the daemon to this CLI package v0.167.0 from /x/cli-build/
++                Update the daemon to this CLI package v0.172.0 from /x/cli-build/
 +                bin/codex. Copy the complete package and pin it against automatic
 +                updates.
                  This may restart the daemon and interrupt active or queued work.
@@ -9372,6 +9937,60 @@ index 59a21ec2dd940dd7967428c9434bbdca21444212..4dcd62e8df1870c7608f09efe2576abf
       Restart background server
  
    enter select · esc back
+diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__remote_control__tests__rc_menu.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__remote_control__tests__rc_menu.snap
+deleted file mode 100644
+index 147bef15c072e0f66221099fab62a374380fc8be..0000000000000000000000000000000000000000
+--- a/codex-rs/tui/src/app/snapshots/codex_tui__app__remote_control__tests__rc_menu.snap
++++ /dev/null
+@@ -1,48 +0,0 @@
+----
+-source: tui/src/app/remote_control_tests.rs
+-expression: "views.join(\"\\n\\n\")"
+----
+-  Remote control
+-  Remote control requires the local background server
+-
+-
+-›    Enable (disabled)
+-
+-  enter select · esc back
+-
+-  Remote control
+-  Applies to local sessions; cloud sessions are unaffected.
+-
+-
+-› 1. Enable
+-     Add device (disabled)  Enable remote control first
+-
+-  enter select · esc back
+-
+-  Remote control
+-  Applies to local sessions; cloud sessions are unaffected.
+-
+-
+-› 1. Disable
+-  2. Add device
+-
+-  enter select · esc back
+-
+-  Remote control
+-  Remote control is off now, but may return after restart. Choose Disable to
+-  save the preference.
+-
+-
+-› 1. Disable
+-     Add device (disabled)  Enable remote control first
+-
+-  enter select · esc back
+-
+-  Add device
+-  Enter this pairing code on your other device: ABCD-EFGH. If it expires,
+-  select Add device again.
+-
+-
+-› 1. Done
+-
+-  enter select · esc back
 diff --git a/codex-rs/tui/src/app/snapshots/codex_tui__app__turn_tips__tests__working_tip_selected.snap b/codex-rs/tui/src/app/snapshots/codex_tui__app__turn_tips__tests__working_tip_selected.snap
 index 870b86f61cf4b6daa6a73074549ed7e558a0a3d0..47b5e478306f048d3bf9b0aa9f5e942af46a9eec 100644
 --- a/codex-rs/tui/src/app/snapshots/codex_tui__app__turn_tips__tests__working_tip_selected.snap
@@ -9392,11 +10011,51 @@ index 870b86f61cf4b6daa6a73074549ed7e558a0a3d0..47b5e478306f048d3bf9b0aa9f5e942a
    └ Tip: Try /help.
                                                                 Copying 5 chars…
  
+diff --git a/codex-rs/tui/src/app/startup.rs b/codex-rs/tui/src/app/startup.rs
+index d1fb8e0ac127de5740b80182aca6e3b847d8d52f..fba14f3f1cf02bd37e8f9a11a50b4b5b93737bbe 100644
+--- a/codex-rs/tui/src/app/startup.rs
++++ b/codex-rs/tui/src/app/startup.rs
+@@ -1088,7 +1088,6 @@ See the Codex keymap documentation for supported actions and examples."
+             daemon_cli_executable,
+             pending_update_action: None,
+             daemon_restart: None,
+-            remote_control_pending: false,
+             pending_shutdown_exit_thread_id: None,
+             windows_sandbox: WindowsSandboxState {
+                 prompt_after_trust: should_prompt_windows_sandbox_nux_at_startup
+@@ -1593,15 +1592,6 @@ See the Codex keymap documentation for supported actions and examples."
+                         {
+                             backends.parked_inputs_mut(slot).remove(thread_id);
+                         }
+-                        if matches!(&event, AppEvent::RemoteControl(_) | AppEvent::RemoteControlForBackend { .. } | AppEvent::RemoteControlFinished { .. }) {
+-                            super::remote_control::handle(&mut app, &backends, event);
+-                            if app.chat_widget.has_active_modal()
+-                                && let Err(err) = app.render_startup_frame(tui, &app_event_rx)
+-                            {
+-                                break Err(err);
+-                            }
+-                            continue;
+-                        }
+                         let switch_backend = match &event {
+                             AppEvent::ChooseCloudEnvironment => {
+                                 if let Some(source) = cloud_draft
+diff --git a/codex-rs/tui/src/app/test_support.rs b/codex-rs/tui/src/app/test_support.rs
+index d3800685539ca1abddd9f0e7132ea45f0821ab5a..41b883e22f9228c430ee2475e851fde52c421ba2 100644
+--- a/codex-rs/tui/src/app/test_support.rs
++++ b/codex-rs/tui/src/app/test_support.rs
+@@ -117,7 +117,6 @@ pub(crate) async fn make_test_app() -> Box<App> {
+         daemon_cli_executable: None,
+         pending_update_action: None,
+         daemon_restart: None,
+-        remote_control_pending: false,
+         pending_shutdown_exit_thread_id: None,
+         windows_sandbox: WindowsSandboxState::default(),
+         thread_event_channels: HashMap::new(),
 diff --git a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-index a56853b2fc1a60e9759e9bc3ccf6fd36d79ee854..acea7b8f51edc5165f24f858c3c445ef2af58ba7 100644
+index a56a3badc7d5806759ba140ae7c6194633c8fdae..de25a0ed2a2948cdefebabcbfd0e17b0f7d5856a 100644
 --- a/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
 +++ b/codex-rs/tui/src/app/tests/active_reconnect_tests.rs
-@@ -443,6 +443,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
+@@ -442,6 +442,13 @@ async fn reconnect_restores_history_permissions_and_resumes_unsent_input() -> Re
              assert!(ops.try_recv().is_err());
          } else if recovered_queue {
              assert!(!app.chat_widget.has_queued_follow_up_messages());
@@ -9411,20 +10070,18 @@ index a56853b2fc1a60e9759e9bc3ccf6fd36d79ee854..acea7b8f51edc5165f24f858c3c445ef
                  "restored_conversation",
                  render_bottom_popup(&app.chat_widget, /*width*/ 80)
 diff --git a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
-index 335071a07742e41b50ce0eb62805f740d019b586..b37853d5ce444e707eb518538fc06f796c46409e 100644
+index b3e67c62518e1a800d2d4c7a98cb61ac14b76304..b752c3355dabbe2e29df4fa1e6bd962177a0f95f 100644
 --- a/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
 +++ b/codex-rs/tui/src/app/tests/snapshots/codex_tui__app__tests__active_reconnect__unavailable_conversation.snap
-@@ -3,8 +3,6 @@ source: tui/src/app/tests/active_reconnect_tests.rs
+@@ -3,6 +3,4 @@ source: tui/src/app/tests/active_reconnect_tests.rs
  expression: "format!(\"{history}\\n{}\",\nrender_bottom_popup(&app.chat_widget,\n80)).replace(&test_path_buf(\"/tmp/project\").display().to_string(),\n\"/tmp/project\")"
  ---
  • This conversation is unavailable. Its cached transcript and draft remain here; input is paused. Open the agent picker or return to the parent to continue.
 -⚠ A background Codex service is running v2.0.0, different from your Codex CLI
 -  v0.0.0.
  › unavailable draft
- 
-   gpt-test default · /tmp/project
 diff --git a/codex-rs/tui/src/history_cell/notices.rs b/codex-rs/tui/src/history_cell/notices.rs
-index 9f5e2137f0ecb1b70c7a17b3ed14659d5b308b7a..ec4feee07bafa1947c041f0c70e372d430856759 100644
+index 033ef0659e5c71a2122705aafda8b89756fa7b16..c940341d7ddb2907d5ded5b4a4bba5ee0e545bc2 100644
 --- a/codex-rs/tui/src/history_cell/notices.rs
 +++ b/codex-rs/tui/src/history_cell/notices.rs
 @@ -5,6 +5,7 @@ use crate::style::accent_color;
@@ -9509,7 +10166,7 @@ index a9dd9cac784bd0993eb09bc518071a1e253f0ae2..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest │
 -╰─────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
-index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..4d53cf41c3dd9bc0e7efa0463322580d72d23d07 100644
+index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..05bc7d860b93d046eb80d484271d485fb1ef2bc1 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__session_info_availability_nux_tooltip_snapshot.snap
 @@ -1,10 +1,9 @@
@@ -9520,12 +10177,12 @@ index e5cc9a0cecf082a98967e33e8019e28a39af5f2a..4d53cf41c3dd9bc0e7efa0463322580d
  ---
  
 -  >_ OpenAI Codex (v0.0.0)
-+  >_ codEx (v0.167.0)
++  >_ codEx (v0.172.0)
       /tmp/project
  
    Tip: Model just became available
 diff --git a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
-index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..8336b18e5d210beb4a1360ec1d811a6f4e97083e 100644
+index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..d52ea258cfff9edb231c4efdf4b88b15aa305380 100644
 --- a/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 +++ b/codex-rs/tui/src/history_cell/snapshots/codex_tui__history_cell__tests__standalone_unix_update_available_history_cell_snapshot.snap
 @@ -2,11 +2,10 @@
@@ -9541,7 +10198,7 @@ index 8f1548cf880c02ca1be6f43e8cfe165dd5d01306..8336b18e5d210beb4a1360ec1d811a6f
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 +╭──────────────────────────────────────────────────╮
-+│ ✨ Update available! 0.167.0 -> 9.9.9            │
++│ ✨ Update available! 0.172.0 -> 9.9.9            │
 +│ Run codex update to update.                      │
 +│                                                  │
 +│ See full release notes:                          │
@@ -9566,10 +10223,10 @@ index fb15a05775d4063e2780ba29d0ae15e9ad5297c8..00000000000000000000000000000000
 -│ https://github.com/openai/codex/releases/latest                                                            │
 -╰────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 diff --git a/codex-rs/tui/src/history_cell/tests.rs b/codex-rs/tui/src/history_cell/tests.rs
-index d0e70b0574adc8112d2db99bf7fd0d36f7ae1c32..e48ab05f055c0161fb2c5ccaa88c8e55c892c088 100644
+index eb656264400c6c377a8d72644911ffa0f92f8902..a9b8b34d65a4bf210b03d091cf16a2901fcdf004 100644
 --- a/codex-rs/tui/src/history_cell/tests.rs
 +++ b/codex-rs/tui/src/history_cell/tests.rs
-@@ -1386,24 +1386,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
+@@ -1421,24 +1421,6 @@ fn standalone_unix_update_available_history_cell_snapshot() {
      insta::assert_snapshot!(rendered);
  }
  
@@ -9595,7 +10252,7 @@ index d0e70b0574adc8112d2db99bf7fd0d36f7ae1c32..e48ab05f055c0161fb2c5ccaa88c8e55
  fn web_search_history_cell_without_detail_snapshot() {
      let cell = new_web_search_call("call-1".to_string(), String::new(), WebSearchAction::Other);
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
-index 53c8053051ed137cd64a19611d6f7dee8ca284a1..d3074e533a876bcf5149d51f7dbee330f7307fcd 100644
+index 53c8053051ed137cd64a19611d6f7dee8ca284a1..2391faedd1ac7b21519e39683a305372630310a5 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_picker_selected_28x12.snap
 @@ -3,11 +3,11 @@ source: tui/src/update_prompt.rs
@@ -9605,7 +10262,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..d3074e533a876bcf5149d51f7dbee330
 -  Update available · 0.0.0
 -  → 9.9.9
 +  Update available ·
-+  0.167.0 → 9.9.9
++  0.172.0 → 9.9.9
    Release notes:
 -  https://github.com/opena
 -  i/codex/releases/latest
@@ -9615,7 +10272,7 @@ index 53c8053051ed137cd64a19611d6f7dee8ca284a1..d3074e533a876bcf5149d51f7dbee330
  › 3. Skip until next version
  
 diff --git a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
-index b547642270e9b9c612d1b62ccedf6d305b9b84d0..c24b5b910f0b281a48ca2d3d265730dd3888c4a7 100644
+index b547642270e9b9c612d1b62ccedf6d305b9b84d0..113a16dac9101bc10bf631a8ec0d9310104baac2 100644
 --- a/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 +++ b/codex-rs/tui/src/snapshots/codex_tui__update_prompt__tests__update_prompt_modal.snap
 @@ -3,10 +3,10 @@ source: tui/src/update_prompt.rs
@@ -9624,7 +10281,7 @@ index b547642270e9b9c612d1b62ccedf6d305b9b84d0..c24b5b910f0b281a48ca2d3d265730dd
  
 -  Update available · 0.0.0 → 9.9.9
 -  Release notes: https://github.com/openai/codex/releases/latest
-+  Update available · 0.167.0 → 9.9.9
++  Update available · 0.172.0 → 9.9.9
 +  Release notes: https://github.com/NIyueeE/codEx/releases/latest
  
 -› 1. Update now (runs `npm install -g @openai/codex`)                           
@@ -9633,10 +10290,10 @@ index b547642270e9b9c612d1b62ccedf6d305b9b84d0..c24b5b910f0b281a48ca2d3d265730dd
    3. Skip until next version
  
 diff --git a/codex-rs/tui/src/startup_orchestration.rs b/codex-rs/tui/src/startup_orchestration.rs
-index 43331cdae91e0f6e3ab794b5c4d6e196c6e12ea2..bfe95d860cd0da6983eee8b28e62f6801af30365 100644
+index ce51253098c39d204f83a769f718c1c2c43e2d1b..2a0959a2a4f61a6291960acfd99452f1911d092a 100644
 --- a/codex-rs/tui/src/startup_orchestration.rs
 +++ b/codex-rs/tui/src/startup_orchestration.rs
-@@ -1036,7 +1036,6 @@ pub(super) async fn run_main_inner(
+@@ -1053,7 +1053,6 @@ pub(super) async fn run_main_inner(
              (
                  "update_target",
                  match source {
