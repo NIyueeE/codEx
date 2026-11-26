@@ -39,7 +39,7 @@
 #                                    from the event; without them the check is
 #                                    skipped with a note)
 #   CARGO_BUILD_JOBS=2               memory ceiling, as in AGENTS.md
-#   RUST_MIN_STACK=8388608           stack headroom for the snapshot suites
+#   RUST_MIN_STACK=16777216          stack headroom for the snapshot suites
 #   NEXTEST_PROFILE=local            the profile CI uses
 #   NEXTEST_JOBS=2                   thread cap, as in AGENTS.md
 #   TERM_PROFILE=xterm-256color      terminal the snapshot suites expect
@@ -100,7 +100,12 @@ done
 # pass means a CI pass.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-2}"
 # codex-tui snapshot tests need the stack headroom CI gives them.
-export RUST_MIN_STACK="${RUST_MIN_STACK:-8388608}"
+# 16 MiB, not 8: upstream 0.172.0's sidebar suite renders a full two-pane owned
+# screen in a debug build, and `opens_agent_transcript_beside_parent_and_returns_to_chooser`
+# overflows an 8 MiB stack before it reaches its snapshot. The extra reservation
+# costs nothing (stacks are reserved, not committed) and keeps the whole TUI
+# suite inside one budget.
+export RUST_MIN_STACK="${RUST_MIN_STACK:-16777216}"
 # nextest's `local` profile keeps the app-server integration groups small
 # enough for a laptop; CI selects the same profile, so the two agree. The
 # thread cap matches the CI ceiling for the same reason.
@@ -466,9 +471,12 @@ full_gate() {
       echo 'Install it with: cargo install --locked cargo-nextest' >&2
       exit 1
     fi
-    # A few TUI tests spawn the CLI binary, which nextest -p codex-tui does not
-    # build, so build it first so they can locate target/debug/codex.
+    # A few TUI tests spawn companion binaries, which nextest -p codex-tui does
+    # not build, so build them first so they can locate them under
+    # target/debug: the CLI itself, and the stdio MCP server fixture that
+    # upstream's statusline_provider suite spawns through core_test_support.
     cargo build --bin codex
+    cargo build -p codex-rmcp-client --bin test_stdio_server
     RUST_MIN_STACK=${RUST_MIN_STACK} NEXTEST_PROFILE=${NEXTEST_PROFILE} \
       cargo nextest run -j \"${NEXTEST_JOBS}\" --no-fail-fast -p codex-tui
   "
