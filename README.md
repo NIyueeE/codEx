@@ -56,10 +56,23 @@ whole release directory. Releases up to and including `0.164.0` still ship the
 binary-only updater, so install `0.172.0` or later with the installer once;
 after that, `codex update` keeps the package complete.
 
-Windows users install from the release archive directly: download
-`codex-x86_64-pc-windows-msvc.tar.gz`, verify it against the published
-`.sha256`, and unpack the package into the standalone release directory
-described under [`codex update`](#codex-update-pure-rust-self-update).
+Windows users install from the release archive directly:
+
+1. Download `codex-x86_64-pc-windows-msvc.tar.gz` and its `.sha256` from the
+   latest fork release.
+2. Verify the digest before unpacking. In PowerShell:
+   `Get-FileHash codex-x86_64-pc-windows-msvc.tar.gz -Algorithm SHA256`, and
+   compare it with the value published next to the asset.
+3. Unpack so that `releases/<version>-x86_64-pc-windows-msvc/` holds this
+   build and `current` points at it. The layout is
+   `~/.codex/packages/standalone/releases/<version>-<target>/`, with `current`
+   selecting one of them.
+4. Run `codex --version`. It must report the version you just installed.
+
+Do this by hand when an update does not finish. The swap is staged beside the
+install and handed to a detached copy of the new binary; if that process dies
+before it completes, the update does not complete either, and the steps above
+are the way out.
 
 ### Upgrading from 0.155.1 or older
 

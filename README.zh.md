@@ -47,9 +47,21 @@ sha256 校验和,在改动任何内容之前先校验校验和,然后安装到
 版本仍只带旧的更新器,所以请先用安装脚本安装 `0.172.0` 或更高版本;此后
 `codex update` 就会保持整个包完整。
 
-Windows 用户直接从 release 归档安装:下载 `codex-x86_64-pc-windows-msvc.tar.gz`,
-对照随附的 `.sha256` 校验后,将该包解压到
-[`codex update`](#codex-update-pure-rust-self-update)一节所述的独立安装目录。
+Windows 用户直接从 release 归档安装:
+
+1. 从最新的分支 release 下载 `codex-x86_64-pc-windows-msvc.tar.gz` 及其
+   `.sha256`。
+2. 解压前先校验摘要。PowerShell 中执行
+   `Get-FileHash codex-x86_64-pc-windows-msvc.tar.gz -Algorithm SHA256`,与
+   发布页上资产旁公布的数值对照。
+3. 解压后让 `releases/<version>-x86_64-pc-windows-msvc/` 持有该构建,且
+   `current` 指向它。布局为
+   `~/.codex/packages/standalone/releases/<version>-<target>/`,由 `current`
+   选择其中一个。
+4. 运行 `codex --version`,必须报出刚安装的版本。
+
+更新没能完成时,就按上面的步骤手动安装:交换过程是先暂存到安装目录旁,再交给新二进制的
+分离副本;若该进程在完成前退出,更新就不会完成,此时手动安装就是出路。
 
 ### 从 0.155.1 或更早版本升级
 
