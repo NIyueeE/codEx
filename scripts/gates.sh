@@ -488,6 +488,12 @@ full_gate() {
       echo 'Install it with: cargo install --locked cargo-nextest' >&2
       exit 1
     fi
+    # A few core unit tests launch the Linux sandbox helper as a sibling
+    # binary, which nextest -p codex-core does not build, so build it first.
+    # Upstream's test jobs have a dedicated "Build runtime test helpers" step
+    # for exactly this; without the binary the test helper falls back to the
+    # test binary itself and the sandboxed command dies by signal.
+    cargo build -p codex-linux-sandbox --bin codex-linux-sandbox
     # The sandbox/approvals integration suite needs sandbox-capable runners,
     # exactly like upstream, which runs it on self-hosted runners only. CI
     # excludes suite::* and so does this gate.
